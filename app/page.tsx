@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ShoppingBag,
   Search,
@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 type Product = {
-  id: number;
+  id: string;
   name: string;
   category: "fashion" | "gadget";
   price: number;
@@ -34,9 +34,9 @@ type CartItem = {
   selectedOption?: string;
 };
 
-const PRODUCTS: Product[] = [
+const FALLBACK_PRODUCTS: Product[] = [
   {
-    id: 1,
+    id: "1",
     name: "Premium Oversized Cotton Hoodie",
     category: "fashion",
     price: 1450,
@@ -47,7 +47,7 @@ const PRODUCTS: Product[] = [
     sizes: ["M", "L", "XL"],
   },
   {
-    id: 2,
+    id: "2",
     name: "ANC Wireless Noise-Cancelling Earbuds",
     category: "gadget",
     price: 2290,
@@ -58,7 +58,7 @@ const PRODUCTS: Product[] = [
     specs: "36H Battery • Bluetooth 5.3 • IPX5",
   },
   {
-    id: 3,
+    id: "3",
     name: "Minimalist Urban Bomber Jacket",
     category: "fashion",
     price: 2490,
@@ -69,7 +69,7 @@ const PRODUCTS: Product[] = [
     sizes: ["S", "M", "L", "XL"],
   },
   {
-    id: 4,
+    id: "4",
     name: "AMOLED Fitness & Call Smart Watch",
     category: "gadget",
     price: 3450,
@@ -80,7 +80,7 @@ const PRODUCTS: Product[] = [
     specs: '1.96" AMOLED • BT Calling • 7-Day Battery',
   },
   {
-    id: 5,
+    id: "5",
     name: "Classic Slim-Fit Oxford Shirt",
     category: "fashion",
     price: 1190,
@@ -90,7 +90,7 @@ const PRODUCTS: Product[] = [
     sizes: ["M", "L", "XL"],
   },
   {
-    id: 6,
+    id: "6",
     name: "20,000mAh 65W Fast Charging Power Bank",
     category: "gadget",
     price: 2850,
@@ -102,15 +102,24 @@ const PRODUCTS: Product[] = [
   },
 ];
 
+function normalizeCategory(rawCategory?: string): "fashion" | "gadget" {
+  const val = (rawCategory || "").toLowerCase();
+  if (val.includes("gadget") || val.includes("tech")) return "gadget";
+  return "fashion";
+}
+
 export default function HomeStore() {
+  const [products, setProducts] = useState<Product[]>(FALLBACK_PRODUCTS);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+
   const [selectedCategory, setSelectedCategory] = useState<
     "all" | "fashion" | "gadget"
   >("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSizes, setSelectedSizes] = useState<{ [id: number]: string }>({
-    1: "L",
-    3: "L",
-    5: "L",
+  const [selectedSizes, setSelectedSizes] = useState<{ [id: string]: string }>({
+    "1": "L",
+    "3": "L",
+    "5": "L",
   });
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -119,9 +128,57 @@ export default function HomeStore() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [deliveryZone, setDeliveryZone] = useState<"dhaka" | "outside">("dhaka");
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [orderError, setOrderError] = useState("");
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  const filteredProducts = PRODUCTS.filter((p) => {
+  useEffect(() => {
+    let active = true;
+
+    async function loadProducts() {
+      try {
+        const res = await fetch("/api/products", { cache: "no-store" });
+        const data = await res.json();
+        if (!active) return;
+
+        if (data.success && Array.isArray(data.products) && data.products.length > 0) {
+          const mapped: Product[] = data.products.map((item: any, idx: number) => {
+            const cat = normalizeCategory(item.category);
+            return {
+              id: String(item._id || item.id || idx),
+              name: item.name || "Unnamed Product",
+              category: cat,
+              price: Number(item.price) || 0,
+              oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
+              image:
+                item.image ||
+                "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80",
+              badge:
+                item.badge ||
+                (cat === "fashion" ? "In Stock" : "Official Warranty"),
+              sizes: cat === "fashion" ? item.sizes || ["M", "L", "XL"] : undefined,
+              specs:
+                cat === "gadget"
+                  ? item.specs || item.description || "Original Tech Product"
+                  : undefined,
+            };
+          });
+          setProducts(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to fetch products from DB:", err);
+      } finally {
+        if (active) setLoadingProducts(false);
+      }
+    }
+
+    loadProducts();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const filteredProducts = products.filter((p) => {
     const matchesCat =
       selectedCategory === "all" || p.category === selectedCategory;
     const matchesSearch = p.name
@@ -133,7 +190,7 @@ export default function HomeStore() {
   const addToCart = (product: Product) => {
     const chosenSize =
       product.category === "fashion"
-        ? selectedSizes[product.id] || product.sizes?.[0]
+        ? selectedSizes[product.id] || product.sizes?.[0] || "L"
         : undefined;
 
     setCart((prev) => {
@@ -144,12 +201,16 @@ export default function HomeStore() {
       );
       if (existingIndex > -1) {
         const updated = [...prev];
-        updated[existingIndex].quantity += 1;
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: updated[existingIndex].quantity + 1,
+        };
         return updated;
       }
       return [...prev, { product, quantity: 1, selectedOption: chosenSize }];
     });
 
+    setOrderError("");
     setOrderSuccess(false);
     setIsCartOpen(true);
   };
@@ -177,25 +238,54 @@ export default function HomeStore() {
   const grandTotal = subtotal + deliveryCharge;
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
+  const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName || !customerPhone || !customerAddress || cart.length === 0)
       return;
 
-    console.log("Order Placed:", {
-      customerName,
-      customerPhone,
-      customerAddress,
-      deliveryZone,
-      items: cart,
-      grandTotal,
-    });
+    setSubmittingOrder(true);
+    setOrderError("");
 
-    setCart([]);
-    setCustomerName("");
-    setCustomerPhone("");
-    setCustomerAddress("");
-    setOrderSuccess(true);
+    try {
+      const orderPayload = {
+        customerName: customerName.trim(),
+        phone: customerPhone.trim(),
+        address: `${customerAddress.trim()} (${
+          deliveryZone === "dhaka" ? "Inside Dhaka - ৳70" : "Outside Dhaka - ৳130"
+        })`,
+        items: cart.map((item) => ({
+          productId: item.product.id,
+          name: item.product.name,
+          price: item.product.price,
+          quantity: item.quantity,
+          size: item.selectedOption || "",
+          image: item.product.image,
+        })),
+        totalAmount: grandTotal,
+        status: "Pending",
+      };
+
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderPayload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "অর্ডার প্লেস করা যায়নি");
+      }
+
+      setCart([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      setCustomerAddress("");
+      setOrderSuccess(true);
+    } catch (err: any) {
+      setOrderError(err?.message || "অর্ডার সাবমিট করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
+    } finally {
+      setSubmittingOrder(false);
+    }
   };
 
   return (
@@ -315,88 +405,101 @@ export default function HomeStore() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map((product) => (
-            <div
-              key={product.id}
-              className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between"
-            >
-              <div>
-                <div className="relative h-60 bg-slate-100 overflow-hidden">
-                  <img
-                    src={product.image}
-                    alt={product.name}
-                    className="w-full h-full object-cover hover:scale-105 transition duration-300"
-                  />
-                  <span className="absolute top-3 left-3 bg-slate-900/85 text-white text-xs font-semibold px-3 py-1 rounded-full">
-                    {product.badge}
-                  </span>
-                </div>
-
-                <div className="p-5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                    {product.category}
-                  </span>
-                  <h3 className="font-bold text-lg text-slate-900 mt-1">
-                    {product.name}
-                  </h3>
-
-                  {product.category === "fashion" && product.sizes ? (
-                    <div className="mt-3">
-                      <span className="text-xs text-slate-500 block mb-1.5">
-                        Select Size:
-                      </span>
-                      <div className="flex gap-2">
-                        {product.sizes.map((size) => (
-                          <button
-                            key={size}
-                            onClick={() =>
-                              setSelectedSizes({
-                                ...selectedSizes,
-                                [product.id]: size,
-                              })
-                            }
-                            className={`w-8 h-8 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                              (selectedSizes[product.id] || "L") === size
-                                ? "bg-slate-900 text-white border-slate-900"
-                                : "bg-white text-slate-700 border-slate-300 hover:border-slate-900"
-                            }`}
-                          >
-                            {size}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-xs text-slate-600 bg-slate-100 px-3 py-2 rounded-lg font-medium">
-                      {product.specs}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="px-5 pb-5 pt-2 flex items-center justify-between border-t border-slate-100">
+        {loadingProducts ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className="bg-white rounded-2xl border border-slate-200 h-80 animate-pulse p-5"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredProducts.map((product) => (
+              <div
+                key={product.id}
+                className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between"
+              >
                 <div>
-                  <span className="text-xl font-extrabold text-slate-900">
-                    ৳{product.price}
-                  </span>
-                  {product.oldPrice && (
-                    <span className="text-xs text-slate-400 line-through ml-2">
-                      ৳{product.oldPrice}
+                  <div className="relative h-60 bg-slate-100 overflow-hidden">
+                    <img
+                      src={product.image}
+                      alt={product.name}
+                      className="w-full h-full object-cover hover:scale-105 transition duration-300"
+                    />
+                    <span className="absolute top-3 left-3 bg-slate-900/85 text-white text-xs font-semibold px-3 py-1 rounded-full">
+                      {product.badge}
                     </span>
-                  )}
+                  </div>
+
+                  <div className="p-5">
+                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                      {product.category}
+                    </span>
+                    <h3 className="font-bold text-lg text-slate-900 mt-1">
+                      {product.name}
+                    </h3>
+
+                    {product.category === "fashion" && product.sizes ? (
+                      <div className="mt-3">
+                        <span className="text-xs text-slate-500 block mb-1.5">
+                          Select Size:
+                        </span>
+                        <div className="flex gap-2">
+                          {product.sizes.map((size) => (
+                            <button
+                              key={size}
+                              onClick={() =>
+                                setSelectedSizes({
+                                  ...selectedSizes,
+                                  [product.id]: size,
+                                })
+                              }
+                              className={`w-8 h-8 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                                (selectedSizes[product.id] ||
+                                  product.sizes?.[0] ||
+                                  "L") === size
+                                  ? "bg-slate-900 text-white border-slate-900"
+                                  : "bg-white text-slate-700 border-slate-300 hover:border-slate-900"
+                              }`}
+                            >
+                              {size}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs text-slate-600 bg-slate-100 px-3 py-2 rounded-lg font-medium">
+                        {product.specs}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
-                <button
-                  onClick={() => addToCart(product)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer"
-                >
-                  Order Now
-                </button>
+                <div className="px-5 pb-5 pt-2 flex items-center justify-between border-t border-slate-100">
+                  <div>
+                    <span className="text-xl font-extrabold text-slate-900">
+                      ৳{product.price}
+                    </span>
+                    {product.oldPrice && (
+                      <span className="text-xs text-slate-400 line-through ml-2">
+                        ৳{product.oldPrice}
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => addToCart(product)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer"
+                  >
+                    Order Now
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         <div className="grid sm:grid-cols-3 gap-4 mt-14">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 flex items-center gap-4">
@@ -589,11 +692,20 @@ export default function HomeStore() {
                       </div>
                     </div>
 
+                    {orderError && (
+                      <p className="text-xs text-rose-600 font-medium">
+                        {orderError}
+                      </p>
+                    )}
+
                     <button
                       type="submit"
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition shadow-md cursor-pointer"
+                      disabled={submittingOrder}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition shadow-md cursor-pointer"
                     >
-                      Confirm Order (৳{grandTotal})
+                      {submittingOrder
+                        ? "Placing Order..."
+                        : `Confirm Order (৳${grandTotal})`}
                     </button>
                   </form>
                 </>
