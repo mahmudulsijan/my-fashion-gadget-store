@@ -7,6 +7,7 @@ import {
   ShoppingBag,
   LogOut,
   Plus,
+  Minus,
   Trash2,
   RefreshCw,
   Copy,
@@ -15,6 +16,9 @@ import {
   ExternalLink,
   Upload,
   X,
+  Pencil,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 interface ProductItem {
@@ -109,6 +113,7 @@ async function compressImageToDataUrl(
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -119,10 +124,18 @@ export default function AdminPage() {
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Order filters
+  // Order filters & detail modal
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [orderSearch, setOrderSearch] = useState("");
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
+
+  // Product filters & quick stock
+  const [productSearch, setProductSearch] = useState("");
+  const [productCatFilter, setProductCatFilter] = useState<
+    "all" | "fashion" | "gadget"
+  >("all");
+  const [stockUpdatingId, setStockUpdatingId] = useState<string | null>(null);
 
   // Add Product Form State
   const [name, setName] = useState("");
@@ -143,7 +156,27 @@ export default function AdminPage() {
     null
   );
 
+  // Edit Product Modal State
+  const [editingProduct, setEditingProduct] = useState<ProductItem | null>(
+    null
+  );
+  const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState<"fashion" | "gadget">(
+    "fashion"
+  );
+  const [editSubCategory, setEditSubCategory] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editOldPrice, setEditOldPrice] = useState("");
+  const [editStock, setEditStock] = useState("10");
+  const [editBadge, setEditBadge] = useState("");
+  const [editSizesText, setEditSizesText] = useState("");
+  const [editSpecs, setEditSpecs] = useState("");
+  const [editImage, setEditImage] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const showToast = (msg: string) => {
     setFeedbackMsg(msg);
@@ -218,7 +251,8 @@ export default function AdminPage() {
   };
 
   const handleImageFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement>,
+    target: "add" | "edit" = "add"
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -231,8 +265,12 @@ export default function AdminPage() {
     setProcessingImage(true);
     try {
       const compressedDataUrl = await compressImageToDataUrl(file, 900, 0.78);
-      setImage(compressedDataUrl);
-      setUploadedFileName(file.name);
+      if (target === "add") {
+        setImage(compressedDataUrl);
+        setUploadedFileName(file.name);
+      } else {
+        setEditImage(compressedDataUrl);
+      }
       showToast("ছবি রেডি হয়েছে");
     } catch (err: any) {
       console.error("Image upload error:", err);
@@ -303,6 +341,116 @@ export default function AdminPage() {
     }
   };
 
+  const openEditModal = (prod: ProductItem) => {
+    const normalizedCat: "fashion" | "gadget" = (prod.category || "")
+      .toLowerCase()
+      .includes("gadget")
+      ? "gadget"
+      : "fashion";
+    setEditingProduct(prod);
+    setEditName(prod.name);
+    setEditCategory(normalizedCat);
+    setEditSubCategory(prod.subCategory || "");
+    setEditPrice(String(prod.price ?? ""));
+    setEditOldPrice(prod.oldPrice ? String(prod.oldPrice) : "");
+    setEditStock(String(prod.stock ?? 10));
+    setEditBadge(prod.badge || "");
+    setEditSizesText((prod.sizes || ["M", "L", "XL"]).join(", "));
+    setEditSpecs(prod.specs || "");
+    setEditImage(prod.image || "");
+    setEditDescription(prod.description || "");
+  };
+
+  const handleSaveProductEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct || !editName.trim() || !editPrice || !editImage.trim())
+      return;
+
+    setSavingEdit(true);
+    const parsedSizes =
+      editCategory === "fashion"
+        ? editSizesText
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
+
+    const payload = {
+      name: editName.trim(),
+      category: editCategory,
+      subCategory: editSubCategory.trim() || undefined,
+      price: Number(editPrice),
+      oldPrice: editOldPrice ? Number(editOldPrice) : undefined,
+      stock: Math.max(0, Number(editStock) || 0),
+      badge: editBadge.trim() || undefined,
+      sizes: parsedSizes && parsedSizes.length > 0 ? parsedSizes : undefined,
+      specs:
+        editCategory === "gadget" && editSpecs.trim()
+          ? editSpecs.trim()
+          : undefined,
+      image: editImage.trim(),
+      description: editDescription.trim(),
+    };
+
+    try {
+      const res = await fetch(`/api/products/${editingProduct._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setProducts((prev) =>
+          prev.map((item) =>
+            item._id === editingProduct._id
+              ? { ...item, ...payload, ...(data.product || {}) }
+              : item
+          )
+        );
+        setEditingProduct(null);
+        showToast("প্রোডাক্ট তথ্য আপডেট হয়েছে");
+      } else {
+        showToast(data.message || "আপডেট করা যায়নি (API PATCH চেক করুন)");
+      }
+    } catch (err) {
+      console.error("Edit product failed:", err);
+      showToast("প্রোডাক্ট আপডেট করতে সমস্যা হয়েছে");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleQuickStockChange = async (prod: ProductItem, delta: number) => {
+    const currentStock = typeof prod.stock === "number" ? prod.stock : 10;
+    const nextStock = Math.max(0, currentStock + delta);
+    if (nextStock === currentStock) return;
+
+    setStockUpdatingId(prod._id);
+    try {
+      const res = await fetch(`/api/products/${prod._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stock: nextStock }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setProducts((prev) =>
+          prev.map((item) =>
+            item._id === prod._id ? { ...item, stock: nextStock } : item
+          )
+        );
+        showToast(`${prod.name} স্টক: ${nextStock}`);
+      } else {
+        showToast(data.message || "স্টক আপডেট হয়নি");
+      }
+    } catch (err) {
+      console.error("Quick stock failed:", err);
+      showToast("স্টক আপডেট করতে সমস্যা হয়েছে");
+    } finally {
+      setStockUpdatingId(null);
+    }
+  };
+
   const handleDeleteProduct = async (id: string) => {
     setDeletingProductId(id);
     try {
@@ -335,6 +483,9 @@ export default function AdminPage() {
         setOrders((prev) =>
           prev.map((o) => (o._id === orderId ? { ...o, status } : o))
         );
+        setSelectedOrder((prev) =>
+          prev && prev._id === orderId ? { ...prev, status } : prev
+        );
         showToast(`অর্ডার স্ট্যাটাস "${status}" আপডেট হয়েছে`);
       } else {
         showToast(data.message || "স্ট্যাটাস আপডেট হয়নি");
@@ -347,15 +498,38 @@ export default function AdminPage() {
     }
   };
 
-  const handleCopyOrderId = async (id: string) => {
+  const handleCopyText = async (text: string, idKey?: string, label = "কপি করা হয়েছে") => {
     try {
-      await navigator.clipboard.writeText(id);
-      setCopiedId(id);
-      showToast("Order ID কপি করা হয়েছে");
-      window.setTimeout(() => setCopiedId(null), 1800);
+      await navigator.clipboard.writeText(text);
+      if (idKey) {
+        setCopiedId(idKey);
+        window.setTimeout(() => setCopiedId(null), 1800);
+      }
+      showToast(label);
     } catch {
       showToast("কপি করা যায়নি");
     }
+  };
+
+  const handleCopyOrderSummary = (ord: OrderItem) => {
+    const itemsText = ord.items
+      ?.map(
+        (i) =>
+          `- ${i.name}${i.size ? ` (${i.size})` : ""} ×${i.quantity} (৳${
+            i.price * i.quantity
+          })`
+      )
+      .join("\n");
+    const summary = [
+      `Order ID: ${ord._id}`,
+      `Status: ${ord.status || "Pending"}`,
+      `Customer: ${ord.customerName}`,
+      `Phone: ${ord.phone}`,
+      `Address: ${ord.address}`,
+      `Items:\n${itemsText}`,
+      `Total: ৳${Number(ord.totalAmount).toLocaleString()}`,
+    ].join("\n");
+    handleCopyText(summary, `sum-${ord._id}`, "অর্ডার সামারি কপি করা হয়েছে");
   };
 
   const filteredOrders = useMemo(() => {
@@ -373,6 +547,22 @@ export default function AdminPage() {
     });
   }, [orders, statusFilter, orderSearch]);
 
+  const filteredProducts = useMemo(() => {
+    return products.filter((p) => {
+      const normalizedCat = (p.category || "").toLowerCase().includes("gadget")
+        ? "gadget"
+        : "fashion";
+      const matchesCat =
+        productCatFilter === "all" || normalizedCat === productCatFilter;
+      const q = productSearch.trim().toLowerCase();
+      const matchesQuery =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.subCategory || "").toLowerCase().includes(q);
+      return matchesCat && matchesQuery;
+    });
+  }, [products, productCatFilter, productSearch]);
+
   const stats = useMemo(() => {
     const activeOrders = orders.filter((o) => o.status !== "Cancelled");
     const revenue = activeOrders.reduce(
@@ -385,8 +575,11 @@ export default function AdminPage() {
     const deliveredCount = orders.filter(
       (o) => o.status === "Delivered"
     ).length;
-    return { revenue, pendingCount, deliveredCount };
-  }, [orders]);
+    const lowStockCount = products.filter(
+      (p) => typeof p.stock === "number" && p.stock <= 3
+    ).length;
+    return { revenue, pendingCount, deliveredCount, lowStockCount };
+  }, [orders, products]);
 
   if (!isAuthenticated) {
     return (
@@ -407,14 +600,28 @@ export default function AdminPage() {
             </p>
           </div>
 
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter Admin Password"
-            className="w-full border border-neutral-300 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-            required
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter Admin Password"
+              className="w-full border border-neutral-300 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label="Toggle password visibility"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-800 cursor-pointer"
+            >
+              {showPassword ? (
+                <EyeOff className="w-4 h-4" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
+            </button>
+          </div>
 
           {authError && <p className="text-sm text-rose-600">{authError}</p>}
 
@@ -539,9 +746,9 @@ export default function AdminPage() {
             </p>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-neutral-200">
-            <p className="text-xs text-neutral-500">Total Products</p>
-            <p className="text-xl sm:text-2xl font-extrabold text-neutral-950 mt-1">
-              {products.length}
+            <p className="text-xs text-neutral-500">Low Stock (≤ 3)</p>
+            <p className="text-xl sm:text-2xl font-extrabold text-rose-600 mt-1">
+              {stats.lowStockCount}
             </p>
           </div>
         </div>
@@ -607,7 +814,13 @@ export default function AdminPage() {
 
                         <button
                           type="button"
-                          onClick={() => handleCopyOrderId(order._id)}
+                          onClick={() =>
+                            handleCopyText(
+                              order._id,
+                              order._id,
+                              "Order ID কপি করা হয়েছে"
+                            )
+                          }
                           className="inline-flex items-center gap-1 text-[11px] font-mono bg-neutral-100 hover:bg-neutral-200 text-neutral-700 px-2 py-0.5 rounded-md transition cursor-pointer"
                           title="Copy Order ID"
                         >
@@ -648,24 +861,35 @@ export default function AdminPage() {
                       </p>
                     </div>
 
-                    <div className="shrink-0">
-                      <label className="block text-[11px] font-semibold text-neutral-500 mb-1">
-                        Update Status
-                      </label>
-                      <select
-                        disabled={updatingOrderId === order._id}
-                        value={order.status || "Pending"}
-                        onChange={(e) =>
-                          handleStatusChange(order._id, e.target.value)
-                        }
-                        className="border border-neutral-300 rounded-xl px-3 py-2 text-sm bg-white text-neutral-950 font-medium outline-none focus:border-neutral-950 disabled:opacity-50 cursor-pointer"
+                    <div className="flex flex-wrap sm:flex-nowrap items-end gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOrder(order)}
+                        className="inline-flex items-center gap-1 border border-neutral-200 hover:border-neutral-400 bg-neutral-50 text-neutral-800 px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer"
                       >
-                        {ORDER_STATUSES.map((st) => (
-                          <option key={st} value={st}>
-                            {st}
-                          </option>
-                        ))}
-                      </select>
+                        <Eye className="w-3.5 h-3.5" />
+                        Details
+                      </button>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-500 mb-1">
+                          Update Status
+                        </label>
+                        <select
+                          disabled={updatingOrderId === order._id}
+                          value={order.status || "Pending"}
+                          onChange={(e) =>
+                            handleStatusChange(order._id, e.target.value)
+                          }
+                          className="border border-neutral-300 rounded-xl px-3 py-2 text-sm bg-white text-neutral-950 font-medium outline-none focus:border-neutral-950 disabled:opacity-50 cursor-pointer"
+                        >
+                          {ORDER_STATUSES.map((st) => (
+                            <option key={st} value={st}>
+                              {st}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -674,6 +898,7 @@ export default function AdminPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Add New Product Form */}
             <form
               onSubmit={handleAddProduct}
               className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-neutral-200 space-y-3 h-fit"
@@ -784,7 +1009,7 @@ export default function AdminPage() {
                     ref={fileInputRef}
                     type="file"
                     accept="image/*"
-                    onChange={handleImageFileChange}
+                    onChange={(e) => handleImageFileChange(e, "add")}
                     className="hidden"
                   />
 
@@ -847,61 +1072,431 @@ export default function AdminPage() {
               </button>
             </form>
 
+            {/* All Products List */}
             <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-neutral-200 space-y-4">
-              <h2 className="text-lg font-bold text-neutral-950">
-                All Products ({products.length})
-              </h2>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h2 className="text-lg font-bold text-neutral-950">
+                  All Products ({filteredProducts.length})
+                </h2>
 
-              {products.length === 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center bg-neutral-100 rounded-xl px-3 py-1.5 border border-neutral-200">
+                    <Search className="w-4 h-4 text-neutral-400 mr-1.5" />
+                    <input
+                      type="text"
+                      placeholder="Search product..."
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      className="bg-transparent text-xs outline-none w-36 sm:w-44"
+                    />
+                  </div>
+
+                  {(
+                    [
+                      { key: "all", label: "All" },
+                      { key: "fashion", label: "Fashion" },
+                      { key: "gadget", label: "Gadgets" },
+                    ] as const
+                  ).map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => setProductCatFilter(f.key)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                        productCatFilter === f.key
+                          ? "bg-neutral-950 text-white"
+                          : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredProducts.length === 0 ? (
                 <p className="text-neutral-500 text-sm py-6 text-center">
-                  ডাটাবেজে এখনো কোনো প্রোডাক্ট নেই। বাম পাশ থেকে যোগ করুন।
+                  {products.length === 0
+                    ? "ডাটাবেজে এখনো কোনো প্রোডাক্ট নেই। বাম পাশ থেকে যোগ করুন।"
+                    : "কোনো ম্যাচিং প্রোডাক্ট পাওয়া যায়নি।"}
                 </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {products.map((prod) => (
-                    <div
-                      key={prod._id}
-                      className="border border-neutral-200 rounded-2xl p-3 flex items-center justify-between gap-3"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <img
-                          src={prod.image}
-                          alt={prod.name}
-                          className="w-14 h-14 object-cover rounded-xl bg-neutral-100 shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <p className="font-semibold text-sm text-neutral-950 truncate">
-                            {prod.name}
-                          </p>
-                          <p className="text-xs text-neutral-500">
-                            {prod.subCategory || prod.category} •{" "}
-                            <span className="font-bold text-neutral-900">
-                              ৳{prod.price}
-                            </span>
-                            {typeof prod.stock === "number"
-                              ? ` • Stock: ${prod.stock}`
-                              : ""}
-                          </p>
+                  {filteredProducts.map((prod) => {
+                    const currentStock =
+                      typeof prod.stock === "number" ? prod.stock : 10;
+                    const isLowStock = currentStock <= 3;
+
+                    return (
+                      <div
+                        key={prod._id}
+                        className="border border-neutral-200 rounded-2xl p-3.5 flex flex-col justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={prod.image}
+                            alt={prod.name}
+                            className="w-14 h-14 object-cover rounded-xl bg-neutral-100 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <p className="font-semibold text-sm text-neutral-950 truncate">
+                              {prod.name}
+                            </p>
+                            <p className="text-xs text-neutral-500">
+                              {prod.subCategory || prod.category} •{" "}
+                              <span className="font-bold text-neutral-900">
+                                ৳{prod.price}
+                              </span>
+                              {prod.oldPrice ? (
+                                <span className="line-through text-neutral-400 ml-1">
+                                  ৳{prod.oldPrice}
+                                </span>
+                              ) : null}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                  currentStock === 0
+                                    ? "bg-rose-100 text-rose-700"
+                                    : isLowStock
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-neutral-100 text-neutral-700"
+                                }`}
+                              >
+                                Stock: {currentStock}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-100">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={
+                                stockUpdatingId === prod._id ||
+                                currentStock <= 0
+                              }
+                              onClick={() => handleQuickStockChange(prod, -1)}
+                              title="Decrease stock"
+                              className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-800 disabled:opacity-40 cursor-pointer"
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={stockUpdatingId === prod._id}
+                              onClick={() => handleQuickStockChange(prod, 1)}
+                              title="Increase stock"
+                              className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-800 disabled:opacity-40 cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(prod)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-neutral-100 text-neutral-800 rounded-xl hover:bg-neutral-200 transition cursor-pointer"
+                            >
+                              <Pencil className="w-3 h-3" />
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={deletingProductId === prod._id}
+                              onClick={() => handleDeleteProduct(prod._id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-50 text-rose-700 rounded-xl hover:bg-rose-100 disabled:opacity-50 transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              {deletingProductId === prod._id
+                                ? "..."
+                                : "Delete"}
+                            </button>
+                          </div>
                         </div>
                       </div>
-
-                      <button
-                        type="button"
-                        disabled={deletingProductId === prod._id}
-                        onClick={() => handleDeleteProduct(prod._id)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold bg-rose-50 text-rose-700 rounded-xl hover:bg-rose-100 disabled:opacity-50 transition shrink-0 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        {deletingProductId === prod._id ? "..." : "Delete"}
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
         )}
       </div>
+
+      {/* Order Details Modal */}
+      {selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-neutral-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                  Order Details
+                </p>
+                <h3 className="text-base font-bold font-mono text-neutral-950">
+                  #{selectedOrder._id}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedOrder(null)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs sm:text-sm bg-neutral-50 border border-neutral-200 rounded-2xl p-4">
+              <p>
+                <span className="font-semibold text-neutral-600">
+                  Customer:
+                </span>{" "}
+                <span className="font-bold text-neutral-950">
+                  {selectedOrder.customerName}
+                </span>
+              </p>
+              <p>
+                <span className="font-semibold text-neutral-600">Phone:</span>{" "}
+                <span className="font-mono text-neutral-900">
+                  {selectedOrder.phone}
+                </span>
+              </p>
+              <p>
+                <span className="font-semibold text-neutral-600">Address:</span>{" "}
+                <span className="text-neutral-800">{selectedOrder.address}</span>
+              </p>
+              <p>
+                <span className="font-semibold text-neutral-600">Status:</span>{" "}
+                <span className="font-bold text-neutral-950">
+                  {selectedOrder.status || "Pending"}
+                </span>
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">
+                Ordered Items
+              </p>
+              <div className="border border-neutral-200 rounded-2xl divide-y divide-neutral-100 px-3.5">
+                {selectedOrder.items?.map((item, idx) => (
+                  <div
+                    key={`${item.name}-${idx}`}
+                    className="py-2.5 flex items-center justify-between text-xs sm:text-sm"
+                  >
+                    <div>
+                      <p className="font-semibold text-neutral-900">
+                        {item.name}
+                      </p>
+                      <p className="text-xs text-neutral-500">
+                        {item.size ? `Size: ${item.size} • ` : ""}Qty:{" "}
+                        {item.quantity} × ৳{item.price}
+                      </p>
+                    </div>
+                    <p className="font-bold text-neutral-950">
+                      ৳{item.price * item.quantity}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
+              <span className="text-sm font-bold text-neutral-950">
+                Total: ৳{Number(selectedOrder.totalAmount).toLocaleString()}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => handleCopyOrderSummary(selectedOrder)}
+                className="inline-flex items-center gap-1.5 bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer"
+              >
+                {copiedId === `sum-${selectedOrder._id}` ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+                Copy Summary
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Product Modal */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 overflow-y-auto">
+          <form
+            onSubmit={handleSaveProductEdit}
+            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-neutral-200 space-y-3 my-auto"
+          >
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+              <h3 className="text-lg font-bold text-neutral-950">
+                Edit Product
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingProduct(null)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <input
+              type="text"
+              required
+              placeholder="Product Name *"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+            />
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <select
+                value={editCategory}
+                onChange={(e) =>
+                  setEditCategory(e.target.value as "fashion" | "gadget")
+                }
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm bg-white text-neutral-900 outline-none focus:border-neutral-950 cursor-pointer"
+              >
+                <option value="fashion">Fashion</option>
+                <option value="gadget">Gadgets</option>
+              </select>
+
+              <input
+                type="text"
+                placeholder="Sub-Category"
+                value={editSubCategory}
+                onChange={(e) => setEditSubCategory(e.target.value)}
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <input
+                type="number"
+                required
+                placeholder="Price (BDT) *"
+                value={editPrice}
+                onChange={(e) => setEditPrice(e.target.value)}
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              />
+              <input
+                type="number"
+                placeholder="Old Price (optional)"
+                value={editOldPrice}
+                onChange={(e) => setEditOldPrice(e.target.value)}
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <input
+                type="text"
+                placeholder="Badge"
+                value={editBadge}
+                onChange={(e) => setEditBadge(e.target.value)}
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              />
+              <input
+                type="number"
+                placeholder="Stock"
+                value={editStock}
+                onChange={(e) => setEditStock(e.target.value)}
+                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              />
+            </div>
+
+            {editCategory === "fashion" ? (
+              <input
+                type="text"
+                placeholder="Sizes (e.g. M, L, XL)"
+                value={editSizesText}
+                onChange={(e) => setEditSizesText(e.target.value)}
+                className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              />
+            ) : (
+              <input
+                type="text"
+                placeholder="Specs"
+                value={editSpecs}
+                onChange={(e) => setEditSpecs(e.target.value)}
+                className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              />
+            )}
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                placeholder="Image URL *"
+                value={editImage.startsWith("data:") ? "" : editImage}
+                onChange={(e) => setEditImage(e.target.value)}
+                className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                required={!editImage}
+              />
+
+              <input
+                ref={editFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleImageFileChange(e, "edit")}
+                className="hidden"
+              />
+
+              <button
+                type="button"
+                disabled={processingImage}
+                onClick={() => editFileInputRef.current?.click()}
+                className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-neutral-400 hover:border-neutral-950 bg-neutral-50 text-neutral-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {processingImage ? "Processing Photo..." : "Replace Photo"}
+              </button>
+            </div>
+
+            {editImage.trim() && (
+              <div className="flex items-center gap-2.5 p-2 rounded-xl bg-neutral-50 border border-neutral-200">
+                <img
+                  src={editImage.trim()}
+                  alt="Edit Preview"
+                  className="w-11 h-11 rounded-lg object-cover bg-neutral-200 shrink-0"
+                />
+                <span className="text-xs text-neutral-600 truncate">
+                  Current Image Preview
+                </span>
+              </div>
+            )}
+
+            <textarea
+              placeholder="Description (optional)"
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              rows={2}
+            />
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setEditingProduct(null)}
+                className="flex-1 border border-neutral-300 text-neutral-800 py-2.5 rounded-xl text-sm font-semibold hover:bg-neutral-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingEdit || processingImage}
+                className="flex-1 bg-neutral-950 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50 transition cursor-pointer"
+              >
+                {savingEdit ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
