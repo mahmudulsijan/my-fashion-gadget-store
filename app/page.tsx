@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   ShoppingBag,
   Search,
@@ -236,6 +237,52 @@ export default function HomeStore() {
     "5": "L",
   });
   const [cart, setCart] = useState<CartItem[]>([]);
+useEffect(() => {
+    try {
+      const savedCart = localStorage.getItem("fg_trend_tech_cart");
+      let initialCart: CartItem[] = savedCart ? JSON.parse(savedCart) : [];
+
+      const pendingRaw = sessionStorage.getItem("fg_pending_checkout");
+      if (pendingRaw) {
+        const pending = JSON.parse(pendingRaw);
+        sessionStorage.removeItem("fg_pending_checkout");
+        if (pending?.product) {
+          const idx = initialCart.findIndex(
+            (i) =>
+              i.product.id === pending.product.id &&
+              i.selectedOption === pending.selectedOption
+          );
+          if (idx > -1) {
+            initialCart[idx] = {
+              ...initialCart[idx],
+              quantity: initialCart[idx].quantity + (pending.quantity || 1),
+            };
+          } else {
+            initialCart.push({
+              product: pending.product,
+              quantity: pending.quantity || 1,
+              selectedOption: pending.selectedOption,
+            });
+          }
+          setIsCartOpen(true);
+        }
+      }
+
+      if (initialCart.length > 0) {
+        setCart(initialCart);
+      }
+    } catch (err) {
+      console.error("Failed to restore cart:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("fg_trend_tech_cart", JSON.stringify(cart));
+    } catch (err) {
+      console.error("Failed to save cart:", err);
+    }
+  }, [cart]);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   // Checkout States
@@ -612,6 +659,12 @@ export default function HomeStore() {
             <a href="#footer-section" className="hover:text-neutral-950 transition">
               Contact Us
             </a>
+<Link
+  href="/track-order"
+  className="py-2.5 text-sm font-medium text-neutral-800 hover:text-neutral-950 block"
+>
+  Track Order
+</Link>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -759,6 +812,12 @@ export default function HomeStore() {
                 >
                   Shop Gadgets
                 </button>
+<Link
+  href="/track-order"
+  className="border border-white/25 hover:border-white/60 text-neutral-100 hover:text-white text-xs sm:text-sm font-semibold px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl transition inline-flex items-center justify-center"
+>
+  Track Order
+</Link>
               </div>
             </div>
 
@@ -1128,13 +1187,12 @@ export default function HomeStore() {
                       >
                         Add to Cart
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setQuickViewProduct(product)}
-                        className="border border-neutral-200 hover:border-neutral-400 text-neutral-800 text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer"
-                      >
-                        Details
-                      </button>
+                      <Link
+        href={`/product/${product.id}`}
+        className="border border-neutral-200 hover:border-neutral-400 text-neutral-800 text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center"
+      >
+        Details
+      </Link>
                     </div>
                   </div>
                 </div>
@@ -1648,7 +1706,6 @@ export default function HomeStore() {
                           Outside Dhaka (৳130)
                         </button>
                       </div>
-
                       <div className="pt-1">
                         <span className="text-xs font-semibold text-neutral-600 block mb-1.5">
                           Payment Method:
