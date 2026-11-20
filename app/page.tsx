@@ -658,13 +658,9 @@ useEffect(() => {
             </button>
             <a href="#footer-section" className="hover:text-neutral-950 transition">
               Contact Us
-            </a>
-<Link
-  href="/track-order"
-  className="py-2.5 text-sm font-medium text-neutral-800 hover:text-neutral-950 block"
->
-  Track Order
-</Link>
+            <a href="#footer-section" className="hover:text-neutral-950 transition">
+           Contact Us
+         </a>
           </nav>
 
           <div className="flex items-center gap-2">
