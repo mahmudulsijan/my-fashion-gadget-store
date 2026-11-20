@@ -1,9 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import Link from "next/link";
-
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -144,7 +141,7 @@ function inferSubCategory(item: any, cat: "fashion" | "gadget"): string {
   return "Chargers & Accessories";
 }
 
-export default function ProductDetailsPage() {
+function ProductDetailsContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const productId = String(params?.id || "");
@@ -518,5 +515,18 @@ export default function ProductDetailsPage() {
         )}
       </main>
     </div>
+  );
+}
+export default function ProductDetailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center p-8 text-sm text-neutral-500">
+          Loading product details...
+        </div>
+      }
+    >
+      <ProductDetailsContent />
+    </Suspense>
   );
 }

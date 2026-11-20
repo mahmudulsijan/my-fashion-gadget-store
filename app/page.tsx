@@ -237,7 +237,9 @@ export default function HomeStore() {
     "5": "L",
   });
   const [cart, setCart] = useState<CartItem[]>([]);
-useEffect(() => {
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
+  useEffect(() => {
     try {
       const savedCart = localStorage.getItem("fg_trend_tech_cart");
       let initialCart: CartItem[] = savedCart ? JSON.parse(savedCart) : [];
@@ -283,7 +285,6 @@ useEffect(() => {
       console.error("Failed to save cart:", err);
     }
   }, [cart]);
-  const [isCartOpen, setIsCartOpen] = useState(false);
 
   // Checkout States
   const [customerName, setCustomerName] = useState("");
@@ -658,9 +659,13 @@ useEffect(() => {
             </button>
             <a href="#footer-section" className="hover:text-neutral-950 transition">
               Contact Us
-            <a href="#footer-section" className="hover:text-neutral-950 transition">
-           Contact Us
-         </a>
+            </a>
+            <Link
+              href="/track-order"
+              className="hover:text-neutral-950 transition font-semibold text-neutral-900"
+            >
+              Track Order
+            </Link>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -762,6 +767,13 @@ useEffect(() => {
               >
                 Best Offers
               </button>
+              <Link
+                href="/track-order"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-1.5 font-semibold text-neutral-950 block"
+              >
+                Track Order
+              </Link>
               <a
                 href="#footer-section"
                 onClick={() => setMobileMenuOpen(false)}
@@ -808,12 +820,12 @@ useEffect(() => {
                 >
                   Shop Gadgets
                 </button>
-<Link
-  href="/track-order"
-  className="border border-white/25 hover:border-white/60 text-neutral-100 hover:text-white text-xs sm:text-sm font-semibold px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl transition inline-flex items-center justify-center"
->
-  Track Order
-</Link>
+                <Link
+                  href="/track-order"
+                  className="border border-white/25 hover:border-white/60 text-neutral-100 hover:text-white text-xs sm:text-sm font-semibold px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl transition inline-flex items-center justify-center"
+                >
+                  Track Order
+                </Link>
               </div>
             </div>
 
@@ -1184,11 +1196,11 @@ useEffect(() => {
                         Add to Cart
                       </button>
                       <Link
-        href={`/product/${product.id}`}
-        className="border border-neutral-200 hover:border-neutral-400 text-neutral-800 text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center"
-      >
-        Details
-      </Link>
+                        href={`/product/${product.id}`}
+                        className="border border-neutral-200 hover:border-neutral-400 text-neutral-800 text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center"
+                      >
+                        Details
+                      </Link>
                     </div>
                   </div>
                 </div>
@@ -1362,6 +1374,11 @@ useEffect(() => {
               <li>Cash on Delivery (Dhaka ৳70 / Outside ৳130)</li>
               <li>7-Day Size Exchange &amp; Gadget Warranty</li>
               <li>Privacy Policy &amp; Terms of Service</li>
+              <li>
+                <Link href="/track-order" className="hover:text-white">
+                  Track Your Order
+                </Link>
+              </li>
               <li>
                 <a href="/admin" className="hover:text-white">
                   Admin Portal
