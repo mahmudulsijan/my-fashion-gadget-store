@@ -23,6 +23,10 @@ import {
   Phone,
   Mail,
   MapPin,
+  User,
+  Home,
+  Package,
+  LogOut,
 } from "lucide-react";
 
 type Product = {
@@ -46,98 +50,23 @@ type CartItem = {
   selectedOption?: string;
 };
 
-type SortOption = "featured" | "price-asc" | "price-desc" | "discount";
+type CustomerProfile = {
+  name: string;
+  phone: string;
+  district: string;
+  address: string;
+};
 
-const FALLBACK_PRODUCTS: Product[] = [
-  {
-    id: "1",
-    name: "Premium Oversized Cotton Hoodie",
-    category: "fashion",
-    subCategory: "Hoodies & Jackets",
-    price: 1450,
-    oldPrice: 1850,
-    image:
-      "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=600&q=80",
-    badge: "Best Seller",
-    sizes: ["M", "L", "XL"],
-    description:
-      "Heavyweight breathable cotton blend hoodie tailored for everyday comfort and structured drape.",
-    stock: 15,
-  },
-  {
-    id: "2",
-    name: "ANC Wireless Noise-Cancelling Earbuds",
-    category: "gadget",
-    subCategory: "Wireless Earbuds",
-    price: 2290,
-    oldPrice: 2800,
-    image:
-      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=600&q=80",
-    badge: "1 Year Warranty",
-    specs: "36H Battery • Bluetooth 5.3 • IPX5",
-    description:
-      "Active noise cancellation with low-latency mode, crystal-clear call mics, and fast USB-C charging.",
-    stock: 12,
-  },
-  {
-    id: "3",
-    name: "Minimalist Urban Bomber Jacket",
-    category: "fashion",
-    subCategory: "Hoodies & Jackets",
-    price: 2490,
-    oldPrice: 3100,
-    image:
-      "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=600&q=80",
-    badge: "New Arrival",
-    sizes: ["S", "M", "L", "XL"],
-    description:
-      "Clean silhouette bomber jacket with smooth zip hardware and durable outer weave.",
-    stock: 10,
-  },
-  {
-    id: "4",
-    name: "AMOLED Fitness & Call Smart Watch",
-    category: "gadget",
-    subCategory: "Smartwatches",
-    price: 3450,
-    oldPrice: 4200,
-    image:
-      "https://images.unsplash.com/photo-1579586337278-3befd40fd17a?auto=format&fit=crop&w=600&q=80",
-    badge: "6 Months Warranty",
-    specs: '1.96" AMOLED • BT Calling • 7-Day Battery',
-    description:
-      "High-brightness AMOLED display with wrist calling, health tracking, and multi-sport modes.",
-    stock: 8,
-  },
-  {
-    id: "5",
-    name: "Classic Slim-Fit Oxford Shirt",
-    category: "fashion",
-    subCategory: "Casual Shirts",
-    price: 1190,
-    image:
-      "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=600&q=80",
-    badge: "100% Cotton",
-    sizes: ["M", "L", "XL"],
-    description:
-      "Crisp cotton Oxford shirt designed for smart-casual wear across all seasons.",
-    stock: 20,
-  },
-  {
-    id: "6",
-    name: "20,000mAh 65W Fast Charging Power Bank",
-    category: "gadget",
-    subCategory: "Chargers & Accessories",
-    price: 2850,
-    oldPrice: 3300,
-    image:
-      "https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=600&q=80",
-    badge: "Laptop Support",
-    specs: "65W PD Type-C • Digital Display",
-    description:
-      "High-capacity power bank capable of fast-charging smartphones, tablets, and USB-C laptops.",
-    stock: 14,
-  },
+type SortOption = "featured" | "price-asc" | "price-desc" | "discount";
+type BottomTab = "home" | "categories" | "cart" | "orders" | "account";
+
+const DELIVERY_LOCATIONS = [
+  { label: "Dhaka", district: "Dhaka", zone: "dhaka" as const },
+  { label: "Mymensingh", district: "Mymensingh", zone: "outside" as const },
+  { label: "Chattogram", district: "Chattogram", zone: "outside" as const },
+  { label: "Sylhet", district: "Sylhet", zone: "outside" as const },
+  { label: "Rajshahi", district: "Rajshahi", zone: "outside" as const },
+  { label: "Khulna", district: "Khulna", zone: "outside" as const },
 ];
 
 const FEATURED_CATEGORIES = [
@@ -145,6 +74,7 @@ const FEATURED_CATEGORIES = [
     title: "Men's Fashion",
     filterKey: "fashion" as const,
     subFilter: "all",
+    accentClass: "border-rose-500",
     image:
       "https://images.unsplash.com/photo-1516257984-b1b4d707412e?auto=format&fit=crop&w=500&q=80",
   },
@@ -152,6 +82,7 @@ const FEATURED_CATEGORIES = [
     title: "Hoodies & Jackets",
     filterKey: "fashion" as const,
     subFilter: "Hoodies & Jackets",
+    accentClass: "border-amber-500",
     image:
       "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=500&q=80",
   },
@@ -159,6 +90,7 @@ const FEATURED_CATEGORIES = [
     title: "Casual Shirts",
     filterKey: "fashion" as const,
     subFilter: "Casual Shirts",
+    accentClass: "border-sky-500",
     image:
       "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=500&q=80",
   },
@@ -166,6 +98,7 @@ const FEATURED_CATEGORIES = [
     title: "Smartwatches",
     filterKey: "gadget" as const,
     subFilter: "Smartwatches",
+    accentClass: "border-emerald-500",
     image:
       "https://images.unsplash.com/photo-1579586337278-3befd40fd17a?auto=format&fit=crop&w=500&q=80",
   },
@@ -173,6 +106,7 @@ const FEATURED_CATEGORIES = [
     title: "Wireless Earbuds",
     filterKey: "gadget" as const,
     subFilter: "Wireless Earbuds",
+    accentClass: "border-purple-500",
     image:
       "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=500&q=80",
   },
@@ -180,6 +114,7 @@ const FEATURED_CATEGORIES = [
     title: "Chargers & Accessories",
     filterKey: "gadget" as const,
     subFilter: "Chargers & Accessories",
+    accentClass: "border-indigo-500",
     image:
       "https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=500&q=80",
   },
@@ -211,7 +146,7 @@ function getDiscountPercent(price: number, oldPrice?: number): number | null {
 }
 
 export default function HomeStore() {
-  const [products, setProducts] = useState<Product[]>(FALLBACK_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
   // Navigation & Catalog States
@@ -224,6 +159,21 @@ export default function HomeStore() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
+  const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>("home");
+
+  // Location & User Auth/Account States
+  const [deliveryLocation, setDeliveryLocation] = useState("Dhaka");
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+
+  const [customerUser, setCustomerUser] = useState<CustomerProfile | null>(
+    null
+  );
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [loginNameInput, setLoginNameInput] = useState("");
+  const [loginPhoneInput, setLoginPhoneInput] = useState("");
+  const [loginDistrictInput, setLoginDistrictInput] = useState("Dhaka");
+  const [loginAddressInput, setLoginAddressInput] = useState("");
+  const [loginError, setLoginError] = useState("");
 
   // Interactive States
   const [wishlist, setWishlist] = useState<string[]>([]);
@@ -231,13 +181,75 @@ export default function HomeStore() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  const [selectedSizes, setSelectedSizes] = useState<{ [id: string]: string }>({
-    "1": "L",
-    "3": "L",
-    "5": "L",
-  });
+  const [selectedSizes, setSelectedSizes] = useState<{ [id: string]: string }>(
+    {}
+  );
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // Checkout States
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerDistrict, setCustomerDistrict] = useState("Dhaka");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [orderNotes, setOrderNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<
+    "Cash on Delivery" | "bKash" | "Nagad"
+  >("Cash on Delivery");
+  const [deliveryZone, setDeliveryZone] = useState<"dhaka" | "outside">(
+    "dhaka"
+  );
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [orderError, setOrderError] = useState("");
+  const [orderSuccess, setOrderSuccess] = useState(false);
+  const [confirmedOrderId, setConfirmedOrderId] = useState<string>("");
+
+  // Newsletter State
+  const [newsletterEmail, setNewsletterEmail] = useState("");
+  const [newsletterStatus, setNewsletterStatus] = useState<string>("");
+
+  const notify = (msg: string) => {
+    setToastMessage(msg);
+    window.setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 2600);
+  };
+
+  // Keep page at top on load/refresh
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if ("scrollRestoration" in window.history) {
+        window.history.scrollRestoration = "manual";
+      }
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: "instant" as ScrollBehavior,
+      });
+    }
+  }, []);
+
+  // Load saved customer profile
+  useEffect(() => {
+    try {
+      const savedUser = localStorage.getItem("fg_trend_tech_user");
+      if (savedUser) {
+        const parsed: CustomerProfile = JSON.parse(savedUser);
+        setCustomerUser(parsed);
+        setCustomerName(parsed.name || "");
+        setCustomerPhone(parsed.phone || "");
+        if (parsed.district) {
+          setCustomerDistrict(parsed.district);
+          setDeliveryLocation(parsed.district);
+        }
+        if (parsed.address) {
+          setCustomerAddress(parsed.address);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load customer user:", err);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -267,6 +279,7 @@ export default function HomeStore() {
             });
           }
           setIsCartOpen(true);
+          setActiveBottomTab("cart");
         }
       }
 
@@ -286,38 +299,13 @@ export default function HomeStore() {
     }
   }, [cart]);
 
-  // Checkout States
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [customerDistrict, setCustomerDistrict] = useState("Dhaka");
-  const [customerAddress, setCustomerAddress] = useState("");
-  const [orderNotes, setOrderNotes] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<
-    "Cash on Delivery" | "bKash" | "Nagad"
-  >("Cash on Delivery");
-  const [deliveryZone, setDeliveryZone] = useState<"dhaka" | "outside">("dhaka");
-  const [submittingOrder, setSubmittingOrder] = useState(false);
-  const [orderError, setOrderError] = useState("");
-  const [orderSuccess, setOrderSuccess] = useState(false);
-  const [confirmedOrderId, setConfirmedOrderId] = useState<string>("");
-
-  // Newsletter State
-  const [newsletterEmail, setNewsletterEmail] = useState("");
-  const [newsletterStatus, setNewsletterStatus] = useState<string>("");
-
-  const notify = (msg: string) => {
-    setToastMessage(msg);
-    window.setTimeout(() => {
-      setToastMessage((prev) => (prev === msg ? null : prev));
-    }, 2600);
-  };
-
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 400);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Fetch real products only from database
   useEffect(() => {
     let active = true;
 
@@ -327,11 +315,7 @@ export default function HomeStore() {
         const data = await res.json();
         if (!active) return;
 
-        if (
-          data.success &&
-          Array.isArray(data.products) &&
-          data.products.length > 0
-        ) {
+        if (data.success && Array.isArray(data.products)) {
           const mapped: Product[] = data.products.map(
             (item: any, idx: number) => {
               const cat = normalizeCategory(item.category);
@@ -360,9 +344,12 @@ export default function HomeStore() {
             }
           );
           setProducts(mapped);
+        } else {
+          setProducts([]);
         }
       } catch (err) {
         console.error("Failed to fetch products from DB:", err);
+        if (active) setProducts([]);
       } finally {
         if (active) setLoadingProducts(false);
       }
@@ -373,6 +360,83 @@ export default function HomeStore() {
       active = false;
     };
   }, []);
+
+  const isValidBdPhone = (phone: string) => {
+    const cleaned = phone.replace(/[\s-]/g, "");
+    return /^(?:\+?88)?01[3-9]\d{8}$/.test(cleaned);
+  };
+
+  const openAccountModal = () => {
+    setLoginError("");
+    setLoginNameInput(customerUser?.name || customerName || "");
+    setLoginPhoneInput(customerUser?.phone || customerPhone || "");
+    setLoginDistrictInput(
+      customerUser?.district || customerDistrict || deliveryLocation || "Dhaka"
+    );
+    setLoginAddressInput(customerUser?.address || customerAddress || "");
+    setActiveBottomTab("account");
+    setIsAccountModalOpen(true);
+  };
+
+  const handleCustomerLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginNameInput.trim() || !loginPhoneInput.trim()) return;
+
+    if (!isValidBdPhone(loginPhoneInput)) {
+      setLoginError(
+        "Please enter a valid 11-digit Bangladesh mobile number (e.g. 017XXXXXXXX)."
+      );
+      return;
+    }
+
+    const profile: CustomerProfile = {
+      name: loginNameInput.trim(),
+      phone: loginPhoneInput.trim(),
+      district: loginDistrictInput.trim() || "Dhaka",
+      address: loginAddressInput.trim(),
+    };
+
+    setCustomerUser(profile);
+    setCustomerName(profile.name);
+    setCustomerPhone(profile.phone);
+    setCustomerDistrict(profile.district);
+    setDeliveryLocation(profile.district);
+    setDeliveryZone(
+      profile.district.toLowerCase().includes("dhaka") ? "dhaka" : "outside"
+    );
+    if (profile.address) {
+      setCustomerAddress(profile.address);
+    }
+
+    try {
+      localStorage.setItem("fg_trend_tech_user", JSON.stringify(profile));
+    } catch (err) {
+      console.error("Failed to save user:", err);
+    }
+
+    setLoginError("");
+    setIsAccountModalOpen(false);
+    setActiveBottomTab("home");
+    notify(`Welcome, ${profile.name}!`);
+  };
+
+  const handleCustomerLogout = () => {
+    setCustomerUser(null);
+    try {
+      localStorage.removeItem("fg_trend_tech_user");
+    } catch (err) {
+      console.error("Failed to remove user:", err);
+    }
+    notify("Signed out of your account");
+  };
+
+  const handleSelectLocation = (loc: (typeof DELIVERY_LOCATIONS)[number]) => {
+    setDeliveryLocation(loc.label);
+    setCustomerDistrict(loc.district);
+    setDeliveryZone(loc.zone);
+    setIsLocationModalOpen(false);
+    notify(`Delivery location set to ${loc.label}`);
+  };
 
   const toggleWishlist = (product: Product) => {
     setWishlist((prev) => {
@@ -455,6 +519,7 @@ export default function HomeStore() {
     notify(`Added "${product.name}" to bag`);
     if (openDrawer) {
       setIsCartOpen(true);
+      setActiveBottomTab("cart");
     }
   };
 
@@ -480,11 +545,6 @@ export default function HomeStore() {
     cart.length === 0 ? 0 : deliveryZone === "dhaka" ? 70 : 130;
   const grandTotal = subtotal + deliveryCharge;
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-
-  const isValidBdPhone = (phone: string) => {
-    const cleaned = phone.replace(/[\s-]/g, "");
-    return /^(?:\+?88)?01[3-9]\d{8}$/.test(cleaned);
-  };
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -538,12 +598,16 @@ export default function HomeStore() {
       }
 
       const generatedId =
-        data.order?._id || data.orderId || `FGT-${Date.now().toString().slice(-6)}`;
+        data.order?._id ||
+        data.orderId ||
+        `FGT-${Date.now().toString().slice(-6)}`;
       setConfirmedOrderId(String(generatedId));
       setCart([]);
-      setCustomerName("");
-      setCustomerPhone("");
-      setCustomerAddress("");
+      if (!customerUser) {
+        setCustomerName("");
+        setCustomerPhone("");
+        setCustomerAddress("");
+      }
       setOrderNotes("");
       setOrderSuccess(true);
       notify("Order placed successfully!");
@@ -561,13 +625,15 @@ export default function HomeStore() {
     sub?: string;
     sort?: SortOption;
     wishlistOnly?: boolean;
+    scrollToId?: string;
   }) => {
     setSelectedCategory(opts?.cat ?? "all");
     setSelectedSubCategory(opts?.sub ?? "all");
     setSortBy(opts?.sort ?? "featured");
     setShowWishlistOnly(opts?.wishlistOnly ?? false);
     setMobileMenuOpen(false);
-    const el = document.getElementById("catalog-section");
+    const targetId = opts?.scrollToId || "catalog-section";
+    const el = document.getElementById(targetId);
     if (el) el.scrollIntoView({ behavior: "smooth" });
   };
 
@@ -581,10 +647,10 @@ export default function HomeStore() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f7] text-neutral-900 selection:bg-neutral-900 selection:text-white">
+    <div className="min-h-screen bg-[#f7f7f7] text-neutral-900 pb-24 lg:pb-0 selection:bg-neutral-900 selection:text-white">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-neutral-950 text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg border border-neutral-800">
+        <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-neutral-950 text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg border border-neutral-800">
           {toastMessage}
         </div>
       )}
@@ -597,13 +663,13 @@ export default function HomeStore() {
 
       {/* B. Modern Navigation Bar */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-200">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
               aria-label="Toggle Menu"
-              className="lg:hidden p-2 rounded-lg hover:bg-neutral-100 cursor-pointer"
+              className="lg:hidden p-2 rounded-lg hover:bg-neutral-100 cursor-pointer shrink-0"
             >
               {mobileMenuOpen ? (
                 <X className="w-5 h-5" />
@@ -614,17 +680,35 @@ export default function HomeStore() {
 
             <a
               href="#"
-              onClick={() => jumpToCatalog()}
-              className="font-black text-lg sm:text-xl tracking-tight text-neutral-950 whitespace-nowrap"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveBottomTab("home");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className="font-black text-base sm:text-xl tracking-tight text-neutral-950 whitespace-nowrap"
             >
               FG TREND TECH
             </a>
+
+            <button
+              type="button"
+              onClick={() => setIsLocationModalOpen(true)}
+              className="hidden sm:inline-flex items-center gap-1.5 bg-neutral-100 hover:bg-neutral-200/80 text-neutral-700 px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer shrink-0"
+            >
+              <MapPin className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <span className="truncate max-w-[110px]">
+                Deliver to {deliveryLocation}
+              </span>
+            </button>
           </div>
 
-          <nav className="hidden lg:flex items-center gap-5 text-sm font-medium text-neutral-600">
+          <nav className="hidden xl:flex items-center gap-5 text-sm font-medium text-neutral-600">
             <a
               href="#"
-              onClick={() => jumpToCatalog()}
+              onClick={(e) => {
+                e.preventDefault();
+                jumpToCatalog();
+              }}
               className="hover:text-neutral-950 transition"
             >
               Home
@@ -668,8 +752,8 @@ export default function HomeStore() {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-2">
-            <div className="hidden sm:flex items-center bg-neutral-100 rounded-full px-3.5 py-1.5 w-44 md:w-56">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <div className="hidden md:flex items-center bg-neutral-100 rounded-full px-3.5 py-1.5 w-44">
               <Search className="w-4 h-4 text-neutral-400 mr-2 shrink-0" />
               <input
                 type="text"
@@ -691,16 +775,34 @@ export default function HomeStore() {
 
             <button
               type="button"
+              onClick={openAccountModal}
+              title={customerUser ? customerUser.name : "User Login"}
+              className={`h-9 sm:h-10 px-2.5 sm:px-3 rounded-full border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+                customerUser
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100"
+                  : "bg-white border-neutral-200 text-neutral-800 hover:bg-neutral-100"
+              }`}
+            >
+              <User className="w-4 h-4 shrink-0" />
+              <span className="hidden sm:inline max-w-[85px] truncate">
+                {customerUser ? customerUser.name.split(" ")[0] : "Login"}
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => jumpToCatalog({ wishlistOnly: !showWishlistOnly })}
               title="Wishlist"
-              className={`relative p-2.5 rounded-full border transition cursor-pointer ${
+              className={`relative p-2 sm:p-2.5 rounded-full border transition cursor-pointer ${
                 showWishlistOnly
                   ? "bg-rose-50 border-rose-200 text-rose-600"
                   : "bg-white border-neutral-200 text-neutral-800 hover:bg-neutral-100"
               }`}
             >
               <Heart
-                className={`w-4 h-4 ${wishlist.length > 0 ? "fill-rose-500 text-rose-500" : ""}`}
+                className={`w-4 h-4 ${
+                  wishlist.length > 0 ? "fill-rose-500 text-rose-500" : ""
+                }`}
               />
               {wishlist.length > 0 && (
                 <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
@@ -711,8 +813,11 @@ export default function HomeStore() {
 
             <button
               type="button"
-              onClick={() => setIsCartOpen(true)}
-              className="relative flex items-center gap-2 bg-neutral-950 hover:bg-neutral-800 text-white px-3.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition cursor-pointer"
+              onClick={() => {
+                setIsCartOpen(true);
+                setActiveBottomTab("cart");
+              }}
+              className="relative flex items-center gap-1.5 sm:gap-2 bg-neutral-950 hover:bg-neutral-800 text-white px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition cursor-pointer"
             >
               <ShoppingBag className="w-4 h-4" />
               <span>Cart</span>
@@ -728,6 +833,32 @@ export default function HomeStore() {
         {/* Mobile Dropdown Menu */}
         {mobileMenuOpen && (
           <div className="lg:hidden bg-white border-t border-neutral-200 px-4 py-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setIsLocationModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 bg-neutral-100 text-neutral-800 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5 text-rose-600" />
+                <span>Deliver to {deliveryLocation}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  openAccountModal();
+                }}
+                className="inline-flex items-center gap-1.5 bg-neutral-950 text-white px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer"
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>{customerUser ? customerUser.name : "User Login"}</span>
+              </button>
+            </div>
+
             <div className="flex items-center bg-neutral-100 rounded-full px-3.5 py-2">
               <Search className="w-4 h-4 text-neutral-400 mr-2" />
               <input
@@ -738,6 +869,7 @@ export default function HomeStore() {
                 className="bg-transparent text-sm outline-none w-full"
               />
             </div>
+
             <div className="flex flex-col gap-2 text-sm font-medium text-neutral-700">
               <button
                 type="button"
@@ -786,7 +918,7 @@ export default function HomeStore() {
         )}
       </header>
 
-      {/* C. Premium Hero Section */}
+      {/* C. Hero Section */}
       <section className="max-w-7xl mx-auto px-4 pt-5 pb-10">
         <div className="bg-[#121212] text-white rounded-3xl overflow-hidden border border-neutral-800 shadow-lg">
           <div className="grid lg:grid-cols-12 gap-7 p-6 sm:p-10 items-center">
@@ -886,7 +1018,7 @@ export default function HomeStore() {
       </section>
 
       {/* D. Featured Categories */}
-      <section className="max-w-7xl mx-auto px-4 pb-12">
+      <section id="categories-section" className="max-w-7xl mx-auto px-4 pb-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950">
             Shop by Category
@@ -911,7 +1043,7 @@ export default function HomeStore() {
                   sub: catItem.subFilter,
                 })
               }
-              className="group text-left bg-white rounded-2xl border border-neutral-200 overflow-hidden hover:border-neutral-400 transition cursor-pointer"
+              className={`group text-left bg-white rounded-2xl border-2 ${catItem.accentClass} overflow-hidden hover:shadow-sm transition cursor-pointer`}
             >
               <div className="aspect-square bg-neutral-100 overflow-hidden">
                 <img
@@ -930,7 +1062,7 @@ export default function HomeStore() {
         </div>
       </section>
 
-      {/* E & G. Modern Product Cards + Catalog Controls */}
+      {/* E & G. Product Cards + Catalog Controls */}
       <section id="catalog-section" className="max-w-7xl mx-auto px-4 pb-14">
         <div className="bg-white rounded-3xl border border-neutral-200 p-4 sm:p-6 mb-7 space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1035,16 +1167,28 @@ export default function HomeStore() {
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="bg-white rounded-3xl p-10 text-center border border-neutral-200 space-y-3">
-            <p className="text-sm text-neutral-500">
-              No matching products found.
+            <p className="text-sm text-neutral-600 font-medium">
+              {products.length === 0
+                ? "এখনো কোনো প্রোডাক্ট যোগ করা হয়নি। Admin Panel থেকে আপনার প্রোডাক্ট যুক্ত করুন।"
+                : "No matching products found."}
             </p>
-            <button
-              type="button"
-              onClick={() => jumpToCatalog()}
-              className="bg-neutral-950 text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
-            >
-              Reset Filters
-            </button>
+            <div className="flex items-center justify-center gap-2.5 pt-1">
+              {products.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => jumpToCatalog()}
+                  className="bg-neutral-950 text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
+                >
+                  Reset Filters
+                </button>
+              )}
+              <Link
+                href="/admin"
+                className="border border-neutral-300 text-neutral-800 hover:bg-neutral-100 text-xs font-semibold px-4 py-2 rounded-xl transition"
+              >
+                Go to Admin Panel
+              </Link>
+            </div>
           </div>
         ) : (
           <div
@@ -1369,7 +1513,9 @@ export default function HomeStore() {
           </div>
 
           <div className="space-y-2.5 text-xs">
-            <h4 className="text-white font-bold text-sm">Policies &amp; Support</h4>
+            <h4 className="text-white font-bold text-sm">
+              Policies &amp; Support
+            </h4>
             <ul className="space-y-2 text-neutral-400">
               <li>Cash on Delivery (Dhaka ৳70 / Outside ৳130)</li>
               <li>7-Day Size Exchange &amp; Gadget Warranty</li>
@@ -1400,7 +1546,7 @@ export default function HomeStore() {
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 shrink-0" />
-                <span>support@fgtrendtech.com</span>
+                <span>fgtrendtech.bd@gmail.com</span>
               </li>
             </ul>
           </div>
@@ -1413,7 +1559,7 @@ export default function HomeStore() {
       </footer>
 
       {/* Floating WhatsApp & Scroll-to-Top Buttons */}
-      <div className="fixed bottom-5 right-5 z-40 flex flex-col gap-2.5">
+      <div className="fixed bottom-24 lg:bottom-6 right-4 sm:right-5 z-40 flex flex-col gap-2.5">
         {showScrollTop && (
           <button
             type="button"
@@ -1434,6 +1580,333 @@ export default function HomeStore() {
           <MessageCircle className="w-5 h-5" />
         </a>
       </div>
+
+      {/* Mobile Floating Bottom Navigation Bar */}
+      <nav className="lg:hidden fixed bottom-3 inset-x-3 z-40 bg-white/95 backdrop-blur-md border border-neutral-200/90 rounded-full shadow-xl px-2 py-1.5">
+        <div className="grid grid-cols-5 items-center text-[11px] font-semibold">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveBottomTab("home");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className="flex flex-col items-center justify-center py-1 cursor-pointer"
+          >
+            <span
+              className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
+                activeBottomTab === "home"
+                  ? "bg-rose-600 text-white shadow-xs"
+                  : "text-neutral-600"
+              }`}
+            >
+              <Home className="w-4 h-4" />
+            </span>
+            <span
+              className={`mt-0.5 ${
+                activeBottomTab === "home"
+                  ? "text-rose-600 font-bold"
+                  : "text-neutral-600"
+              }`}
+            >
+              Home
+            </span>
+            {activeBottomTab === "home" && (
+              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveBottomTab("categories");
+              jumpToCatalog({ cat: "all", scrollToId: "categories-section" });
+            }}
+            className="flex flex-col items-center justify-center py-1 cursor-pointer"
+          >
+            <span
+              className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
+                activeBottomTab === "categories"
+                  ? "bg-rose-600 text-white shadow-xs"
+                  : "text-neutral-600"
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </span>
+            <span
+              className={`mt-0.5 ${
+                activeBottomTab === "categories"
+                  ? "text-rose-600 font-bold"
+                  : "text-neutral-600"
+              }`}
+            >
+              Categories
+            </span>
+            {activeBottomTab === "categories" && (
+              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveBottomTab("cart");
+              setIsCartOpen(true);
+            }}
+            className="relative flex flex-col items-center justify-center py-1 cursor-pointer"
+          >
+            <span
+              className={`relative w-9 h-7 rounded-full flex items-center justify-center transition ${
+                activeBottomTab === "cart"
+                  ? "bg-rose-600 text-white shadow-xs"
+                  : "text-neutral-600"
+              }`}
+            >
+              <ShoppingBag className="w-4 h-4" />
+              {totalCartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-neutral-950 text-white text-[9px] font-extrabold min-w-[15px] h-[15px] px-1 rounded-full flex items-center justify-center">
+                  {totalCartCount}
+                </span>
+              )}
+            </span>
+            <span
+              className={`mt-0.5 ${
+                activeBottomTab === "cart"
+                  ? "text-rose-600 font-bold"
+                  : "text-neutral-600"
+              }`}
+            >
+              Cart
+            </span>
+            {activeBottomTab === "cart" && (
+              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
+            )}
+          </button>
+
+          <Link
+            href="/track-order"
+            onClick={() => setActiveBottomTab("orders")}
+            className="flex flex-col items-center justify-center py-1"
+          >
+            <span
+              className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
+                activeBottomTab === "orders"
+                  ? "bg-rose-600 text-white shadow-xs"
+                  : "text-neutral-600"
+              }`}
+            >
+              <Package className="w-4 h-4" />
+            </span>
+            <span
+              className={`mt-0.5 ${
+                activeBottomTab === "orders"
+                  ? "text-rose-600 font-bold"
+                  : "text-neutral-600"
+              }`}
+            >
+              Orders
+            </span>
+            {activeBottomTab === "orders" && (
+              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
+            )}
+          </Link>
+
+          <button
+            type="button"
+            onClick={openAccountModal}
+            className="flex flex-col items-center justify-center py-1 cursor-pointer"
+          >
+            <span
+              className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
+                activeBottomTab === "account"
+                  ? "bg-rose-600 text-white shadow-xs"
+                  : "text-neutral-600"
+              }`}
+            >
+              <User className="w-4 h-4" />
+            </span>
+            <span
+              className={`mt-0.5 ${
+                activeBottomTab === "account"
+                  ? "text-rose-600 font-bold"
+                  : "text-neutral-600"
+              }`}
+            >
+              {customerUser ? "Account" : "Login"}
+            </span>
+            {activeBottomTab === "account" && (
+              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
+            )}
+          </button>
+        </div>
+      </nav>
+
+      {/* Delivery Location Modal */}
+      {isLocationModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-neutral-200 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-rose-600" />
+                <h3 className="text-base font-bold text-neutral-950">
+                  Select Delivery Location
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsLocationModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {DELIVERY_LOCATIONS.map((loc) => {
+                const active = deliveryLocation === loc.label;
+                return (
+                  <button
+                    key={loc.label}
+                    type="button"
+                    onClick={() => handleSelectLocation(loc)}
+                    className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                      active
+                        ? "bg-neutral-950 text-white border-neutral-950"
+                        : "bg-neutral-50 text-neutral-800 border-neutral-200 hover:border-neutral-400"
+                    }`}
+                  >
+                    <p className="text-xs font-bold">{loc.label}</p>
+                    <p
+                      className={`text-[11px] mt-0.5 ${
+                        active ? "text-neutral-300" : "text-neutral-500"
+                      }`}
+                    >
+                      {loc.zone === "dhaka" ? "Charge: ৳70" : "Charge: ৳130"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer User Login / Account Modal */}
+      {isAccountModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-neutral-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                  FG Trend Tech Member
+                </p>
+                <h3 className="text-lg font-bold text-neutral-950">
+                  {customerUser ? "My Account" : "User Login"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAccountModalOpen(false);
+                  setActiveBottomTab("home");
+                }}
+                className="p-1.5 rounded-full hover:bg-neutral-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {customerUser ? (
+              <div className="space-y-4">
+                <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-4 space-y-1.5">
+                  <p className="text-sm font-bold text-neutral-950">
+                    {customerUser.name}
+                  </p>
+                  <p className="text-xs text-neutral-600 font-mono">
+                    {customerUser.phone}
+                  </p>
+                  <p className="text-xs text-neutral-600">
+                    {customerUser.address
+                      ? `${customerUser.address}, ${customerUser.district}`
+                      : `District: ${customerUser.district}`}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <Link
+                    href="/track-order"
+                    onClick={() => setIsAccountModalOpen(false)}
+                    className="bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold py-3 px-4 rounded-xl text-center transition"
+                  >
+                    Track My Orders
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleCustomerLogout}
+                    className="inline-flex items-center justify-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold py-3 px-4 rounded-xl transition cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleCustomerLogin} className="space-y-3">
+                <p className="text-xs text-neutral-500">
+                  Sign in with your name and phone number to auto-fill checkout
+                  details and track orders easily.
+                </p>
+
+                <input
+                  type="text"
+                  required
+                  placeholder="Full Name *"
+                  value={loginNameInput}
+                  onChange={(e) => setLoginNameInput(e.target.value)}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                />
+
+                <input
+                  type="tel"
+                  required
+                  placeholder="Phone Number (e.g. 017XXXXXXXX) *"
+                  value={loginPhoneInput}
+                  onChange={(e) => setLoginPhoneInput(e.target.value)}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                />
+
+                <input
+                  type="text"
+                  placeholder="District (e.g. Dhaka, Mymensingh)"
+                  value={loginDistrictInput}
+                  onChange={(e) => setLoginDistrictInput(e.target.value)}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Delivery Address (optional)"
+                  value={loginAddressInput}
+                  onChange={(e) => setLoginAddressInput(e.target.value)}
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                />
+
+                {loginError && (
+                  <p className="text-xs text-rose-600 font-medium">
+                    {loginError}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold py-3 rounded-xl transition cursor-pointer"
+                >
+                  Login / Save Profile
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Quick View Modal */}
       {quickViewProduct && (
@@ -1546,7 +2019,10 @@ export default function HomeStore() {
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setIsCartOpen(false)}
+                  onClick={() => {
+                    setIsCartOpen(false);
+                    setActiveBottomTab("home");
+                  }}
                   className="p-2 rounded-full bg-white border border-neutral-200 hover:bg-neutral-100 cursor-pointer"
                 >
                   <X className="w-4 h-4 text-neutral-800" />
@@ -1576,6 +2052,7 @@ export default function HomeStore() {
                     onClick={() => {
                       setOrderSuccess(false);
                       setIsCartOpen(false);
+                      setActiveBottomTab("home");
                     }}
                     className="mt-3 w-full bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold py-3 rounded-2xl transition cursor-pointer"
                   >
@@ -1587,7 +2064,10 @@ export default function HomeStore() {
                   <p>Your shopping cart is empty.</p>
                   <button
                     type="button"
-                    onClick={() => setIsCartOpen(false)}
+                    onClick={() => {
+                      setIsCartOpen(false);
+                      setActiveBottomTab("home");
+                    }}
                     className="bg-neutral-950 text-white text-xs font-semibold px-4 py-2.5 rounded-xl cursor-pointer"
                   >
                     Browse Products
