@@ -1,37 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
+import { connectDB } from "@/app/lib/mongodb";
+import { Product } from "@/app/models/Product";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getProductModel = (): any => {
-  if (mongoose.models.Product) {
-    return mongoose.models.Product;
+function normalizeSizes(rawSizes: unknown): string[] {
+  if (Array.isArray(rawSizes)) {
+    return rawSizes
+      .flatMap((item) => String(item).split(","))
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
-  const ProductSchema = new mongoose.Schema(
-    {
-      name: { type: String, required: true },
-      category: { type: String, required: true },
-      subCategory: { type: String },
-      price: { type: Number, required: true },
-      oldPrice: { type: Number },
-      image: { type: String, required: true },
-      badge: { type: String },
-      sizes: [{ type: String }],
-      specs: { type: String },
-      description: { type: String },
-      stock: { type: Number, default: 10 },
-    },
-    { timestamps: true }
-  );
-  return mongoose.model("Product", ProductSchema);
-};
-
-async function ensureDbConnected() {
-  if (mongoose.connection.readyState >= 1) return;
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error("MONGODB_URI is not defined in environment variables");
+  if (typeof rawSizes === "string") {
+    return rawSizes
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
-  await mongoose.connect(uri);
+  return [];
 }
 
 export async function GET(
@@ -39,9 +24,8 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await ensureDbConnected();
+    await connectDB();
     const { id } = await context.params;
-    const Product = getProductModel();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(
@@ -67,14 +51,13 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+async function updateProductHandler(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await ensureDbConnected();
+    await connectDB();
     const { id } = await context.params;
-    const Product = getProductModel();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(
@@ -97,7 +80,7 @@ export async function PATCH(
       allowedFields.oldPrice = body.oldPrice;
     if (typeof body.image === "string") allowedFields.image = body.image.trim();
     if (typeof body.badge === "string") allowedFields.badge = body.badge.trim();
-    if (Array.isArray(body.sizes)) allowedFields.sizes = body.sizes;
+    if (body.sizes !== undefined) allowedFields.sizes = normalizeSizes(body.sizes);
     if (typeof body.specs === "string") allowedFields.specs = body.specs.trim();
     if (typeof body.description === "string")
       allowedFields.description = body.description.trim();
@@ -126,9 +109,23 @@ export async function PATCH(
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Failed to update product";
-    console.error("PATCH /api/products/[id] error:", err);
+    console.error("UPDATE /api/products/[id] error:", err);
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
+}
+
+export async function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return updateProductHandler(req, context);
+}
+
+export async function PUT(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return updateProductHandler(req, context);
 }
 
 export async function DELETE(
@@ -136,9 +133,8 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await ensureDbConnected();
+    await connectDB();
     const { id } = await context.params;
-    const Product = getProductModel();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(

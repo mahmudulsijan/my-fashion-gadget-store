@@ -64,8 +64,8 @@ interface OrderItem {
 }
 
 interface DeliverySettings {
-  insideDhakaCharge: number;
-  outsideDhakaCharge: number;
+  insideMymensinghCharge: number;
+  outsideMymensinghCharge: number;
   freeDeliveryThreshold: number;
   bkashNumber: string;
   nagadNumber: string;
@@ -78,6 +78,16 @@ type AdminSection =
   | "customers"
   | "settings";
 
+const STORE_SUBCATEGORIES = [
+  "Men's Fashion",
+  "Women's Fashion",
+  "Men's Footwear",
+  "Women's Footwear",
+  "Gadgets",
+  "Beauty Products",
+  "Mobile Accessories",
+] as const;
+
 const ORDER_STATUSES = [
   "Pending",
   "Confirmed",
@@ -87,12 +97,41 @@ const ORDER_STATUSES = [
 ] as const;
 
 const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = {
-  insideDhakaCharge: 70,
-  outsideDhakaCharge: 130,
+  insideMymensinghCharge: 70,
+  outsideMymensinghCharge: 130,
   freeDeliveryThreshold: 0,
   bkashNumber: "01700-000000",
   nagadNumber: "01700-000000",
 };
+
+function deriveMainCategory(subCat?: string): "fashion" | "gadget" {
+  const val = (subCat || "").trim().toLowerCase();
+  if (val === "gadgets" || val === "mobile accessories" || val.includes("gadget") || val.includes("mobile")) {
+    return "gadget";
+  }
+  return "fashion";
+}
+
+function normalizeSubCategoryLabel(raw?: string, fallbackCat?: string): string {
+  const val = (raw || "").trim().toLowerCase();
+  if (val.includes("women") && (val.includes("foot") || val.includes("shoe")))
+    return "Women's Footwear";
+  if (val.includes("men") && (val.includes("foot") || val.includes("shoe")))
+    return "Men's Footwear";
+  if (val.includes("women") && val.includes("fashion")) return "Women's Fashion";
+  if (val.includes("men") && val.includes("fashion")) return "Men's Fashion";
+  if (val.includes("beauty")) return "Beauty Products";
+  if (val.includes("mobile")) return "Mobile Accessories";
+  if (val.includes("gadget")) return "Gadgets";
+
+  const matched = STORE_SUBCATEGORIES.find(
+    (item) => item.toLowerCase() === val
+  );
+  if (matched) return matched;
+
+  if ((fallbackCat || "").toLowerCase().includes("gadget")) return "Gadgets";
+  return "Men's Fashion";
+}
 
 function isFootwearSubCategory(subCat?: string): boolean {
   const val = (subCat || "").toLowerCase();
@@ -104,6 +143,11 @@ function isFootwearSubCategory(subCat?: string): boolean {
     val.includes("sandal") ||
     val.includes("footwear")
   );
+}
+
+function isGarmentOrFootwearWithSizes(subCat?: string): boolean {
+  const val = (subCat || "").toLowerCase();
+  return !val.includes("beauty");
 }
 
 function getDefaultSizesForSubCategory(subCat?: string): string[] {
@@ -204,15 +248,13 @@ export default function AdminPage() {
 
   // Product filters & quick stock
   const [productSearch, setProductSearch] = useState("");
-  const [productCatFilter, setProductCatFilter] = useState<
-    "all" | "fashion" | "gadget"
-  >("all");
+  const [productCatFilter, setProductCatFilter] = useState<string>("all");
   const [stockUpdatingId, setStockUpdatingId] = useState<string | null>(null);
 
   // Add Product Form State
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<"fashion" | "gadget">("fashion");
-  const [subCategory, setSubCategory] = useState("Hoodies & Jackets");
+  const [subCategory, setSubCategory] = useState<string>("Men's Fashion");
+  const category = useMemo(() => deriveMainCategory(subCategory), [subCategory]);
   const [price, setPrice] = useState("");
   const [oldPrice, setOldPrice] = useState("");
   const [image, setImage] = useState("");
@@ -233,10 +275,11 @@ export default function AdminPage() {
     null
   );
   const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState<"fashion" | "gadget">(
-    "fashion"
+  const [editSubCategory, setEditSubCategory] = useState("Men's Fashion");
+  const editCategory = useMemo(
+    () => deriveMainCategory(editSubCategory),
+    [editSubCategory]
   );
-  const [editSubCategory, setEditSubCategory] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editOldPrice, setEditOldPrice] = useState("");
   const [editStock, setEditStock] = useState("10");
@@ -290,9 +333,17 @@ export default function AdminPage() {
       }
       const savedSettings = localStorage.getItem("fg_admin_delivery_settings");
       if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
         setDeliverySettings({
-          ...DEFAULT_DELIVERY_SETTINGS,
-          ...JSON.parse(savedSettings),
+          insideMymensinghCharge: Number(
+            parsed.insideMymensinghCharge ?? parsed.insideDhakaCharge ?? 70
+          ),
+          outsideMymensinghCharge: Number(
+            parsed.outsideMymensinghCharge ?? parsed.outsideDhakaCharge ?? 130
+          ),
+          freeDeliveryThreshold: Number(parsed.freeDeliveryThreshold ?? 0),
+          bkashNumber: String(parsed.bkashNumber || "01700-000000"),
+          nagadNumber: String(parsed.nagadNumber || "01700-000000"),
         });
       }
     } catch (err) {
@@ -332,22 +383,20 @@ export default function AdminPage() {
     }
   };
 
-  const handleCategorySwitch = (nextCat: "fashion" | "gadget") => {
-    setCategory(nextCat);
-    if (nextCat === "fashion") {
-      setSubCategory("Hoodies & Jackets");
-      setBadge("New Arrival");
-      setSizesText("M, L, XL");
-    } else {
-      setSubCategory("Wireless Earbuds");
-      setBadge("1 Year Warranty");
-    }
-  };
-
   const handleSubCategoryChange = (nextSubCat: string) => {
     setSubCategory(nextSubCat);
-    if (category === "fashion") {
-      setSizesText(getDefaultSizesForSubCategory(nextSubCat).join(", "));
+    const nextMain = deriveMainCategory(nextSubCat);
+    if (nextMain === "fashion") {
+      if (isGarmentOrFootwearWithSizes(nextSubCat)) {
+        setSizesText(getDefaultSizesForSubCategory(nextSubCat).join(", "));
+      } else {
+        setSizesText("");
+      }
+      if (badge === "1 Year Warranty") {
+        setBadge("New Arrival");
+      }
+    } else if (badge === "New Arrival") {
+      setBadge("1 Year Warranty");
     }
   };
 
@@ -397,7 +446,7 @@ export default function AdminPage() {
     setCreatingProduct(true);
 
     const parsedSizes =
-      category === "fashion"
+      category === "fashion" && isGarmentOrFootwearWithSizes(subCategory)
         ? sizesText
             .split(",")
             .map((s) => s.trim())
@@ -411,7 +460,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           name: name.trim(),
           category,
-          subCategory: subCategory.trim() || undefined,
+          subCategory,
           price: Number(price),
           oldPrice: oldPrice ? Number(oldPrice) : undefined,
           image: image.trim(),
@@ -431,7 +480,7 @@ export default function AdminPage() {
         setSpecs("");
         setDescription("");
         setStock("10");
-        showToast("নতুন প্রোডাক্ট সফলভাবে যোগ করা হয়েছে");
+        showToast(`"${subCategory}" ক্যাটাগরিতে প্রোডাক্ট যোগ করা হয়েছে`);
         fetchDashboardData();
       } else {
         showToast(data.message || "প্রোডাক্ট যোগ করা যায়নি");
@@ -445,17 +494,15 @@ export default function AdminPage() {
   };
 
   const openEditModal = (prod: ProductItem) => {
-    const normalizedCat: "fashion" | "gadget" = (prod.category || "")
-      .toLowerCase()
-      .includes("gadget")
-      ? "gadget"
-      : "fashion";
-    const fallbackSizes = getDefaultSizesForSubCategory(prod.subCategory);
+    const normalizedSub = normalizeSubCategoryLabel(
+      prod.subCategory,
+      prod.category
+    );
+    const fallbackSizes = getDefaultSizesForSubCategory(normalizedSub);
 
     setEditingProduct(prod);
     setEditName(prod.name);
-    setEditCategory(normalizedCat);
-    setEditSubCategory(prod.subCategory || "");
+    setEditSubCategory(normalizedSub);
     setEditPrice(String(prod.price ?? ""));
     setEditOldPrice(prod.oldPrice ? String(prod.oldPrice) : "");
     setEditStock(String(prod.stock ?? 10));
@@ -477,7 +524,7 @@ export default function AdminPage() {
 
     setSavingEdit(true);
     const parsedSizes =
-      editCategory === "fashion"
+      editCategory === "fashion" && isGarmentOrFootwearWithSizes(editSubCategory)
         ? editSizesText
             .split(",")
             .map((s) => s.trim())
@@ -487,12 +534,12 @@ export default function AdminPage() {
     const payload = {
       name: editName.trim(),
       category: editCategory,
-      subCategory: editSubCategory.trim() || undefined,
+      subCategory: editSubCategory,
       price: Number(editPrice),
       oldPrice: editOldPrice ? Number(editOldPrice) : undefined,
       stock: Math.max(0, Number(editStock) || 0),
       badge: editBadge.trim() || undefined,
-      sizes: parsedSizes && parsedSizes.length > 0 ? parsedSizes : undefined,
+      sizes: parsedSizes && parsedSizes.length > 0 ? parsedSizes : [],
       specs:
         editCategory === "gadget" && editSpecs.trim()
           ? editSpecs.trim()
@@ -732,13 +779,13 @@ export default function AdminPage() {
   const handleSaveDeliverySettings = (e: React.FormEvent) => {
     e.preventDefault();
     const cleaned: DeliverySettings = {
-      insideDhakaCharge: Math.max(
+      insideMymensinghCharge: Math.max(
         0,
-        Number(deliverySettings.insideDhakaCharge) || 0
+        Number(deliverySettings.insideMymensinghCharge) || 0
       ),
-      outsideDhakaCharge: Math.max(
+      outsideMymensinghCharge: Math.max(
         0,
-        Number(deliverySettings.outsideDhakaCharge) || 0
+        Number(deliverySettings.outsideMymensinghCharge) || 0
       ),
       freeDeliveryThreshold: Math.max(
         0,
@@ -753,7 +800,7 @@ export default function AdminPage() {
         "fg_admin_delivery_settings",
         JSON.stringify(cleaned)
       );
-      showToast("ডেলিভারি ও পেমেন্ট সেটিংস সেভ হয়েছে");
+      showToast("Mymensingh ডেলিভারি ও পেমেন্ট সেটিংস সেভ হয়েছে");
     } catch {
       showToast("সেটিংস সেভ করা যায়নি");
     }
@@ -781,15 +828,16 @@ export default function AdminPage() {
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
-      const normalizedCat = (p.category || "").toLowerCase().includes("gadget")
-        ? "gadget"
-        : "fashion";
+      const normalizedSub = normalizeSubCategoryLabel(
+        p.subCategory,
+        p.category
+      );
       const matchesCat =
-        productCatFilter === "all" || normalizedCat === productCatFilter;
+        productCatFilter === "all" || normalizedSub === productCatFilter;
       const matchesQuery =
         !effectiveProductQuery ||
         p.name.toLowerCase().includes(effectiveProductQuery) ||
-        (p.subCategory || "").toLowerCase().includes(effectiveProductQuery);
+        normalizedSub.toLowerCase().includes(effectiveProductQuery);
       return matchesCat && matchesQuery;
     });
   }, [products, productCatFilter, effectiveProductQuery]);
@@ -851,10 +899,12 @@ export default function AdminPage() {
       (p) => typeof p.stock === "number" && p.stock <= 3
     ).length;
 
-    const fashionProducts = products.filter(
-      (p) => !(p.category || "").toLowerCase().includes("gadget")
-    ).length;
-    const gadgetProducts = products.length - fashionProducts;
+    const categoryCounts = STORE_SUBCATEGORIES.map((label) => {
+      const count = products.filter(
+        (p) => normalizeSubCategoryLabel(p.subCategory, p.category) === label
+      ).length;
+      return { label, count };
+    });
 
     const recentSeries = [...activeOrders]
       .slice(0, 7)
@@ -869,8 +919,7 @@ export default function AdminPage() {
       pendingCount,
       deliveredCount,
       lowStockCount,
-      fashionProducts,
-      gadgetProducts,
+      categoryCounts,
       recentSeries,
     };
   }, [orders, products]);
@@ -892,7 +941,7 @@ export default function AdminPage() {
         >
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">
-              FG Trend Tech
+              FG Trend Tech • Mymensingh
             </p>
             <h1 className="text-xl font-bold text-slate-900 mt-0.5">
               Admin Login
@@ -998,7 +1047,7 @@ export default function AdminPage() {
           <div className="space-y-6">
             <div className="px-2 pt-1">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-400">
-                Admin Workspace
+                Mymensingh Admin
               </p>
               <h2 className="text-lg font-black text-white tracking-tight mt-0.5">
                 FG TREND TECH
@@ -1316,61 +1365,38 @@ export default function AdminPage() {
                   <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between space-y-4">
                     <div>
                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                        Catalog Mix
+                        Catalog Mix (7 Categories)
                       </p>
                       <h2 className="text-base sm:text-lg font-bold text-slate-900 mt-0.5">
                         Products by Category
                       </h2>
                     </div>
 
-                    <div className="space-y-4">
-                      <div>
-                        <div className="flex justify-between text-xs font-bold mb-1.5">
-                          <span className="text-slate-800">Fashion</span>
-                          <span className="text-rose-600">
-                            {stats.fashionProducts} items
-                          </span>
+                    <div className="space-y-2.5">
+                      {stats.categoryCounts.map((cat) => (
+                        <div key={cat.label}>
+                          <div className="flex justify-between text-xs font-bold mb-1">
+                            <span className="text-slate-800">{cat.label}</span>
+                            <span className="text-indigo-700">
+                              {cat.count} items
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              style={{
+                                width: `${
+                                  products.length > 0
+                                    ? Math.round(
+                                        (cat.count / products.length) * 100
+                                      )
+                                    : 0
+                                }%`,
+                              }}
+                              className="h-full bg-indigo-600 rounded-full"
+                            />
+                          </div>
                         </div>
-                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            style={{
-                              width: `${
-                                products.length > 0
-                                  ? Math.round(
-                                      (stats.fashionProducts / products.length) *
-                                        100
-                                    )
-                                  : 0
-                              }%`,
-                            }}
-                            className="h-full bg-rose-500 rounded-full"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-xs font-bold mb-1.5">
-                          <span className="text-slate-800">Gadgets</span>
-                          <span className="text-indigo-600">
-                            {stats.gadgetProducts} items
-                          </span>
-                        </div>
-                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            style={{
-                              width: `${
-                                products.length > 0
-                                  ? Math.round(
-                                      (stats.gadgetProducts / products.length) *
-                                        100
-                                    )
-                                  : 0
-                              }%`,
-                            }}
-                            className="h-full bg-indigo-600 rounded-full"
-                          />
-                        </div>
-                      </div>
+                      ))}
                     </div>
 
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
@@ -1674,27 +1700,21 @@ export default function AdminPage() {
                     required
                   />
 
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Category (Auto-syncs to Storefront) *
+                    </label>
                     <select
-                      value={category}
-                      onChange={(e) =>
-                        handleCategorySwitch(
-                          e.target.value as "fashion" | "gadget"
-                        )
-                      }
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 outline-none focus:border-slate-900 cursor-pointer"
-                    >
-                      <option value="fashion">Fashion</option>
-                      <option value="gadget">Gadgets</option>
-                    </select>
-
-                    <input
-                      type="text"
-                      placeholder="Sub-Category (e.g. Sneakers)"
                       value={subCategory}
                       onChange={(e) => handleSubCategoryChange(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
-                    />
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 font-medium outline-none focus:border-slate-900 cursor-pointer"
+                    >
+                      {STORE_SUBCATEGORIES.map((catLabel) => (
+                        <option key={catLabel} value={catLabel}>
+                          {catLabel}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2.5">
@@ -1732,7 +1752,8 @@ export default function AdminPage() {
                     />
                   </div>
 
-                  {category === "fashion" ? (
+                  {category === "fashion" &&
+                  isGarmentOrFootwearWithSizes(subCategory) ? (
                     <div className="space-y-1">
                       <input
                         type="text"
@@ -1751,21 +1772,21 @@ export default function AdminPage() {
                           : "Garment size format (M, L, XL...)"}
                       </p>
                     </div>
-                  ) : (
+                  ) : category === "gadget" ? (
                     <input
                       type="text"
-                      placeholder="Specs (e.g. 36H Battery • BT 5.3)"
+                      placeholder="Specs (e.g. 36H Battery • Fast Charge)"
                       value={specs}
                       onChange={(e) => setSpecs(e.target.value)}
                       className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
                     />
-                  )}
+                  ) : null}
 
                   {/* Image URL + Upload Own Photo */}
                   <div className="space-y-2">
                     <input
                       type="text"
-                      placeholder="Image URL (e.g. /images/jacket.jpg or https://...) *"
+                      placeholder="Image URL (e.g. /images/shoe.jpg or https://...) *"
                       value={image.startsWith("data:") ? "" : image}
                       onChange={(e) => {
                         setUploadedFileName(null);
@@ -1862,26 +1883,18 @@ export default function AdminPage() {
                         />
                       </div>
 
-                      {(
-                        [
-                          { key: "all", label: "All" },
-                          { key: "fashion", label: "Fashion" },
-                          { key: "gadget", label: "Gadgets" },
-                        ] as const
-                      ).map((f) => (
-                        <button
-                          key={f.key}
-                          type="button"
-                          onClick={() => setProductCatFilter(f.key)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                            productCatFilter === f.key
-                              ? "bg-slate-900 text-white"
-                              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                          }`}
-                        >
-                          {f.label}
-                        </button>
-                      ))}
+                      <select
+                        value={productCatFilter}
+                        onChange={(e) => setProductCatFilter(e.target.value)}
+                        className="border border-slate-200 rounded-xl px-3 py-1.5 text-xs bg-slate-100 text-slate-800 font-semibold outline-none cursor-pointer"
+                      >
+                        <option value="all">All Categories</option>
+                        {STORE_SUBCATEGORIES.map((catLabel) => (
+                          <option key={catLabel} value={catLabel}>
+                            {catLabel}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -1897,6 +1910,10 @@ export default function AdminPage() {
                         const currentStock =
                           typeof prod.stock === "number" ? prod.stock : 10;
                         const isLowStock = currentStock <= 3;
+                        const displaySubCat = normalizeSubCategoryLabel(
+                          prod.subCategory,
+                          prod.category
+                        );
 
                         return (
                           <div
@@ -1914,7 +1931,7 @@ export default function AdminPage() {
                                   {prod.name}
                                 </p>
                                 <p className="text-xs text-slate-500">
-                                  {prod.subCategory || prod.category} •{" "}
+                                  {displaySubCat} •{" "}
                                   <span className="font-bold text-slate-900">
                                     ৳{prod.price}
                                   </span>
@@ -2068,21 +2085,21 @@ export default function AdminPage() {
                   className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4"
                 >
                   <h2 className="text-lg font-bold text-slate-900">
-                    Delivery &amp; Wallet Settings
+                    Mymensingh Delivery &amp; Wallet Settings
                   </h2>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">
-                        Inside Dhaka Charge (৳)
+                        Inside Mymensingh Charge (৳)
                       </label>
                       <input
                         type="number"
-                        value={deliverySettings.insideDhakaCharge}
+                        value={deliverySettings.insideMymensinghCharge}
                         onChange={(e) =>
                           setDeliverySettings({
                             ...deliverySettings,
-                            insideDhakaCharge: Number(e.target.value),
+                            insideMymensinghCharge: Number(e.target.value),
                           })
                         }
                         className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
@@ -2091,15 +2108,15 @@ export default function AdminPage() {
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">
-                        Outside Dhaka Charge (৳)
+                        Outside Mymensingh Charge (৳)
                       </label>
                       <input
                         type="number"
-                        value={deliverySettings.outsideDhakaCharge}
+                        value={deliverySettings.outsideMymensinghCharge}
                         onChange={(e) =>
                           setDeliverySettings({
                             ...deliverySettings,
-                            outsideDhakaCharge: Number(e.target.value),
+                            outsideMymensinghCharge: Number(e.target.value),
                           })
                         }
                         className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
@@ -2206,7 +2223,7 @@ export default function AdminPage() {
 
           {/* Footer */}
           <footer className="bg-white border-t border-slate-200 px-4 sm:px-6 py-4 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p>© 2026 FG Trend Tech Admin Dashboard. All rights reserved.</p>
+            <p>© 2026 FG Trend Tech Admin Dashboard • Mymensingh.</p>
             <p>Support: fgtrendtech.bd@gmail.com</p>
           </footer>
         </div>
@@ -2365,25 +2382,21 @@ export default function AdminPage() {
               className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
             />
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-600">
+                Category
+              </label>
               <select
-                value={editCategory}
-                onChange={(e) =>
-                  setEditCategory(e.target.value as "fashion" | "gadget")
-                }
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 outline-none focus:border-slate-900 cursor-pointer"
-              >
-                <option value="fashion">Fashion</option>
-                <option value="gadget">Gadgets</option>
-              </select>
-
-              <input
-                type="text"
-                placeholder="Sub-Category"
                 value={editSubCategory}
                 onChange={(e) => setEditSubCategory(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
-              />
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 font-medium outline-none focus:border-slate-900 cursor-pointer"
+              >
+                {STORE_SUBCATEGORIES.map((catLabel) => (
+                  <option key={catLabel} value={catLabel}>
+                    {catLabel}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
@@ -2421,7 +2434,8 @@ export default function AdminPage() {
               />
             </div>
 
-            {editCategory === "fashion" ? (
+            {editCategory === "fashion" &&
+            isGarmentOrFootwearWithSizes(editSubCategory) ? (
               <input
                 type="text"
                 placeholder={
@@ -2433,7 +2447,7 @@ export default function AdminPage() {
                 onChange={(e) => setEditSizesText(e.target.value)}
                 className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
-            ) : (
+            ) : editCategory === "gadget" ? (
               <input
                 type="text"
                 placeholder="Specs"
@@ -2441,7 +2455,7 @@ export default function AdminPage() {
                 onChange={(e) => setEditSpecs(e.target.value)}
                 className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
-            )}
+            ) : null}
 
             <div className="space-y-2">
               <input

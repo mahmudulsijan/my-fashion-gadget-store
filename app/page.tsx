@@ -59,8 +59,8 @@ type CustomerProfile = {
 };
 
 type DeliveryConfig = {
-  insideDhaka: number;
-  outsideDhaka: number;
+  insideMymensingh: number;
+  outsideMymensingh: number;
   freeThreshold: number;
   bkashNumber: string;
   nagadNumber: string;
@@ -70,76 +70,105 @@ type SortOption = "featured" | "price-asc" | "price-desc" | "discount";
 type BottomTab = "home" | "categories" | "cart" | "orders" | "account";
 
 const DEFAULT_DELIVERY_CONFIG: DeliveryConfig = {
-  insideDhaka: 70,
-  outsideDhaka: 130,
+  insideMymensingh: 70,
+  outsideMymensingh: 130,
   freeThreshold: 0,
   bkashNumber: "01700-000000",
   nagadNumber: "01700-000000",
 };
 
 const DELIVERY_LOCATIONS = [
-  { label: "Dhaka", district: "Dhaka", zone: "dhaka" as const },
-  { label: "Mymensingh", district: "Mymensingh", zone: "outside" as const },
+  { label: "Mymensingh", district: "Mymensingh", zone: "mymensingh" as const },
+  { label: "Dhaka", district: "Dhaka", zone: "outside" as const },
   { label: "Chattogram", district: "Chattogram", zone: "outside" as const },
   { label: "Sylhet", district: "Sylhet", zone: "outside" as const },
   { label: "Rajshahi", district: "Rajshahi", zone: "outside" as const },
   { label: "Khulna", district: "Khulna", zone: "outside" as const },
 ];
 
+export const STORE_CATEGORIES = [
+  "Men's Fashion",
+  "Women's Fashion",
+  "Men's Footwear",
+  "Women's Footwear",
+  "Gadgets",
+  "Beauty Products",
+  "Mobile Accessories",
+] as const;
+
+const CATEGORY_IMAGES = {
+  mensFashion:
+    "https://images.unsplash.com/photo-1516257984-b1b4d707412e?auto=format&fit=crop&w=500&q=80",
+  womensFashion:
+    "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=500&q=80",
+  mensFootwear:
+    "https://images.unsplash.com/photo-1600185365926-3a2ce3cdb9eb?auto=format&fit=crop&w=500&q=80",
+  womensFootwear:
+    "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=500&q=80",
+  gadgets:
+    "https://images.unsplash.com/photo-1579586337278-3befd40fd17a?auto=format&fit=crop&w=500&q=80",
+  beautyProducts:
+    "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=500&q=80",
+  mobileAccessories:
+    "https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=500&q=80",
+};
+
 const FEATURED_CATEGORIES = [
   {
     title: "Men's Fashion",
     filterKey: "fashion" as const,
-    subFilter: "all",
+    subFilter: "Men's Fashion",
     accentClass: "border-rose-500",
-    image:
-      "https://images.unsplash.com/photo-1516257984-b1b4d707412e?auto=format&fit=crop&w=500&q=80",
+    image: CATEGORY_IMAGES.mensFashion,
   },
   {
-    title: "Hoodies & Jackets",
+    title: "Women's Fashion",
     filterKey: "fashion" as const,
-    subFilter: "Hoodies & Jackets",
+    subFilter: "Women's Fashion",
+    accentClass: "border-pink-500",
+    image: CATEGORY_IMAGES.womensFashion,
+  },
+  {
+    title: "Men's Footwear",
+    filterKey: "fashion" as const,
+    subFilter: "Men's Footwear",
     accentClass: "border-amber-500",
-    image:
-      "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=500&q=80",
+    image: CATEGORY_IMAGES.mensFootwear,
   },
   {
-    title: "Casual Shirts",
+    title: "Women's Footwear",
     filterKey: "fashion" as const,
-    subFilter: "Casual Shirts",
-    accentClass: "border-sky-500",
-    image:
-      "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=500&q=80",
+    subFilter: "Women's Footwear",
+    accentClass: "border-orange-500",
+    image: CATEGORY_IMAGES.womensFootwear,
   },
   {
-    title: "Smartwatches",
+    title: "Gadgets",
     filterKey: "gadget" as const,
-    subFilter: "Smartwatches",
+    subFilter: "Gadgets",
     accentClass: "border-emerald-500",
-    image:
-      "https://images.unsplash.com/photo-1579586337278-3befd40fd17a?auto=format&fit=crop&w=500&q=80",
+    image: CATEGORY_IMAGES.gadgets,
   },
   {
-    title: "Wireless Earbuds",
-    filterKey: "gadget" as const,
-    subFilter: "Wireless Earbuds",
+    title: "Beauty Products",
+    filterKey: "fashion" as const,
+    subFilter: "Beauty Products",
     accentClass: "border-purple-500",
-    image:
-      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=500&q=80",
+    image: CATEGORY_IMAGES.beautyProducts,
   },
   {
-    title: "Chargers & Accessories",
+    title: "Mobile Accessories",
     filterKey: "gadget" as const,
-    subFilter: "Chargers & Accessories",
+    subFilter: "Mobile Accessories",
     accentClass: "border-indigo-500",
-    image:
-      "https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=500&q=80",
+    image: CATEGORY_IMAGES.mobileAccessories,
   },
 ];
 
 function normalizeCategory(rawCategory?: string): "fashion" | "gadget" {
   const val = (rawCategory || "").toLowerCase();
-  if (val.includes("gadget") || val.includes("tech")) return "gadget";
+  if (val.includes("gadget") || val.includes("mobile") || val.includes("tech"))
+    return "gadget";
   return "fashion";
 }
 
@@ -151,29 +180,95 @@ function isFootwearText(text?: string): boolean {
     val.includes("boot") ||
     val.includes("loafer") ||
     val.includes("sandal") ||
+    val.includes("heel") ||
     val.includes("footwear")
   );
 }
 
-function inferSubCategory(item: Record<string, unknown>, cat: "fashion" | "gadget"): string {
-  if (item?.subCategory) return String(item.subCategory);
-  const text = `${item?.name || ""} ${item?.description || ""}`.toLowerCase();
-  if (cat === "fashion") {
-    if (isFootwearText(text)) return "Sneakers & Footwear";
-    if (text.includes("hoodie") || text.includes("jacket"))
-      return "Hoodies & Jackets";
-    if (text.includes("shirt")) return "Casual Shirts";
-    return "Men's Fashion";
-  }
-  if (text.includes("watch")) return "Smartwatches";
-  if (text.includes("earbud") || text.includes("anc")) return "Wireless Earbuds";
-  return "Chargers & Accessories";
+function canonicalCategoryLabel(raw?: string): string {
+  const val = (raw || "").trim().toLowerCase();
+  if (!val) return "";
+  if (val.includes("women") && (val.includes("foot") || isFootwearText(val)))
+    return "Women's Footwear";
+  if (val.includes("men") && (val.includes("foot") || isFootwearText(val)))
+    return "Men's Footwear";
+  if (isFootwearText(val)) return "Men's Footwear";
+  if (val.includes("women") && val.includes("fashion")) return "Women's Fashion";
+  if (val.includes("men") && val.includes("fashion")) return "Men's Fashion";
+  if (val.includes("beauty") || val.includes("cosmetic") || val.includes("skincare"))
+    return "Beauty Products";
+  if (
+    val.includes("mobile") ||
+    val.includes("charger") ||
+    val.includes("cable") ||
+    val.includes("cover") ||
+    val.includes("power bank")
+  )
+    return "Mobile Accessories";
+  if (val.includes("gadget") || val.includes("watch") || val.includes("earbud"))
+    return "Gadgets";
+  return (raw || "").trim();
 }
 
-function resolveFashionSizes(item: Record<string, unknown>, subCat: string): string[] {
-  if (Array.isArray(item?.sizes) && item.sizes.length > 0) {
-    return item.sizes.map((s) => String(s).trim()).filter(Boolean);
+function inferSubCategory(
+  item: Record<string, unknown>,
+  cat: "fashion" | "gadget"
+): string {
+  const fromSub = canonicalCategoryLabel(String(item?.subCategory || ""));
+  if (fromSub) return fromSub;
+
+  const fromCat = canonicalCategoryLabel(String(item?.category || ""));
+  if (
+    fromCat &&
+    fromCat.toLowerCase() !== "fashion" &&
+    fromCat.toLowerCase() !== "gadget"
+  ) {
+    return fromCat;
   }
+
+  const text = `${item?.name || ""} ${item?.description || ""}`.toLowerCase();
+  if (text.includes("beauty") || text.includes("lip") || text.includes("skin"))
+    return "Beauty Products";
+  if (text.includes("women") && isFootwearText(text)) return "Women's Footwear";
+  if (isFootwearText(text)) return "Men's Footwear";
+  if (text.includes("women") || text.includes("kurti") || text.includes("dress"))
+    return "Women's Fashion";
+  if (
+    text.includes("charger") ||
+    text.includes("cable") ||
+    text.includes("case") ||
+    text.includes("power bank")
+  )
+    return "Mobile Accessories";
+  if (cat === "gadget") return "Gadgets";
+  return "Men's Fashion";
+}
+
+function parseExplicitSizes(rawSizes: unknown): string[] {
+  if (Array.isArray(rawSizes)) {
+    return rawSizes
+      .flatMap((entry) => String(entry).split(","))
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (typeof rawSizes === "string" && rawSizes.trim().length > 0) {
+    return rawSizes
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function resolveFashionSizes(
+  item: Record<string, unknown>,
+  subCat: string
+): string[] {
+  const explicit = parseExplicitSizes(item?.sizes);
+  if (explicit.length > 0) {
+    return explicit;
+  }
+
   const combinedText = `${subCat} ${item?.name || ""} ${item?.description || ""}`;
   if (isFootwearText(combinedText)) {
     return ["40", "41", "42", "43"];
@@ -209,7 +304,7 @@ export default function HomeStore() {
   );
 
   // Location & User Auth/Account States
-  const [deliveryLocation, setDeliveryLocation] = useState("Dhaka");
+  const [deliveryLocation, setDeliveryLocation] = useState("Mymensingh");
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
 
   const [customerUser, setCustomerUser] = useState<CustomerProfile | null>(
@@ -218,7 +313,7 @@ export default function HomeStore() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [loginNameInput, setLoginNameInput] = useState("");
   const [loginPhoneInput, setLoginPhoneInput] = useState("");
-  const [loginDistrictInput, setLoginDistrictInput] = useState("Dhaka");
+  const [loginDistrictInput, setLoginDistrictInput] = useState("Mymensingh");
   const [loginAddressInput, setLoginAddressInput] = useState("");
   const [loginError, setLoginError] = useState("");
 
@@ -237,7 +332,7 @@ export default function HomeStore() {
   // Checkout States
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [customerDistrict, setCustomerDistrict] = useState("Dhaka");
+  const [customerDistrict, setCustomerDistrict] = useState("Mymensingh");
   const [customerAddress, setCustomerAddress] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<
@@ -245,8 +340,8 @@ export default function HomeStore() {
   >("Cash on Delivery");
   const [senderNumber, setSenderNumber] = useState("");
   const [trxId, setTrxId] = useState("");
-  const [deliveryZone, setDeliveryZone] = useState<"dhaka" | "outside">(
-    "dhaka"
+  const [deliveryZone, setDeliveryZone] = useState<"mymensingh" | "outside">(
+    "mymensingh"
   );
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [orderError, setOrderError] = useState("");
@@ -285,8 +380,12 @@ export default function HomeStore() {
       if (rawSettings) {
         const parsed = JSON.parse(rawSettings);
         setDeliveryConfig({
-          insideDhaka: Number(parsed.insideDhakaCharge ?? 70),
-          outsideDhaka: Number(parsed.outsideDhakaCharge ?? 130),
+          insideMymensingh: Number(
+            parsed.insideMymensinghCharge ?? parsed.insideDhakaCharge ?? 70
+          ),
+          outsideMymensingh: Number(
+            parsed.outsideMymensinghCharge ?? parsed.outsideDhakaCharge ?? 130
+          ),
           freeThreshold: Number(parsed.freeDeliveryThreshold ?? 0),
           bkashNumber: String(parsed.bkashNumber || "01700-000000"),
           nagadNumber: String(parsed.nagadNumber || "01700-000000"),
@@ -307,7 +406,9 @@ export default function HomeStore() {
           setCustomerDistrict(parsed.district);
           setDeliveryLocation(parsed.district);
           setDeliveryZone(
-            parsed.district.toLowerCase().includes("dhaka") ? "dhaka" : "outside"
+            parsed.district.toLowerCase().includes("mymensingh")
+              ? "mymensingh"
+              : "outside"
           );
         }
         if (parsed.address) {
@@ -386,8 +487,15 @@ export default function HomeStore() {
         if (data.success && Array.isArray(data.products)) {
           const mapped: Product[] = data.products.map(
             (item: Record<string, unknown>, idx: number) => {
-              const cat = normalizeCategory(String(item.category || ""));
-              const subCat = inferSubCategory(item, cat);
+              const subCat = inferSubCategory(item, "fashion");
+              const cat = normalizeCategory(
+                `${String(item.category || "")} ${subCat}`
+              );
+              const resolvedSizes =
+                cat === "fashion" && subCat !== "Beauty Products"
+                  ? resolveFashionSizes(item, subCat)
+                  : undefined;
+
               return {
                 id: String(item._id || item.id || idx),
                 name: String(item.name || "Unnamed Product"),
@@ -397,14 +505,11 @@ export default function HomeStore() {
                 oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
                 image:
                   String(item.image || "") ||
-                  "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80",
+                  CATEGORY_IMAGES.mensFootwear,
                 badge:
                   String(item.badge || "") ||
                   (cat === "fashion" ? "New Collection" : "Smart Tech"),
-                sizes:
-                  cat === "fashion"
-                    ? resolveFashionSizes(item, subCat)
-                    : undefined,
+                sizes: resolvedSizes,
                 specs:
                   cat === "gadget"
                     ? String(item.specs || item.description || "Original Gadget")
@@ -414,7 +519,23 @@ export default function HomeStore() {
               };
             }
           );
+
           setProducts(mapped);
+          setSelectedSizes((prev) => {
+            const next = { ...prev };
+            for (const prod of mapped) {
+              if (
+                prod.category === "fashion" &&
+                prod.sizes &&
+                prod.sizes.length > 0
+              ) {
+                if (!next[prod.id] || !prod.sizes.includes(next[prod.id])) {
+                  next[prod.id] = prod.sizes[0];
+                }
+              }
+            }
+            return next;
+          });
         } else {
           setProducts([]);
         }
@@ -442,7 +563,10 @@ export default function HomeStore() {
     setLoginNameInput(customerUser?.name || customerName || "");
     setLoginPhoneInput(customerUser?.phone || customerPhone || "");
     setLoginDistrictInput(
-      customerUser?.district || customerDistrict || deliveryLocation || "Dhaka"
+      customerUser?.district ||
+        customerDistrict ||
+        deliveryLocation ||
+        "Mymensingh"
     );
     setLoginAddressInput(customerUser?.address || customerAddress || "");
     setActiveBottomTab("account");
@@ -463,7 +587,7 @@ export default function HomeStore() {
     const profile: CustomerProfile = {
       name: loginNameInput.trim(),
       phone: loginPhoneInput.trim(),
-      district: loginDistrictInput.trim() || "Dhaka",
+      district: loginDistrictInput.trim() || "Mymensingh",
       address: loginAddressInput.trim(),
     };
 
@@ -473,7 +597,9 @@ export default function HomeStore() {
     setCustomerDistrict(profile.district);
     setDeliveryLocation(profile.district);
     setDeliveryZone(
-      profile.district.toLowerCase().includes("dhaka") ? "dhaka" : "outside"
+      profile.district.toLowerCase().includes("mymensingh")
+        ? "mymensingh"
+        : "outside"
     );
     if (profile.address) {
       setCustomerAddress(profile.address);
@@ -544,17 +670,28 @@ export default function HomeStore() {
   const filteredProducts = useMemo(() => {
     const list = products.filter((p) => {
       if (showWishlistOnly && !wishlist.includes(p.id)) return false;
-      if (flashSaleOnly && !(typeof p.oldPrice === "number" && p.oldPrice > p.price))
+      if (
+        flashSaleOnly &&
+        !(typeof p.oldPrice === "number" && p.oldPrice > p.price)
+      )
         return false;
-      const matchesCat =
-        selectedCategory === "all" || p.category === selectedCategory;
+
       const matchesSub =
-        selectedSubCategory === "all" || p.subCategory === selectedSubCategory;
+        selectedSubCategory === "all" ||
+        canonicalCategoryLabel(p.subCategory).toLowerCase() ===
+          canonicalCategoryLabel(selectedSubCategory).toLowerCase();
+
+      const matchesCat =
+        selectedSubCategory !== "all"
+          ? true
+          : selectedCategory === "all" || p.category === selectedCategory;
+
       const matchesSearch =
         !searchQuery.trim() ||
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (p.specs && p.specs.toLowerCase().includes(searchQuery.toLowerCase())) ||
         p.subCategory.toLowerCase().includes(searchQuery.toLowerCase());
+
       return matchesCat && matchesSub && matchesSearch;
     });
 
@@ -584,8 +721,8 @@ export default function HomeStore() {
 
   const addToCart = (product: Product, openDrawer = true) => {
     const chosenSize =
-      product.category === "fashion"
-        ? selectedSizes[product.id] || product.sizes?.[0] || "L"
+      product.category === "fashion" && product.sizes && product.sizes.length > 0
+        ? selectedSizes[product.id] || product.sizes[0]
         : undefined;
 
     setCart((prev) => {
@@ -643,9 +780,9 @@ export default function HomeStore() {
       ? 0
       : isFreeDeliveryUnlocked
       ? 0
-      : deliveryZone === "dhaka"
-      ? deliveryConfig.insideDhaka
-      : deliveryConfig.outsideDhaka;
+      : deliveryZone === "mymensingh"
+      ? deliveryConfig.insideMymensingh
+      : deliveryConfig.outsideMymensingh;
 
   const grandTotal = subtotal + deliveryCharge;
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -677,9 +814,9 @@ export default function HomeStore() {
     try {
       const zoneLabel = isFreeDeliveryUnlocked
         ? "Free Delivery"
-        : deliveryZone === "dhaka"
-        ? `Inside Dhaka - ৳${deliveryConfig.insideDhaka}`
-        : `Outside Dhaka - ৳${deliveryConfig.outsideDhaka}`;
+        : deliveryZone === "mymensingh"
+        ? `Inside Mymensingh - ৳${deliveryConfig.insideMymensingh}`
+        : `Outside Mymensingh - ৳${deliveryConfig.outsideMymensingh}`;
 
       const paymentSegment =
         paymentMethod === "Cash on Delivery"
@@ -783,12 +920,12 @@ export default function HomeStore() {
 
       {/* A. Announcement Bar */}
       <div className="bg-neutral-950 text-neutral-200 text-xs py-2 px-4 text-center tracking-wide border-b border-neutral-800">
-        Nationwide Cash on Delivery &amp; Mobile Pay • Inside Dhaka ৳
-        {deliveryConfig.insideDhaka} &amp; Outside Dhaka ৳
-        {deliveryConfig.outsideDhaka}
+        Nationwide Cash on Delivery &amp; Mobile Pay • Inside Mymensingh ৳
+        {deliveryConfig.insideMymensingh} &amp; Outside Mymensingh ৳
+        {deliveryConfig.outsideMymensingh}
         {deliveryConfig.freeThreshold > 0
           ? ` • Free Delivery over ৳${deliveryConfig.freeThreshold}`
-          : " • Authentic Fashion & Tech"}
+          : " • Authentic Men's & Women's Fashion, Footwear, Beauty, Gadgets & Mobile Accessories"}
       </div>
 
       {/* B. Modern Navigation Bar */}
@@ -826,7 +963,7 @@ export default function HomeStore() {
               className="hidden sm:inline-flex items-center gap-1.5 bg-neutral-100 hover:bg-neutral-200/80 text-neutral-700 px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer shrink-0"
             >
               <MapPin className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-              <span className="truncate max-w-[110px]">
+              <span className="truncate max-w-[125px]">
                 Deliver to {deliveryLocation}
               </span>
             </button>
@@ -845,21 +982,28 @@ export default function HomeStore() {
             </a>
             <button
               type="button"
-              onClick={() => jumpToCatalog({ cat: "all" })}
+              onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
               className="hover:text-neutral-950 transition cursor-pointer"
             >
               All Products
             </button>
             <button
               type="button"
-              onClick={() => jumpToCatalog({ cat: "fashion" })}
+              onClick={() => jumpToCatalog({ sub: "Men's Fashion" })}
               className="hover:text-neutral-950 transition cursor-pointer"
             >
-              Fashion
+              Men&apos;s Fashion
             </button>
             <button
               type="button"
-              onClick={() => jumpToCatalog({ cat: "gadget" })}
+              onClick={() => jumpToCatalog({ sub: "Women's Fashion" })}
+              className="hover:text-neutral-950 transition cursor-pointer"
+            >
+              Women&apos;s Fashion
+            </button>
+            <button
+              type="button"
+              onClick={() => jumpToCatalog({ sub: "Gadgets" })}
               className="hover:text-neutral-950 transition cursor-pointer"
             >
               Gadgets
@@ -873,12 +1017,6 @@ export default function HomeStore() {
             >
               Flash Sale
             </button>
-            <a
-              href="#footer-section"
-              className="hover:text-neutral-950 transition"
-            >
-              Contact Us
-            </a>
             <Link
               href="/track-order"
               className="hover:text-neutral-950 transition font-semibold text-neutral-900"
@@ -998,44 +1136,24 @@ export default function HomeStore() {
               <Search className="w-4 h-4 text-neutral-400 mr-2" />
               <input
                 type="text"
-                placeholder="Search fashion or gadgets..."
+                placeholder="Search fashion, footwear, beauty or gadgets..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-transparent text-sm outline-none w-full"
               />
             </div>
 
-            <div className="flex flex-col gap-2 text-sm font-medium text-neutral-700">
-              <button
-                type="button"
-                onClick={() => jumpToCatalog({ cat: "all" })}
-                className="text-left py-1.5 cursor-pointer"
-              >
-                All Products
-              </button>
-              <button
-                type="button"
-                onClick={() => jumpToCatalog({ cat: "fashion" })}
-                className="text-left py-1.5 cursor-pointer"
-              >
-                Fashion
-              </button>
-              <button
-                type="button"
-                onClick={() => jumpToCatalog({ cat: "gadget" })}
-                className="text-left py-1.5 cursor-pointer"
-              >
-                Gadgets
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  jumpToCatalog({ sort: "discount", flashOnly: true })
-                }
-                className="text-left py-1.5 cursor-pointer"
-              >
-                Flash Sale
-              </button>
+            <div className="flex flex-col gap-1.5 text-sm font-medium text-neutral-700">
+              {STORE_CATEGORIES.map((catName) => (
+                <button
+                  key={catName}
+                  type="button"
+                  onClick={() => jumpToCatalog({ sub: catName })}
+                  className="text-left py-1.5 cursor-pointer hover:text-neutral-950"
+                >
+                  {catName}
+                </button>
+              ))}
               <Link
                 href="/track-order"
                 onClick={() => setMobileMenuOpen(false)}
@@ -1055,13 +1173,13 @@ export default function HomeStore() {
         )}
       </header>
 
-      {/* C. Hero Section */}
+      {/* C. Hero Section (Uses Category Images & Mentions All Categories) */}
       <section className="max-w-7xl mx-auto px-4 pt-5 pb-8">
         <div className="bg-[#121212] text-white rounded-3xl overflow-hidden border border-neutral-800 shadow-lg">
           <div className="grid lg:grid-cols-12 gap-7 p-6 sm:p-10 items-center">
             <div className="lg:col-span-5 space-y-5">
               <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
-                FG Trend Tech • Fashion &amp; Smart Gadgets
+                FG Trend Tech • Mymensingh Storefront
               </p>
               <h1 className="text-3xl sm:text-5xl font-bold leading-[1.1] tracking-tight">
                 Elevated Style.
@@ -1069,84 +1187,103 @@ export default function HomeStore() {
                 Everyday Tech.
               </h1>
               <p className="text-sm text-neutral-400 max-w-md leading-relaxed">
-                Shop curated outfits, hoodies, jackets, and shirts alongside
-                warranty-backed earbuds, smartwatches, and fast chargers with
-                nationwide cash on delivery.
+                Explore Men&apos;s Fashion, Women&apos;s Fashion, Men&apos;s
+                Footwear, Women&apos;s Footwear, Gadgets, Beauty Products, and
+                Mobile Accessories with cash on delivery from Mymensingh.
               </p>
 
               <div className="flex flex-wrap gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={() => jumpToCatalog({ cat: "fashion" })}
+                  onClick={() => jumpToCatalog({ sub: "Men's Footwear" })}
                   className="bg-white text-neutral-950 hover:bg-neutral-200 text-xs sm:text-sm font-semibold px-5 py-3 rounded-xl transition cursor-pointer"
                 >
-                  Shop Fashion
+                  Men&apos;s Footwear
                 </button>
                 <button
                   type="button"
-                  onClick={() => jumpToCatalog({ cat: "gadget" })}
+                  onClick={() => jumpToCatalog({ sub: "Women's Footwear" })}
                   className="border border-neutral-600 hover:border-white text-white text-xs sm:text-sm font-semibold px-5 py-3 rounded-xl transition cursor-pointer"
                 >
-                  Shop Gadgets
+                  Women&apos;s Footwear
                 </button>
-                <Link
-                  href="/track-order"
-                  className="border border-white/25 hover:border-white/60 text-neutral-100 hover:text-white text-xs sm:text-sm font-semibold px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl transition inline-flex items-center justify-center"
+                <button
+                  type="button"
+                  onClick={() => jumpToCatalog({ sub: "Beauty Products" })}
+                  className="border border-white/25 hover:border-white/60 text-neutral-100 hover:text-white text-xs sm:text-sm font-semibold px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl transition cursor-pointer"
                 >
-                  Track Order
-                </Link>
+                  Beauty Products
+                </button>
               </div>
             </div>
 
             <div className="lg:col-span-7 grid grid-cols-3 gap-3">
               <div className="space-y-3">
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800">
+                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
                   <img
-                    src="https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=500&q=80"
-                    alt="Cotton hoodie"
+                    src={CATEGORY_IMAGES.mensFashion}
+                    alt="Men's Fashion"
                     className="w-full h-full object-cover"
                   />
+                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    Men&apos;s Fashion
+                  </span>
                 </div>
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800">
+                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
                   <img
-                    src="https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=500&q=80"
-                    alt="Wireless earbuds"
+                    src={CATEGORY_IMAGES.mensFootwear}
+                    alt="Men's Footwear"
                     className="w-full h-full object-cover"
                   />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800">
-                  <img
-                    src="https://images.unsplash.com/photo-1579586337278-3befd40fd17a?auto=format&fit=crop&w=500&q=80"
-                    alt="Smart watch"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="aspect-[4/4.3] rounded-2xl overflow-hidden bg-neutral-800">
-                  <img
-                    src="https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=500&q=80"
-                    alt="Bomber jacket"
-                    className="w-full h-full object-cover"
-                  />
+                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    Men&apos;s Footwear
+                  </span>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800">
+                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
                   <img
-                    src="https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=500&q=80"
-                    alt="Oxford shirt"
+                    src={CATEGORY_IMAGES.womensFashion}
+                    alt="Women's Fashion"
                     className="w-full h-full object-cover"
                   />
+                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    Women&apos;s Fashion
+                  </span>
                 </div>
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800">
+                <div className="aspect-[4/4.3] rounded-2xl overflow-hidden bg-neutral-800 relative">
                   <img
-                    src="https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=500&q=80"
-                    alt="Fast power bank"
+                    src={CATEGORY_IMAGES.womensFootwear}
+                    alt="Women's Footwear"
                     className="w-full h-full object-cover"
                   />
+                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    Women&apos;s Footwear
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
+                  <img
+                    src={CATEGORY_IMAGES.beautyProducts}
+                    alt="Beauty Products"
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    Beauty Products
+                  </span>
+                </div>
+                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
+                  <img
+                    src={CATEGORY_IMAGES.mobileAccessories}
+                    alt="Mobile Accessories"
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    Mobile Accessories
+                  </span>
                 </div>
               </div>
             </div>
@@ -1171,7 +1308,8 @@ export default function HomeStore() {
                 </span>
               </div>
               <h2 className="text-base sm:text-lg font-bold mt-0.5">
-                বিশেষ ছাড়ে সেরা Fashion &amp; Smart Gadgets অফার
+                বিশেষ ছাড়ে Men&apos;s &amp; Women&apos;s Fashion, Footwear,
+                Beauty, Gadgets &amp; Mobile Accessories অফার
               </h2>
             </div>
           </div>
@@ -1199,7 +1337,7 @@ export default function HomeStore() {
         </div>
       </section>
 
-      {/* D. Featured Categories */}
+      {/* D. Featured Categories (Exact requested order) */}
       <section id="categories-section" className="max-w-7xl mx-auto px-4 pb-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950">
@@ -1207,14 +1345,14 @@ export default function HomeStore() {
           </h2>
           <button
             type="button"
-            onClick={() => jumpToCatalog({ cat: "all" })}
+            onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
             className="text-xs sm:text-sm font-semibold text-neutral-700 hover:text-neutral-950 cursor-pointer"
           >
             View All →
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
           {FEATURED_CATEGORIES.map((catItem) => (
             <button
               key={catItem.title}
@@ -1254,34 +1392,52 @@ export default function HomeStore() {
                   ? "Saved Wishlist"
                   : flashSaleOnly
                   ? "Flash Sale Deals"
+                  : selectedSubCategory !== "all"
+                  ? selectedSubCategory
                   : "Featured Collection"}
               </h2>
 
-              {(
-                [
-                  { key: "all", label: "ALL" },
-                  { key: "fashion", label: "FASHION" },
-                  { key: "gadget", label: "GADGETS" },
-                ] as const
-              ).map((tab) => (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowWishlistOnly(false);
+                  setFlashSaleOnly(false);
+                  setSelectedCategory("all");
+                  setSelectedSubCategory("all");
+                }}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wide transition cursor-pointer ${
+                  !showWishlistOnly &&
+                  !flashSaleOnly &&
+                  selectedSubCategory === "all" &&
+                  selectedCategory === "all"
+                    ? "bg-neutral-950 text-white"
+                    : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                }`}
+              >
+                ALL
+              </button>
+
+              {STORE_CATEGORIES.map((catLabel) => (
                 <button
-                  key={tab.key}
+                  key={catLabel}
                   type="button"
                   onClick={() => {
                     setShowWishlistOnly(false);
                     setFlashSaleOnly(false);
-                    setSelectedCategory(tab.key);
-                    setSelectedSubCategory("all");
+                    setSelectedSubCategory(catLabel);
+                    setSelectedCategory(
+                      normalizeCategory(catLabel)
+                    );
                   }}
-                  className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wide transition cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide transition cursor-pointer ${
                     !showWishlistOnly &&
                     !flashSaleOnly &&
-                    selectedCategory === tab.key
+                    selectedSubCategory === catLabel
                       ? "bg-neutral-950 text-white"
                       : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
                   }`}
                 >
-                  {tab.label}
+                  {catLabel}
                 </button>
               ))}
             </div>
@@ -1496,7 +1652,9 @@ export default function HomeStore() {
                         )}
                       </div>
 
-                      {product.category === "fashion" && product.sizes ? (
+                      {product.category === "fashion" &&
+                      product.sizes &&
+                      product.sizes.length > 0 ? (
                         <div className="mt-3 flex flex-wrap items-center gap-1.5">
                           <span className="text-xs text-neutral-500 mr-1">
                             Size:
@@ -1513,8 +1671,7 @@ export default function HomeStore() {
                               }
                               className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                                 (selectedSizes[product.id] ||
-                                  product.sizes?.[0] ||
-                                  "L") === size
+                                  product.sizes?.[0]) === size
                                   ? "bg-neutral-950 text-white border-neutral-950"
                                   : "bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400"
                               }`}
@@ -1560,14 +1717,15 @@ export default function HomeStore() {
         <div className="bg-neutral-900 text-white rounded-3xl p-6 sm:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2 max-w-xl">
             <span className="text-xs uppercase tracking-widest text-neutral-400">
-              Seasonal Collection &amp; Tech Drop
+              Mymensingh Local &amp; Nationwide Delivery
             </span>
             <h3 className="text-2xl sm:text-3xl font-bold">
-              Upgrade Your Daily Rotation with Cash on Delivery
+              Upgrade Your Style, Footwear, Beauty &amp; Tech
             </h3>
             <p className="text-sm text-neutral-300">
-              Check your parcel upon delivery across Bangladesh with transparent
-              shipping rates.
+              Fast delivery Inside Mymensingh (৳{deliveryConfig.insideMymensingh}
+              ) and Outside Mymensingh (৳{deliveryConfig.outsideMymensingh})
+              with cash on delivery.
             </p>
           </div>
           <button
@@ -1593,7 +1751,8 @@ export default function HomeStore() {
                 100% Authentic Products
               </h4>
               <p className="text-xs text-neutral-500 mt-1">
-                Verified quality garments and genuine tech accessories.
+                Verified Men&apos;s &amp; Women&apos;s Fashion, Footwear,
+                Beauty, Gadgets &amp; Mobile Accessories.
               </p>
             </div>
           </div>
@@ -1602,11 +1761,12 @@ export default function HomeStore() {
             <Truck className="w-6 h-6 text-neutral-900 shrink-0 mt-0.5" />
             <div>
               <h4 className="font-bold text-sm text-neutral-950">
-                Nationwide Cash on Delivery
+                Inside &amp; Outside Mymensingh COD
               </h4>
               <p className="text-xs text-neutral-500 mt-1">
-                Inside Dhaka ৳{deliveryConfig.insideDhaka} and Outside Dhaka ৳
-                {deliveryConfig.outsideDhaka} delivery charge.
+                Inside Mymensingh ৳{deliveryConfig.insideMymensingh} &amp;
+                Outside Mymensingh ৳{deliveryConfig.outsideMymensingh} delivery
+                charge.
               </p>
             </div>
           </div>
@@ -1633,8 +1793,8 @@ export default function HomeStore() {
               Stay Updated with FG Trend Tech
             </h3>
             <p className="text-xs sm:text-sm text-neutral-500">
-              Get notified about new fashion drops, smart gadgets, and seasonal
-              offers.
+              Get notified about new fashion, footwear, beauty, gadgets, and
+              mobile accessories offers.
             </p>
           </div>
 
@@ -1676,41 +1836,26 @@ export default function HomeStore() {
               FG TREND TECH
             </h3>
             <p className="text-xs text-neutral-400 leading-relaxed">
-              Modern fashion essentials and smart technology accessories built
-              for everyday reliability across Bangladesh.
+              Operating from Mymensingh—serving Men&apos;s Fashion, Women&apos;s
+              Fashion, Men&apos;s Footwear, Women&apos;s Footwear, Gadgets,
+              Beauty Products, and Mobile Accessories.
             </p>
           </div>
 
           <div className="space-y-2.5 text-xs">
             <h4 className="text-white font-bold text-sm">Categories</h4>
             <ul className="space-y-2 text-neutral-400">
-              <li>
-                <button
-                  type="button"
-                  onClick={() => jumpToCatalog({ cat: "fashion" })}
-                  className="hover:text-white cursor-pointer"
-                >
-                  Fashion Collection
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => jumpToCatalog({ cat: "gadget" })}
-                  className="hover:text-white cursor-pointer"
-                >
-                  Smart Gadgets
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => jumpToCatalog({ sort: "discount" })}
-                  className="hover:text-white cursor-pointer"
-                >
-                  Discounted Items
-                </button>
-              </li>
+              {STORE_CATEGORIES.map((catName) => (
+                <li key={catName}>
+                  <button
+                    type="button"
+                    onClick={() => jumpToCatalog({ sub: catName })}
+                    className="hover:text-white cursor-pointer"
+                  >
+                    {catName}
+                  </button>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -1720,8 +1865,8 @@ export default function HomeStore() {
             </h4>
             <ul className="space-y-2 text-neutral-400">
               <li>
-                Cash on Delivery (Dhaka ৳{deliveryConfig.insideDhaka} / Outside
-                ৳{deliveryConfig.outsideDhaka})
+                Inside Mymensingh ৳{deliveryConfig.insideMymensingh} / Outside
+                Mymensingh ৳{deliveryConfig.outsideMymensingh}
               </li>
               <li>7-Day Size Exchange &amp; Gadget Warranty</li>
               <li>Privacy Policy &amp; Terms of Service</li>
@@ -1738,7 +1883,7 @@ export default function HomeStore() {
             <ul className="space-y-2 text-neutral-400">
               <li className="flex items-center gap-2">
                 <MapPin className="w-3.5 h-3.5 shrink-0" />
-                <span>Dhaka &amp; Mymensingh, Bangladesh</span>
+                <span>Mymensingh, Bangladesh</span>
               </li>
               <li className="flex items-center gap-2">
                 <Phone className="w-3.5 h-3.5 shrink-0" />
@@ -1754,7 +1899,7 @@ export default function HomeStore() {
 
         <div className="max-w-7xl mx-auto px-4 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-500">
           <p>© 2026 FG Trend Tech. All rights reserved.</p>
-          <p>Mobile-first shopping experience</p>
+          <p>Based in Mymensingh • Delivering across Bangladesh</p>
         </div>
       </footer>
 
@@ -1980,9 +2125,9 @@ export default function HomeStore() {
                         active ? "text-neutral-300" : "text-neutral-500"
                       }`}
                     >
-                      {loc.zone === "dhaka"
-                        ? `Charge: ৳${deliveryConfig.insideDhaka}`
-                        : `Charge: ৳${deliveryConfig.outsideDhaka}`}
+                      {loc.zone === "mymensingh"
+                        ? `Charge: ৳${deliveryConfig.insideMymensingh}`
+                        : `Charge: ৳${deliveryConfig.outsideMymensingh}`}
                     </p>
                   </button>
                 );
@@ -2078,7 +2223,7 @@ export default function HomeStore() {
 
                 <input
                   type="text"
-                  placeholder="District (e.g. Dhaka, Mymensingh)"
+                  placeholder="District (e.g. Mymensingh, Dhaka)"
                   value={loginDistrictInput}
                   onChange={(e) => setLoginDistrictInput(e.target.value)}
                   className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2159,7 +2304,8 @@ export default function HomeStore() {
                   </p>
 
                   {quickViewProduct.category === "fashion" &&
-                    quickViewProduct.sizes && (
+                    quickViewProduct.sizes &&
+                    quickViewProduct.sizes.length > 0 && (
                       <div className="mt-4">
                         <span className="text-xs text-neutral-500 block mb-1.5">
                           Select Size:
@@ -2177,8 +2323,7 @@ export default function HomeStore() {
                               }
                               className={`px-3 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
                                 (selectedSizes[quickViewProduct.id] ||
-                                  quickViewProduct.sizes?.[0] ||
-                                  "L") === sz
+                                  quickViewProduct.sizes?.[0]) === sz
                                   ? "bg-neutral-950 text-white border-neutral-950"
                                   : "bg-white text-neutral-700 border-neutral-200"
                               }`}
@@ -2386,7 +2531,7 @@ export default function HomeStore() {
                       <input
                         type="text"
                         required
-                        placeholder="District (e.g. Dhaka, Mymensingh) *"
+                        placeholder="District (e.g. Mymensingh, Dhaka) *"
                         value={customerDistrict}
                         onChange={(e) => setCustomerDistrict(e.target.value)}
                         className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2412,14 +2557,14 @@ export default function HomeStore() {
                       <div className="grid grid-cols-2 gap-2 pt-1">
                         <button
                           type="button"
-                          onClick={() => setDeliveryZone("dhaka")}
+                          onClick={() => setDeliveryZone("mymensingh")}
                           className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                            deliveryZone === "dhaka"
+                            deliveryZone === "mymensingh"
                               ? "bg-neutral-950 border-neutral-950 text-white"
                               : "bg-white border-neutral-200 text-neutral-700"
                           }`}
                         >
-                          Inside Dhaka (৳{deliveryConfig.insideDhaka})
+                          Inside Mymensingh (৳{deliveryConfig.insideMymensingh})
                         </button>
                         <button
                           type="button"
@@ -2430,7 +2575,8 @@ export default function HomeStore() {
                               : "bg-white border-neutral-200 text-neutral-700"
                           }`}
                         >
-                          Outside Dhaka (৳{deliveryConfig.outsideDhaka})
+                          Outside Mymensingh (৳
+                          {deliveryConfig.outsideMymensingh})
                         </button>
                       </div>
 
@@ -2510,7 +2656,9 @@ export default function HomeStore() {
                       <div className="flex justify-between text-neutral-500">
                         <span>Delivery Charge</span>
                         <span className="font-semibold text-neutral-900">
-                          {deliveryCharge === 0 ? "Free (৳0)" : `৳${deliveryCharge}`}
+                          {deliveryCharge === 0
+                            ? "Free (৳0)"
+                            : `৳${deliveryCharge}`}
                         </span>
                       </div>
                       <div className="flex justify-between font-bold text-base text-neutral-950 pt-2 border-t border-neutral-100">

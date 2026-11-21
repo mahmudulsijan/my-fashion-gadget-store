@@ -29,12 +29,22 @@ type Product = {
   stock?: number;
 };
 
+const STORE_SUBCATEGORIES = [
+  "Men's Fashion",
+  "Women's Fashion",
+  "Men's Footwear",
+  "Women's Footwear",
+  "Gadgets",
+  "Beauty Products",
+  "Mobile Accessories",
+] as const;
+
 const FALLBACK_PRODUCTS: Product[] = [
   {
     id: "1",
     name: "Premium Oversized Cotton Hoodie",
     category: "fashion",
-    subCategory: "Hoodies & Jackets",
+    subCategory: "Men's Fashion",
     price: 1450,
     oldPrice: 1850,
     image:
@@ -49,7 +59,7 @@ const FALLBACK_PRODUCTS: Product[] = [
     id: "2",
     name: "ANC Wireless Noise-Cancelling Earbuds",
     category: "gadget",
-    subCategory: "Wireless Earbuds",
+    subCategory: "Gadgets",
     price: 2290,
     oldPrice: 2800,
     image:
@@ -62,24 +72,24 @@ const FALLBACK_PRODUCTS: Product[] = [
   },
   {
     id: "3",
-    name: "Minimalist Urban Bomber Jacket",
+    name: "Urban Runner Sneakers",
     category: "fashion",
-    subCategory: "Hoodies & Jackets",
+    subCategory: "Men's Footwear",
     price: 2490,
     oldPrice: 3100,
     image:
-      "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80",
     badge: "New Arrival",
-    sizes: ["S", "M", "L", "XL"],
+    sizes: ["40", "41", "42", "43"],
     description:
-      "Clean silhouette bomber jacket with smooth zip hardware and durable outer weave.",
+      "Lightweight cushioned sneakers designed for daily comfort and firm grip.",
     stock: 10,
   },
   {
     id: "4",
     name: "AMOLED Fitness & Call Smart Watch",
     category: "gadget",
-    subCategory: "Smartwatches",
+    subCategory: "Gadgets",
     price: 3450,
     oldPrice: 4200,
     image:
@@ -92,28 +102,27 @@ const FALLBACK_PRODUCTS: Product[] = [
   },
   {
     id: "5",
-    name: "Classic Slim-Fit Oxford Shirt",
+    name: "Radiant Dewy Serum & Mist Set",
     category: "fashion",
-    subCategory: "Casual Shirts",
+    subCategory: "Beauty Products",
     price: 1190,
     image:
-      "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=800&q=80",
-    badge: "100% Cotton",
-    sizes: ["M", "L", "XL"],
+      "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=800&q=80",
+    badge: "Skin Care",
     description:
-      "Crisp cotton Oxford shirt designed for smart-casual wear across all seasons.",
+      "Hydrating daily skincare duo crafted for fresh, smooth skin across all seasons.",
     stock: 20,
   },
   {
     id: "6",
     name: "20,000mAh 65W Fast Charging Power Bank",
     category: "gadget",
-    subCategory: "Chargers & Accessories",
+    subCategory: "Mobile Accessories",
     price: 2850,
     oldPrice: 3300,
     image:
       "https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=800&q=80",
-    badge: "Laptop Support",
+    badge: "Fast Charge",
     specs: "65W PD Type-C • Digital Display",
     description:
       "High-capacity power bank capable of fast-charging smartphones, tablets, and USB-C laptops.",
@@ -121,24 +130,69 @@ const FALLBACK_PRODUCTS: Product[] = [
   },
 ];
 
-function normalizeCategory(rawCategory?: string): "fashion" | "gadget" {
+function normalizeCategory(
+  rawCategory?: string,
+  subCat?: string
+): "fashion" | "gadget" {
+  const subVal = (subCat || "").toLowerCase();
+  if (subVal.includes("gadget") || subVal.includes("mobile")) return "gadget";
   const val = (rawCategory || "").toLowerCase();
   if (val.includes("gadget") || val.includes("tech")) return "gadget";
   return "fashion";
 }
 
 function inferSubCategory(item: any, cat: "fashion" | "gadget"): string {
-  if (item?.subCategory) return String(item.subCategory);
+  const raw = String(item?.subCategory || "").trim();
+  const val = raw.toLowerCase();
+
+  if (val.includes("women") && (val.includes("foot") || val.includes("shoe")))
+    return "Women's Footwear";
+  if (val.includes("men") && (val.includes("foot") || val.includes("shoe")))
+    return "Men's Footwear";
+  if (val.includes("women") && val.includes("fashion")) return "Women's Fashion";
+  if (val.includes("men") && val.includes("fashion")) return "Men's Fashion";
+  if (val.includes("beauty")) return "Beauty Products";
+  if (val.includes("mobile")) return "Mobile Accessories";
+  if (val.includes("gadget")) return "Gadgets";
+
+  const matched = STORE_SUBCATEGORIES.find(
+    (label) => label.toLowerCase() === val
+  );
+  if (matched) return matched;
+
   const text = `${item?.name || ""} ${item?.description || ""}`.toLowerCase();
-  if (cat === "fashion") {
-    if (text.includes("hoodie") || text.includes("jacket"))
-      return "Hoodies & Jackets";
-    if (text.includes("shirt")) return "Casual Shirts";
-    return "Men's Fashion";
+  if (cat === "gadget") {
+    if (
+      text.includes("cable") ||
+      text.includes("charger") ||
+      text.includes("power bank") ||
+      text.includes("case")
+    ) {
+      return "Mobile Accessories";
+    }
+    return "Gadgets";
   }
-  if (text.includes("watch")) return "Smartwatches";
-  if (text.includes("earbud") || text.includes("anc")) return "Wireless Earbuds";
-  return "Chargers & Accessories";
+
+  if (text.includes("serum") || text.includes("cream") || text.includes("skin")) {
+    return "Beauty Products";
+  }
+  if (text.includes("shoe") || text.includes("sneaker") || text.includes("heel")) {
+    return text.includes("women") || text.includes("ladies")
+      ? "Women's Footwear"
+      : "Men's Footwear";
+  }
+  if (text.includes("women") || text.includes("kurti") || text.includes("dress")) {
+    return "Women's Fashion";
+  }
+  return "Men's Fashion";
+}
+
+function hasSizeOptions(subCat: string, sizes?: string[]): boolean {
+  const lower = subCat.toLowerCase();
+  if (lower.includes("beauty") || lower.includes("gadget") || lower.includes("mobile")) {
+    return false;
+  }
+  return Array.isArray(sizes) && sizes.length > 0;
 }
 
 function ProductDetailsContent() {
@@ -153,6 +207,28 @@ function ProductDetailsContent() {
   const [selectedSize, setSelectedSize] = useState<string>("L");
   const [quantity, setQuantity] = useState<number>(1);
   const [wishlisted, setWishlisted] = useState<boolean>(false);
+
+  const [insideCharge, setInsideCharge] = useState<number>(70);
+  const [outsideCharge, setOutsideCharge] = useState<number>(130);
+
+  useEffect(() => {
+    try {
+      const savedSettings = localStorage.getItem("fg_admin_delivery_settings");
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
+        const inVal = Number(
+          parsed.insideMymensinghCharge ?? parsed.insideDhakaCharge ?? 70
+        );
+        const outVal = Number(
+          parsed.outsideMymensinghCharge ?? parsed.outsideDhakaCharge ?? 130
+        );
+        if (!Number.isNaN(inVal)) setInsideCharge(inVal);
+        if (!Number.isNaN(outVal)) setOutsideCharge(outVal);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -170,12 +246,16 @@ function ProductDetailsContent() {
           data.products.length > 0
         ) {
           list = data.products.map((item: any, idx: number) => {
-            const cat = normalizeCategory(item.category);
+            const subCat = inferSubCategory(
+              item,
+              normalizeCategory(item.category, item.subCategory)
+            );
+            const cat = normalizeCategory(item.category, subCat);
             return {
               id: String(item._id || item.id || idx),
               name: item.name || "Unnamed Product",
               category: cat,
-              subCategory: inferSubCategory(item, cat),
+              subCategory: subCat,
               price: Number(item.price) || 0,
               oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
               image:
@@ -185,7 +265,9 @@ function ProductDetailsContent() {
                 item.badge ||
                 (cat === "fashion" ? "New Collection" : "Smart Tech"),
               sizes:
-                cat === "fashion" ? item.sizes || ["M", "L", "XL"] : undefined,
+                cat === "fashion" && Array.isArray(item.sizes)
+                  ? item.sizes
+                  : undefined,
               specs:
                 cat === "gadget"
                   ? item.specs || item.description || "Original Gadget"
@@ -205,6 +287,7 @@ function ProductDetailsContent() {
 
         if (found) {
           setProduct(found);
+          setQuantity(1);
           if (found.sizes && found.sizes.length > 0) {
             setSelectedSize(found.sizes.includes("L") ? "L" : found.sizes[0]);
           }
@@ -228,11 +311,17 @@ function ProductDetailsContent() {
 
   const handleCheckoutAction = (buyNow: boolean) => {
     if (!product) return;
+    const stockCount = product.stock ?? 10;
+    if (stockCount <= 0) return;
+
+    const safeQty = Math.min(Math.max(1, quantity), stockCount);
+    const showSizes = hasSizeOptions(product.subCategory, product.sizes);
+
     try {
       const pendingItem = {
         product,
-        quantity,
-        selectedOption: product.category === "fashion" ? selectedSize : undefined,
+        quantity: safeQty,
+        selectedOption: showSizes ? selectedSize : undefined,
         buyNow,
       };
       sessionStorage.setItem("fg_pending_checkout", JSON.stringify(pendingItem));
@@ -278,19 +367,24 @@ function ProductDetailsContent() {
     );
   }
 
+  const stockCount = product.stock ?? 10;
+  const isOutOfStock = stockCount <= 0;
+  const showSizes = hasSizeOptions(product.subCategory, product.sizes);
+
   const discountPct =
     product.oldPrice && product.oldPrice > product.price
       ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
       : null;
 
   const relatedProducts = allProducts
-    .filter((p) => p.id !== product.id && p.category === product.category)
+    .filter((p) => p.id !== product.id && p.subCategory === product.subCategory)
     .slice(0, 3);
 
   return (
     <div className="min-h-screen bg-[#f7f7f7] text-neutral-900">
       <div className="bg-neutral-950 text-neutral-200 text-xs py-2 px-4 text-center">
-        Cash on Delivery Across Bangladesh • Dhaka ৳70 &amp; Outside Dhaka ৳130
+        Cash on Delivery Across Bangladesh • Mymensingh ৳{insideCharge} &amp;
+        Outside Mymensingh ৳{outsideCharge}
       </div>
 
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-200">
@@ -338,10 +432,14 @@ function ProductDetailsContent() {
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">
                   {product.subCategory}
                 </span>
-                <span className="text-xs font-semibold text-neutral-600 bg-neutral-100 px-3 py-1 rounded-full">
-                  {(product.stock ?? 10) > 0
-                    ? `In Stock (${product.stock ?? 10})`
-                    : "Out of Stock"}
+                <span
+                  className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                    isOutOfStock
+                      ? "bg-rose-100 text-rose-700"
+                      : "text-neutral-600 bg-neutral-100"
+                  }`}
+                >
+                  {isOutOfStock ? "Out of Stock" : `In Stock (${stockCount})`}
                 </span>
               </div>
 
@@ -366,7 +464,7 @@ function ProductDetailsContent() {
                   "Quality-checked product from FG Trend Tech with reliable nationwide delivery."}
               </p>
 
-              {product.category === "fashion" && product.sizes ? (
+              {showSizes && product.sizes ? (
                 <div className="pt-1">
                   <span className="text-xs font-semibold text-neutral-600 block mb-2">
                     Select Size:
@@ -407,8 +505,9 @@ function ProductDetailsContent() {
                 <div className="inline-flex items-center gap-3 bg-neutral-100 border border-neutral-200 rounded-xl px-2 py-1.5">
                   <button
                     type="button"
+                    disabled={isOutOfStock || quantity <= 1}
                     onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    className="w-7 h-7 rounded-lg bg-white flex items-center justify-center border border-neutral-200 cursor-pointer"
+                    className="w-7 h-7 rounded-lg bg-white flex items-center justify-center border border-neutral-200 disabled:opacity-40 cursor-pointer"
                   >
                     <Minus className="w-3.5 h-3.5" />
                   </button>
@@ -417,8 +516,11 @@ function ProductDetailsContent() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => q + 1)}
-                    className="w-7 h-7 rounded-lg bg-white flex items-center justify-center border border-neutral-200 cursor-pointer"
+                    disabled={isOutOfStock || quantity >= stockCount}
+                    onClick={() =>
+                      setQuantity((q) => Math.min(stockCount, q + 1))
+                    }
+                    className="w-7 h-7 rounded-lg bg-white flex items-center justify-center border border-neutral-200 disabled:opacity-40 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -431,11 +533,16 @@ function ProductDetailsContent() {
               <div className="flex gap-2.5">
                 <button
                   type="button"
+                  disabled={isOutOfStock}
                   onClick={() => handleCheckoutAction(false)}
-                  className="flex-1 bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold py-3.5 px-5 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                  className="flex-1 bg-neutral-950 hover:bg-neutral-800 disabled:opacity-40 text-white text-sm font-semibold py-3.5 px-5 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>Add to Cart — ৳{product.price * quantity}</span>
+                  <span>
+                    {isOutOfStock
+                      ? "Out of Stock"
+                      : `Add to Cart — ৳${product.price * quantity}`}
+                  </span>
                 </button>
 
                 <button
@@ -456,8 +563,9 @@ function ProductDetailsContent() {
 
               <button
                 type="button"
+                disabled={isOutOfStock}
                 onClick={() => handleCheckoutAction(true)}
-                className="w-full border border-neutral-950 text-neutral-950 hover:bg-neutral-950 hover:text-white text-sm font-semibold py-3 rounded-xl transition cursor-pointer"
+                className="w-full border border-neutral-950 text-neutral-950 hover:bg-neutral-950 hover:text-white disabled:opacity-40 text-sm font-semibold py-3 rounded-xl transition cursor-pointer"
               >
                 Buy Now (Cash on Delivery)
               </button>
@@ -465,7 +573,9 @@ function ProductDetailsContent() {
               <div className="grid grid-cols-3 gap-2 pt-2 text-[11px] text-neutral-600">
                 <div className="flex items-center gap-1.5 bg-neutral-50 p-2.5 rounded-xl border border-neutral-200/70">
                   <Truck className="w-4 h-4 shrink-0 text-neutral-900" />
-                  <span>৳70 Dhaka / ৳130 Outside</span>
+                  <span>
+                    ৳{insideCharge} Mymensingh / ৳{outsideCharge} Outside
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5 bg-neutral-50 p-2.5 rounded-xl border border-neutral-200/70">
                   <ShieldCheck className="w-4 h-4 shrink-0 text-neutral-900" />
@@ -484,7 +594,7 @@ function ProductDetailsContent() {
         {relatedProducts.length > 0 && (
           <section className="space-y-5">
             <h2 className="text-xl font-bold text-neutral-950">
-              Related Products
+              Related in {product.subCategory}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               {relatedProducts.map((rel) => (
@@ -517,6 +627,7 @@ function ProductDetailsContent() {
     </div>
   );
 }
+
 export default function ProductDetailsPage() {
   return (
     <Suspense
