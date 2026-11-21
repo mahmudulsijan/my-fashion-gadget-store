@@ -27,6 +27,7 @@ import {
   Home,
   Package,
   LogOut,
+  Flame,
 } from "lucide-react";
 
 type Product = {
@@ -57,8 +58,24 @@ type CustomerProfile = {
   address: string;
 };
 
+type DeliveryConfig = {
+  insideDhaka: number;
+  outsideDhaka: number;
+  freeThreshold: number;
+  bkashNumber: string;
+  nagadNumber: string;
+};
+
 type SortOption = "featured" | "price-asc" | "price-desc" | "discount";
 type BottomTab = "home" | "categories" | "cart" | "orders" | "account";
+
+const DEFAULT_DELIVERY_CONFIG: DeliveryConfig = {
+  insideDhaka: 70,
+  outsideDhaka: 130,
+  freeThreshold: 0,
+  bkashNumber: "01700-000000",
+  nagadNumber: "01700-000000",
+};
 
 const DELIVERY_LOCATIONS = [
   { label: "Dhaka", district: "Dhaka", zone: "dhaka" as const },
@@ -126,10 +143,23 @@ function normalizeCategory(rawCategory?: string): "fashion" | "gadget" {
   return "fashion";
 }
 
-function inferSubCategory(item: any, cat: "fashion" | "gadget"): string {
+function isFootwearText(text?: string): boolean {
+  const val = (text || "").toLowerCase();
+  return (
+    val.includes("shoe") ||
+    val.includes("sneaker") ||
+    val.includes("boot") ||
+    val.includes("loafer") ||
+    val.includes("sandal") ||
+    val.includes("footwear")
+  );
+}
+
+function inferSubCategory(item: Record<string, unknown>, cat: "fashion" | "gadget"): string {
   if (item?.subCategory) return String(item.subCategory);
   const text = `${item?.name || ""} ${item?.description || ""}`.toLowerCase();
   if (cat === "fashion") {
+    if (isFootwearText(text)) return "Sneakers & Footwear";
     if (text.includes("hoodie") || text.includes("jacket"))
       return "Hoodies & Jackets";
     if (text.includes("shirt")) return "Casual Shirts";
@@ -138,6 +168,17 @@ function inferSubCategory(item: any, cat: "fashion" | "gadget"): string {
   if (text.includes("watch")) return "Smartwatches";
   if (text.includes("earbud") || text.includes("anc")) return "Wireless Earbuds";
   return "Chargers & Accessories";
+}
+
+function resolveFashionSizes(item: Record<string, unknown>, subCat: string): string[] {
+  if (Array.isArray(item?.sizes) && item.sizes.length > 0) {
+    return item.sizes.map((s) => String(s).trim()).filter(Boolean);
+  }
+  const combinedText = `${subCat} ${item?.name || ""} ${item?.description || ""}`;
+  if (isFootwearText(combinedText)) {
+    return ["40", "41", "42", "43"];
+  }
+  return ["M", "L", "XL"];
 }
 
 function getDiscountPercent(price: number, oldPrice?: number): number | null {
@@ -155,11 +196,17 @@ export default function HomeStore() {
     "all" | "fashion" | "gadget"
   >("all");
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>("all");
+  const [flashSaleOnly, setFlashSaleOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("featured");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>("home");
+
+  // Delivery & Wallet Config synced from Admin Settings
+  const [deliveryConfig, setDeliveryConfig] = useState<DeliveryConfig>(
+    DEFAULT_DELIVERY_CONFIG
+  );
 
   // Location & User Auth/Account States
   const [deliveryLocation, setDeliveryLocation] = useState("Dhaka");
@@ -196,6 +243,8 @@ export default function HomeStore() {
   const [paymentMethod, setPaymentMethod] = useState<
     "Cash on Delivery" | "bKash" | "Nagad"
   >("Cash on Delivery");
+  const [senderNumber, setSenderNumber] = useState("");
+  const [trxId, setTrxId] = useState("");
   const [deliveryZone, setDeliveryZone] = useState<"dhaka" | "outside">(
     "dhaka"
   );
@@ -229,8 +278,24 @@ export default function HomeStore() {
     }
   }, []);
 
-  // Load saved customer profile
+  // Load saved delivery settings & customer profile
   useEffect(() => {
+    try {
+      const rawSettings = localStorage.getItem("fg_admin_delivery_settings");
+      if (rawSettings) {
+        const parsed = JSON.parse(rawSettings);
+        setDeliveryConfig({
+          insideDhaka: Number(parsed.insideDhakaCharge ?? 70),
+          outsideDhaka: Number(parsed.outsideDhakaCharge ?? 130),
+          freeThreshold: Number(parsed.freeDeliveryThreshold ?? 0),
+          bkashNumber: String(parsed.bkashNumber || "01700-000000"),
+          nagadNumber: String(parsed.nagadNumber || "01700-000000"),
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load delivery settings:", err);
+    }
+
     try {
       const savedUser = localStorage.getItem("fg_trend_tech_user");
       if (savedUser) {
@@ -241,6 +306,9 @@ export default function HomeStore() {
         if (parsed.district) {
           setCustomerDistrict(parsed.district);
           setDeliveryLocation(parsed.district);
+          setDeliveryZone(
+            parsed.district.toLowerCase().includes("dhaka") ? "dhaka" : "outside"
+          );
         }
         if (parsed.address) {
           setCustomerAddress(parsed.address);
@@ -254,7 +322,7 @@ export default function HomeStore() {
   useEffect(() => {
     try {
       const savedCart = localStorage.getItem("fg_trend_tech_cart");
-      let initialCart: CartItem[] = savedCart ? JSON.parse(savedCart) : [];
+      const initialCart: CartItem[] = savedCart ? JSON.parse(savedCart) : [];
 
       const pendingRaw = sessionStorage.getItem("fg_pending_checkout");
       if (pendingRaw) {
@@ -317,28 +385,31 @@ export default function HomeStore() {
 
         if (data.success && Array.isArray(data.products)) {
           const mapped: Product[] = data.products.map(
-            (item: any, idx: number) => {
-              const cat = normalizeCategory(item.category);
+            (item: Record<string, unknown>, idx: number) => {
+              const cat = normalizeCategory(String(item.category || ""));
+              const subCat = inferSubCategory(item, cat);
               return {
                 id: String(item._id || item.id || idx),
-                name: item.name || "Unnamed Product",
+                name: String(item.name || "Unnamed Product"),
                 category: cat,
-                subCategory: inferSubCategory(item, cat),
+                subCategory: subCat,
                 price: Number(item.price) || 0,
                 oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
                 image:
-                  item.image ||
+                  String(item.image || "") ||
                   "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80",
                 badge:
-                  item.badge ||
+                  String(item.badge || "") ||
                   (cat === "fashion" ? "New Collection" : "Smart Tech"),
                 sizes:
-                  cat === "fashion" ? item.sizes || ["M", "L", "XL"] : undefined,
+                  cat === "fashion"
+                    ? resolveFashionSizes(item, subCat)
+                    : undefined,
                 specs:
                   cat === "gadget"
-                    ? item.specs || item.description || "Original Gadget"
+                    ? String(item.specs || item.description || "Original Gadget")
                     : undefined,
-                description: item.description || "",
+                description: String(item.description || ""),
                 stock: item.stock !== undefined ? Number(item.stock) : 10,
               };
             }
@@ -453,9 +524,28 @@ export default function HomeStore() {
     });
   };
 
+  const flashSaleCount = useMemo(() => {
+    return products.filter(
+      (p) => typeof p.oldPrice === "number" && p.oldPrice > p.price
+    ).length;
+  }, [products]);
+
+  const relatedProducts = useMemo(() => {
+    if (!quickViewProduct) return [];
+    return products
+      .filter(
+        (item) =>
+          item.id !== quickViewProduct.id &&
+          item.category === quickViewProduct.category
+      )
+      .slice(0, 3);
+  }, [quickViewProduct, products]);
+
   const filteredProducts = useMemo(() => {
     const list = products.filter((p) => {
       if (showWishlistOnly && !wishlist.includes(p.id)) return false;
+      if (flashSaleOnly && !(typeof p.oldPrice === "number" && p.oldPrice > p.price))
+        return false;
       const matchesCat =
         selectedCategory === "all" || p.category === selectedCategory;
       const matchesSub =
@@ -485,6 +575,7 @@ export default function HomeStore() {
     products,
     showWishlistOnly,
     wishlist,
+    flashSaleOnly,
     selectedCategory,
     selectedSubCategory,
     searchQuery,
@@ -541,8 +632,21 @@ export default function HomeStore() {
     (sum, item) => sum + item.product.price * item.quantity,
     0
   );
+
+  const isFreeDeliveryUnlocked =
+    cart.length > 0 &&
+    deliveryConfig.freeThreshold > 0 &&
+    subtotal >= deliveryConfig.freeThreshold;
+
   const deliveryCharge =
-    cart.length === 0 ? 0 : deliveryZone === "dhaka" ? 70 : 130;
+    cart.length === 0
+      ? 0
+      : isFreeDeliveryUnlocked
+      ? 0
+      : deliveryZone === "dhaka"
+      ? deliveryConfig.insideDhaka
+      : deliveryConfig.outsideDhaka;
+
   const grandTotal = subtotal + deliveryCharge;
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -558,15 +662,31 @@ export default function HomeStore() {
       return;
     }
 
+    if (paymentMethod === "bKash" || paymentMethod === "Nagad") {
+      if (!senderNumber.trim() || !trxId.trim()) {
+        setOrderError(
+          `Please enter your ${paymentMethod} sender number and Transaction ID (TrxID).`
+        );
+        return;
+      }
+    }
+
     setSubmittingOrder(true);
     setOrderError("");
 
     try {
-      const zoneLabel =
-        deliveryZone === "dhaka"
-          ? "Inside Dhaka - ৳70"
-          : "Outside Dhaka - ৳130";
-      const fullAddress = `${customerAddress.trim()}, ${customerDistrict} (${zoneLabel}) • Payment: ${paymentMethod}${
+      const zoneLabel = isFreeDeliveryUnlocked
+        ? "Free Delivery"
+        : deliveryZone === "dhaka"
+        ? `Inside Dhaka - ৳${deliveryConfig.insideDhaka}`
+        : `Outside Dhaka - ৳${deliveryConfig.outsideDhaka}`;
+
+      const paymentSegment =
+        paymentMethod === "Cash on Delivery"
+          ? "Payment: Cash on Delivery"
+          : `Payment: ${paymentMethod} | From: ${senderNumber.trim()} | TrxID: ${trxId.trim()}`;
+
+      const fullAddress = `${customerAddress.trim()}, ${customerDistrict} (${zoneLabel}) • ${paymentSegment}${
         orderNotes.trim() ? ` • Note: ${orderNotes.trim()}` : ""
       }`;
 
@@ -608,13 +728,17 @@ export default function HomeStore() {
         setCustomerPhone("");
         setCustomerAddress("");
       }
+      setSenderNumber("");
+      setTrxId("");
       setOrderNotes("");
       setOrderSuccess(true);
       notify("Order placed successfully!");
-    } catch (err: any) {
-      setOrderError(
-        err?.message || "Could not place order. Please try again."
-      );
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Could not place order. Please try again.";
+      setOrderError(msg);
     } finally {
       setSubmittingOrder(false);
     }
@@ -625,12 +749,14 @@ export default function HomeStore() {
     sub?: string;
     sort?: SortOption;
     wishlistOnly?: boolean;
+    flashOnly?: boolean;
     scrollToId?: string;
   }) => {
     setSelectedCategory(opts?.cat ?? "all");
     setSelectedSubCategory(opts?.sub ?? "all");
     setSortBy(opts?.sort ?? "featured");
     setShowWishlistOnly(opts?.wishlistOnly ?? false);
+    setFlashSaleOnly(opts?.flashOnly ?? false);
     setMobileMenuOpen(false);
     const targetId = opts?.scrollToId || "catalog-section";
     const el = document.getElementById(targetId);
@@ -657,8 +783,12 @@ export default function HomeStore() {
 
       {/* A. Announcement Bar */}
       <div className="bg-neutral-950 text-neutral-200 text-xs py-2 px-4 text-center tracking-wide border-b border-neutral-800">
-        Nationwide Cash on Delivery • Inside Dhaka ৳70 &amp; Outside Dhaka ৳130
-        • Authentic Fashion &amp; Tech
+        Nationwide Cash on Delivery &amp; Mobile Pay • Inside Dhaka ৳
+        {deliveryConfig.insideDhaka} &amp; Outside Dhaka ৳
+        {deliveryConfig.outsideDhaka}
+        {deliveryConfig.freeThreshold > 0
+          ? ` • Free Delivery over ৳${deliveryConfig.freeThreshold}`
+          : " • Authentic Fashion & Tech"}
       </div>
 
       {/* B. Modern Navigation Bar */}
@@ -736,12 +866,17 @@ export default function HomeStore() {
             </button>
             <button
               type="button"
-              onClick={() => jumpToCatalog({ sort: "discount" })}
+              onClick={() =>
+                jumpToCatalog({ sort: "discount", flashOnly: true })
+              }
               className="hover:text-neutral-950 transition cursor-pointer"
             >
-              Best Offers
+              Flash Sale
             </button>
-            <a href="#footer-section" className="hover:text-neutral-950 transition">
+            <a
+              href="#footer-section"
+              className="hover:text-neutral-950 transition"
+            >
               Contact Us
             </a>
             <Link
@@ -894,10 +1029,12 @@ export default function HomeStore() {
               </button>
               <button
                 type="button"
-                onClick={() => jumpToCatalog({ sort: "discount" })}
+                onClick={() =>
+                  jumpToCatalog({ sort: "discount", flashOnly: true })
+                }
                 className="text-left py-1.5 cursor-pointer"
               >
-                Best Offers
+                Flash Sale
               </button>
               <Link
                 href="/track-order"
@@ -919,7 +1056,7 @@ export default function HomeStore() {
       </header>
 
       {/* C. Hero Section */}
-      <section className="max-w-7xl mx-auto px-4 pt-5 pb-10">
+      <section className="max-w-7xl mx-auto px-4 pt-5 pb-8">
         <div className="bg-[#121212] text-white rounded-3xl overflow-hidden border border-neutral-800 shadow-lg">
           <div className="grid lg:grid-cols-12 gap-7 p-6 sm:p-10 items-center">
             <div className="lg:col-span-5 space-y-5">
@@ -1017,6 +1154,51 @@ export default function HomeStore() {
         </div>
       </section>
 
+      {/* Flash Sale Banner */}
+      <section className="max-w-7xl mx-auto px-4 pb-10">
+        <div className="rounded-2xl bg-gradient-to-r from-neutral-950 via-rose-950 to-neutral-900 text-white p-4 sm:p-5 border border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-neutral-950 flex items-center justify-center shrink-0">
+              <Flame className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400 text-neutral-950">
+                  Flash Sale
+                </span>
+                <span className="text-xs text-neutral-300">
+                  {flashSaleCount} discounted items available
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-bold mt-0.5">
+                বিশেষ ছাড়ে সেরা Fashion &amp; Smart Gadgets অফার
+              </h2>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const nextFlash = !flashSaleOnly;
+              setFlashSaleOnly(nextFlash);
+              if (nextFlash) {
+                setShowWishlistOnly(false);
+                setSortBy("discount");
+                const el = document.getElementById("catalog-section");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }
+            }}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer shrink-0 ${
+              flashSaleOnly
+                ? "bg-amber-400 text-neutral-950"
+                : "bg-white text-neutral-950 hover:bg-neutral-200"
+            }`}
+          >
+            {flashSaleOnly ? "সব প্রোডাক্ট দেখুন" : "অফার প্রোডাক্ট দেখুন"}
+          </button>
+        </div>
+      </section>
+
       {/* D. Featured Categories */}
       <section id="categories-section" className="max-w-7xl mx-auto px-4 pb-12">
         <div className="flex items-center justify-between mb-5">
@@ -1068,7 +1250,11 @@ export default function HomeStore() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950 mr-2">
-                {showWishlistOnly ? "Saved Wishlist" : "Featured Collection"}
+                {showWishlistOnly
+                  ? "Saved Wishlist"
+                  : flashSaleOnly
+                  ? "Flash Sale Deals"
+                  : "Featured Collection"}
               </h2>
 
               {(
@@ -1083,11 +1269,14 @@ export default function HomeStore() {
                   type="button"
                   onClick={() => {
                     setShowWishlistOnly(false);
+                    setFlashSaleOnly(false);
                     setSelectedCategory(tab.key);
                     setSelectedSubCategory("all");
                   }}
                   className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wide transition cursor-pointer ${
-                    !showWishlistOnly && selectedCategory === tab.key
+                    !showWishlistOnly &&
+                    !flashSaleOnly &&
+                    selectedCategory === tab.key
                       ? "bg-neutral-950 text-white"
                       : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
                   }`}
@@ -1139,19 +1328,33 @@ export default function HomeStore() {
             </div>
           </div>
 
-          {selectedSubCategory !== "all" && (
-            <div className="flex items-center gap-2 text-xs">
+          {(selectedSubCategory !== "all" || flashSaleOnly) && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="text-neutral-500">Active filter:</span>
-              <span className="bg-neutral-900 text-white px-3 py-1 rounded-full font-medium flex items-center gap-1.5">
-                {selectedSubCategory}
-                <button
-                  type="button"
-                  onClick={() => setSelectedSubCategory("all")}
-                  className="cursor-pointer"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
+              {flashSaleOnly && (
+                <span className="bg-rose-600 text-white px-3 py-1 rounded-full font-medium flex items-center gap-1.5">
+                  Flash Sale
+                  <button
+                    type="button"
+                    onClick={() => setFlashSaleOnly(false)}
+                    className="cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {selectedSubCategory !== "all" && (
+                <span className="bg-neutral-900 text-white px-3 py-1 rounded-full font-medium flex items-center gap-1.5">
+                  {selectedSubCategory}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSubCategory("all")}
+                    className="cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -1167,27 +1370,25 @@ export default function HomeStore() {
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="bg-white rounded-3xl p-10 text-center border border-neutral-200 space-y-3">
-            <p className="text-sm text-neutral-600 font-medium">
+            <p className="text-sm text-neutral-700 font-semibold">
               {products.length === 0
-                ? "এখনো কোনো প্রোডাক্ট যোগ করা হয়নি। Admin Panel থেকে আপনার প্রোডাক্ট যুক্ত করুন।"
-                : "No matching products found."}
+                ? "বর্তমানে স্টোরে কোনো প্রোডাক্ট তালিকাভুক্ত নেই।"
+                : "এই ফিল্টারে কোনো প্রোডাক্ট পাওয়া যায়নি।"}
+            </p>
+            <p className="text-xs text-neutral-500">
+              অন্য ক্যাটাগরি বা সার্চ টার্ম ব্যবহার করে আবার চেষ্টা করুন।
             </p>
             <div className="flex items-center justify-center gap-2.5 pt-1">
-              {products.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => jumpToCatalog()}
-                  className="bg-neutral-950 text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
-                >
-                  Reset Filters
-                </button>
-              )}
-              <Link
-                href="/admin"
-                className="border border-neutral-300 text-neutral-800 hover:bg-neutral-100 text-xs font-semibold px-4 py-2 rounded-xl transition"
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  jumpToCatalog();
+                }}
+                className="bg-neutral-950 text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
               >
-                Go to Admin Panel
-              </Link>
+                Show All Products
+              </button>
             </div>
           </div>
         ) : (
@@ -1296,7 +1497,7 @@ export default function HomeStore() {
                       </div>
 
                       {product.category === "fashion" && product.sizes ? (
-                        <div className="mt-3 flex items-center gap-1.5">
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
                           <span className="text-xs text-neutral-500 mr-1">
                             Size:
                           </span>
@@ -1404,7 +1605,8 @@ export default function HomeStore() {
                 Nationwide Cash on Delivery
               </h4>
               <p className="text-xs text-neutral-500 mt-1">
-                Inside Dhaka ৳70 and Outside Dhaka ৳130 delivery charge.
+                Inside Dhaka ৳{deliveryConfig.insideDhaka} and Outside Dhaka ৳
+                {deliveryConfig.outsideDhaka} delivery charge.
               </p>
             </div>
           </div>
@@ -1517,18 +1719,16 @@ export default function HomeStore() {
               Policies &amp; Support
             </h4>
             <ul className="space-y-2 text-neutral-400">
-              <li>Cash on Delivery (Dhaka ৳70 / Outside ৳130)</li>
+              <li>
+                Cash on Delivery (Dhaka ৳{deliveryConfig.insideDhaka} / Outside
+                ৳{deliveryConfig.outsideDhaka})
+              </li>
               <li>7-Day Size Exchange &amp; Gadget Warranty</li>
               <li>Privacy Policy &amp; Terms of Service</li>
               <li>
                 <Link href="/track-order" className="hover:text-white">
                   Track Your Order
                 </Link>
-              </li>
-              <li>
-                <a href="/admin" className="hover:text-white">
-                  Admin Portal
-                </a>
               </li>
             </ul>
           </div>
@@ -1780,7 +1980,9 @@ export default function HomeStore() {
                         active ? "text-neutral-300" : "text-neutral-500"
                       }`}
                     >
-                      {loc.zone === "dhaka" ? "Charge: ৳70" : "Charge: ৳130"}
+                      {loc.zone === "dhaka"
+                        ? `Charge: ৳${deliveryConfig.insideDhaka}`
+                        : `Charge: ৳${deliveryConfig.outsideDhaka}`}
                     </p>
                   </button>
                 );
@@ -1908,10 +2110,10 @@ export default function HomeStore() {
         </div>
       )}
 
-      {/* Quick View Modal */}
+      {/* Quick View Modal + Related Products */}
       {quickViewProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full overflow-hidden shadow-2xl border border-neutral-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-neutral-200 my-auto">
             <div className="grid sm:grid-cols-2">
               <div className="aspect-square bg-neutral-100">
                 <img
@@ -1962,7 +2164,7 @@ export default function HomeStore() {
                         <span className="text-xs text-neutral-500 block mb-1.5">
                           Select Size:
                         </span>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           {quickViewProduct.sizes.map((sz) => (
                             <button
                               key={sz}
@@ -2002,6 +2204,38 @@ export default function HomeStore() {
                 </button>
               </div>
             </div>
+
+            {relatedProducts.length > 0 && (
+              <div className="p-5 bg-neutral-50 border-t border-neutral-200 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">
+                  Related Products
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  {relatedProducts.map((rel) => (
+                    <button
+                      key={rel.id}
+                      type="button"
+                      onClick={() => setQuickViewProduct(rel)}
+                      className="text-left bg-white p-2 rounded-2xl border border-neutral-200 hover:border-neutral-400 transition cursor-pointer"
+                    >
+                      <div className="aspect-square rounded-xl overflow-hidden bg-neutral-100 mb-1.5">
+                        <img
+                          src={rel.image}
+                          alt={rel.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <p className="text-xs font-semibold text-neutral-900 truncate">
+                        {rel.name}
+                      </p>
+                      <p className="text-xs font-extrabold text-neutral-800">
+                        ৳{rel.price}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2185,7 +2419,7 @@ export default function HomeStore() {
                               : "bg-white border-neutral-200 text-neutral-700"
                           }`}
                         >
-                          Inside Dhaka (৳70)
+                          Inside Dhaka (৳{deliveryConfig.insideDhaka})
                         </button>
                         <button
                           type="button"
@@ -2196,9 +2430,21 @@ export default function HomeStore() {
                               : "bg-white border-neutral-200 text-neutral-700"
                           }`}
                         >
-                          Outside Dhaka (৳130)
+                          Outside Dhaka (৳{deliveryConfig.outsideDhaka})
                         </button>
                       </div>
+
+                      {deliveryConfig.freeThreshold > 0 && (
+                        <p className="text-[11px] text-emerald-700 font-semibold">
+                          {isFreeDeliveryUnlocked
+                            ? "Free delivery unlocked for your order!"
+                            : `Add ৳${Math.max(
+                                0,
+                                deliveryConfig.freeThreshold - subtotal
+                              )} more for free delivery.`}
+                        </p>
+                      )}
+
                       <div className="pt-1">
                         <span className="text-xs font-semibold text-neutral-600 block mb-1.5">
                           Payment Method:
@@ -2222,6 +2468,36 @@ export default function HomeStore() {
                           ))}
                         </div>
                       </div>
+
+                      {(paymentMethod === "bKash" ||
+                        paymentMethod === "Nagad") && (
+                        <div className="p-3 rounded-2xl bg-pink-50/80 border border-pink-200 space-y-2 text-xs">
+                          <p className="font-semibold text-pink-950">
+                            {paymentMethod} Send Money Number:{" "}
+                            <span className="font-mono font-bold">
+                              {paymentMethod === "bKash"
+                                ? deliveryConfig.bkashNumber
+                                : deliveryConfig.nagadNumber}
+                            </span>
+                          </p>
+                          <input
+                            type="tel"
+                            required
+                            placeholder={`আপনার ${paymentMethod} Sender Number (017XXXXXXXX) *`}
+                            value={senderNumber}
+                            onChange={(e) => setSenderNumber(e.target.value)}
+                            className="w-full bg-white border border-pink-200 rounded-xl px-3 py-2 text-xs text-neutral-900 outline-none focus:border-pink-500"
+                          />
+                          <input
+                            type="text"
+                            required
+                            placeholder="Transaction ID (TrxID) *"
+                            value={trxId}
+                            onChange={(e) => setTrxId(e.target.value)}
+                            className="w-full bg-white border border-pink-200 rounded-xl px-3 py-2 text-xs text-neutral-900 outline-none focus:border-pink-500"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div className="bg-white rounded-2xl border border-neutral-200/80 p-4 space-y-2 text-sm">
@@ -2234,7 +2510,7 @@ export default function HomeStore() {
                       <div className="flex justify-between text-neutral-500">
                         <span>Delivery Charge</span>
                         <span className="font-semibold text-neutral-900">
-                          ৳{deliveryCharge}
+                          {deliveryCharge === 0 ? "Free (৳0)" : `৳${deliveryCharge}`}
                         </span>
                       </div>
                       <div className="flex justify-between font-bold text-base text-neutral-950 pt-2 border-t border-neutral-100">

@@ -19,6 +19,13 @@ import {
   Pencil,
   Eye,
   EyeOff,
+  LayoutDashboard,
+  Users,
+  Settings,
+  Menu,
+  TrendingUp,
+  CreditCard,
+  ShieldCheck,
 } from "lucide-react";
 
 interface ProductItem {
@@ -36,23 +43,40 @@ interface ProductItem {
   stock?: number;
 }
 
+interface OrderProductLine {
+  productId?: string;
+  name: string;
+  price: number;
+  quantity: number;
+  size?: string;
+  image?: string;
+}
+
 interface OrderItem {
   _id: string;
   customerName: string;
   phone: string;
   address: string;
-  items: {
-    productId?: string;
-    name: string;
-    price: number;
-    quantity: number;
-    size?: string;
-    image?: string;
-  }[];
+  items: OrderProductLine[];
   totalAmount: number;
   status: string;
   createdAt?: string;
 }
+
+interface DeliverySettings {
+  insideDhakaCharge: number;
+  outsideDhakaCharge: number;
+  freeDeliveryThreshold: number;
+  bkashNumber: string;
+  nagadNumber: string;
+}
+
+type AdminSection =
+  | "overview"
+  | "orders"
+  | "products"
+  | "customers"
+  | "settings";
 
 const ORDER_STATUSES = [
   "Pending",
@@ -61,6 +85,32 @@ const ORDER_STATUSES = [
   "Delivered",
   "Cancelled",
 ] as const;
+
+const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = {
+  insideDhakaCharge: 70,
+  outsideDhakaCharge: 130,
+  freeDeliveryThreshold: 0,
+  bkashNumber: "01700-000000",
+  nagadNumber: "01700-000000",
+};
+
+function isFootwearSubCategory(subCat?: string): boolean {
+  const val = (subCat || "").toLowerCase();
+  return (
+    val.includes("shoe") ||
+    val.includes("sneaker") ||
+    val.includes("boot") ||
+    val.includes("loafer") ||
+    val.includes("sandal") ||
+    val.includes("footwear")
+  );
+}
+
+function getDefaultSizesForSubCategory(subCat?: string): string[] {
+  return isFootwearSubCategory(subCat)
+    ? ["40", "41", "42", "43"]
+    : ["M", "L", "XL"];
+}
 
 function getStatusBadgeStyle(status: string) {
   switch (status) {
@@ -75,6 +125,20 @@ function getStatusBadgeStyle(status: string) {
     default:
       return "bg-amber-100 text-amber-800 border-amber-200";
   }
+}
+
+function extractPaymentInfo(addressText?: string) {
+  const raw = addressText || "";
+  let method = "Cash on Delivery";
+  if (/bkash/i.test(raw)) method = "bKash";
+  else if (/nagad/i.test(raw)) method = "Nagad";
+
+  const trxMatch = raw.match(
+    /(?:trx(?:id)?|transaction(?:\s*id)?)\s*[:#-]?\s*([a-zA-Z0-9_-]{4,24})/i
+  );
+  const trxId = trxMatch ? trxMatch[1] : null;
+
+  return { method, trxId };
 }
 
 async function compressImageToDataUrl(
@@ -117,18 +181,26 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"orders" | "products">("orders");
+  const [activeSection, setActiveSection] = useState<AdminSection>("overview");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Order filters & detail modal
+  // Global search & filters
+  const [globalSearch, setGlobalSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [orderSearch, setOrderSearch] = useState("");
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
+
+  // Auto-stock deduction guard state (persisted in localStorage)
+  const [autoDeductStock, setAutoDeductStock] = useState(true);
+  const [deductedOrderIds, setDeductedOrderIds] = useState<string[]>([]);
 
   // Product filters & quick stock
   const [productSearch, setProductSearch] = useState("");
@@ -175,6 +247,11 @@ export default function AdminPage() {
   const [editDescription, setEditDescription] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Delivery & Payment Settings State
+  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(
+    DEFAULT_DELIVERY_SETTINGS
+  );
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -206,6 +283,22 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
+    try {
+      const savedDeducted = localStorage.getItem("fg_admin_deducted_orders");
+      if (savedDeducted) {
+        setDeductedOrderIds(JSON.parse(savedDeducted));
+      }
+      const savedSettings = localStorage.getItem("fg_admin_delivery_settings");
+      if (savedSettings) {
+        setDeliverySettings({
+          ...DEFAULT_DELIVERY_SETTINGS,
+          ...JSON.parse(savedSettings),
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load admin settings:", err);
+    }
+
     const savedAuth = sessionStorage.getItem("admin_authed");
     if (savedAuth === "true") {
       setIsAuthenticated(true);
@@ -244,9 +337,17 @@ export default function AdminPage() {
     if (nextCat === "fashion") {
       setSubCategory("Hoodies & Jackets");
       setBadge("New Arrival");
+      setSizesText("M, L, XL");
     } else {
       setSubCategory("Wireless Earbuds");
       setBadge("1 Year Warranty");
+    }
+  };
+
+  const handleSubCategoryChange = (nextSubCat: string) => {
+    setSubCategory(nextSubCat);
+    if (category === "fashion") {
+      setSizesText(getDefaultSizesForSubCategory(nextSubCat).join(", "));
     }
   };
 
@@ -272,9 +373,11 @@ export default function AdminPage() {
         setEditImage(compressedDataUrl);
       }
       showToast("ছবি রেডি হয়েছে");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "ছবি প্রসেস করতে সমস্যা হয়েছে";
       console.error("Image upload error:", err);
-      showToast(err?.message || "ছবি প্রসেস করতে সমস্যা হয়েছে");
+      showToast(msg);
     } finally {
       setProcessingImage(false);
     }
@@ -347,6 +450,8 @@ export default function AdminPage() {
       .includes("gadget")
       ? "gadget"
       : "fashion";
+    const fallbackSizes = getDefaultSizesForSubCategory(prod.subCategory);
+
     setEditingProduct(prod);
     setEditName(prod.name);
     setEditCategory(normalizedCat);
@@ -355,7 +460,11 @@ export default function AdminPage() {
     setEditOldPrice(prod.oldPrice ? String(prod.oldPrice) : "");
     setEditStock(String(prod.stock ?? 10));
     setEditBadge(prod.badge || "");
-    setEditSizesText((prod.sizes || ["M", "L", "XL"]).join(", "));
+    setEditSizesText(
+      (prod.sizes && prod.sizes.length > 0 ? prod.sizes : fallbackSizes).join(
+        ", "
+      )
+    );
     setEditSpecs(prod.specs || "");
     setEditImage(prod.image || "");
     setEditDescription(prod.description || "");
@@ -470,8 +579,62 @@ export default function AdminPage() {
     }
   };
 
+  const applyAutoStockForOrder = async (targetOrder: OrderItem) => {
+    if (!autoDeductStock) return;
+    if (deductedOrderIds.includes(targetOrder._id)) return;
+
+    let deductedAny = false;
+    const updatedProducts = [...products];
+
+    for (const line of targetOrder.items || []) {
+      const matchedIdx = updatedProducts.findIndex(
+        (p) =>
+          (line.productId && String(p._id) === String(line.productId)) ||
+          p.name.trim().toLowerCase() === line.name.trim().toLowerCase()
+      );
+      if (matchedIdx === -1) continue;
+
+      const prod = updatedProducts[matchedIdx];
+      const currentStock = typeof prod.stock === "number" ? prod.stock : 10;
+      const qtyToDeduct = Math.max(1, Number(line.quantity) || 1);
+      const nextStock = Math.max(0, currentStock - qtyToDeduct);
+
+      try {
+        const res = await fetch(`/api/products/${prod._id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stock: nextStock }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          updatedProducts[matchedIdx] = { ...prod, stock: nextStock };
+          deductedAny = true;
+        }
+      } catch (err) {
+        console.error("Auto stock deduction error:", err);
+      }
+    }
+
+    if (deductedAny) {
+      setProducts(updatedProducts);
+    }
+
+    const nextDeducted = [...deductedOrderIds, targetOrder._id];
+    setDeductedOrderIds(nextDeducted);
+    try {
+      localStorage.setItem(
+        "fg_admin_deducted_orders",
+        JSON.stringify(nextDeducted)
+      );
+    } catch (err) {
+      console.error("Failed to save deducted order id:", err);
+    }
+  };
+
   const handleStatusChange = async (orderId: string, status: string) => {
     setUpdatingOrderId(orderId);
+    const targetOrder = orders.find((o) => o._id === orderId);
+
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
@@ -486,6 +649,14 @@ export default function AdminPage() {
         setSelectedOrder((prev) =>
           prev && prev._id === orderId ? { ...prev, status } : prev
         );
+
+        if (
+          targetOrder &&
+          (status === "Confirmed" || status === "Delivered")
+        ) {
+          await applyAutoStockForOrder(targetOrder);
+        }
+
         showToast(`অর্ডার স্ট্যাটাস "${status}" আপডেট হয়েছে`);
       } else {
         showToast(data.message || "স্ট্যাটাস আপডেট হয়নি");
@@ -498,7 +669,31 @@ export default function AdminPage() {
     }
   };
 
-  const handleCopyText = async (text: string, idKey?: string, label = "কপি করা হয়েছে") => {
+  const handleDeleteOrder = async (orderId: string) => {
+    setDeletingOrderId(orderId);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setOrders((prev) => prev.filter((o) => o._id !== orderId));
+        if (selectedOrder?._id === orderId) setSelectedOrder(null);
+        showToast("অর্ডার ডিলিট করা হয়েছে");
+      } else {
+        showToast(data.message || "অর্ডার ডিলিট হয়নি (DELETE API চেক করুন)");
+      }
+    } catch (err) {
+      console.error("Delete order failed:", err);
+      showToast("অর্ডার ডিলিট করতে সমস্যা হয়েছে");
+    } finally {
+      setDeletingOrderId(null);
+    }
+  };
+
+  const handleCopyText = async (
+    text: string,
+    idKey?: string,
+    label = "কপি করা হয়েছে"
+  ) => {
     try {
       await navigator.clipboard.writeText(text);
       if (idKey) {
@@ -512,6 +707,7 @@ export default function AdminPage() {
   };
 
   const handleCopyOrderSummary = (ord: OrderItem) => {
+    const pay = extractPaymentInfo(ord.address);
     const itemsText = ord.items
       ?.map(
         (i) =>
@@ -523,6 +719,7 @@ export default function AdminPage() {
     const summary = [
       `Order ID: ${ord._id}`,
       `Status: ${ord.status || "Pending"}`,
+      `Payment: ${pay.method}${pay.trxId ? ` (TrxID: ${pay.trxId})` : ""}`,
       `Customer: ${ord.customerName}`,
       `Phone: ${ord.phone}`,
       `Address: ${ord.address}`,
@@ -532,20 +729,55 @@ export default function AdminPage() {
     handleCopyText(summary, `sum-${ord._id}`, "অর্ডার সামারি কপি করা হয়েছে");
   };
 
+  const handleSaveDeliverySettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned: DeliverySettings = {
+      insideDhakaCharge: Math.max(
+        0,
+        Number(deliverySettings.insideDhakaCharge) || 0
+      ),
+      outsideDhakaCharge: Math.max(
+        0,
+        Number(deliverySettings.outsideDhakaCharge) || 0
+      ),
+      freeDeliveryThreshold: Math.max(
+        0,
+        Number(deliverySettings.freeDeliveryThreshold) || 0
+      ),
+      bkashNumber: deliverySettings.bkashNumber.trim() || "01700-000000",
+      nagadNumber: deliverySettings.nagadNumber.trim() || "01700-000000",
+    };
+    setDeliverySettings(cleaned);
+    try {
+      localStorage.setItem(
+        "fg_admin_delivery_settings",
+        JSON.stringify(cleaned)
+      );
+      showToast("ডেলিভারি ও পেমেন্ট সেটিংস সেভ হয়েছে");
+    } catch {
+      showToast("সেটিংস সেভ করা যায়নি");
+    }
+  };
+
+  const effectiveOrderQuery = (orderSearch || globalSearch).trim().toLowerCase();
+  const effectiveProductQuery = (productSearch || globalSearch)
+    .trim()
+    .toLowerCase();
+
   const filteredOrders = useMemo(() => {
     return orders.filter((ord) => {
       const matchesStatus =
         statusFilter === "All" ||
         (ord.status || "Pending").toLowerCase() === statusFilter.toLowerCase();
-      const q = orderSearch.trim().toLowerCase();
       const matchesQuery =
-        !q ||
-        ord._id.toLowerCase().includes(q) ||
-        ord.customerName.toLowerCase().includes(q) ||
-        ord.phone.toLowerCase().includes(q);
+        !effectiveOrderQuery ||
+        ord._id.toLowerCase().includes(effectiveOrderQuery) ||
+        ord.customerName.toLowerCase().includes(effectiveOrderQuery) ||
+        ord.phone.toLowerCase().includes(effectiveOrderQuery) ||
+        (ord.address || "").toLowerCase().includes(effectiveOrderQuery);
       return matchesStatus && matchesQuery;
     });
-  }, [orders, statusFilter, orderSearch]);
+  }, [orders, statusFilter, effectiveOrderQuery]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
@@ -554,14 +786,54 @@ export default function AdminPage() {
         : "fashion";
       const matchesCat =
         productCatFilter === "all" || normalizedCat === productCatFilter;
-      const q = productSearch.trim().toLowerCase();
       const matchesQuery =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        (p.subCategory || "").toLowerCase().includes(q);
+        !effectiveProductQuery ||
+        p.name.toLowerCase().includes(effectiveProductQuery) ||
+        (p.subCategory || "").toLowerCase().includes(effectiveProductQuery);
       return matchesCat && matchesQuery;
     });
-  }, [products, productCatFilter, productSearch]);
+  }, [products, productCatFilter, effectiveProductQuery]);
+
+  const customersList = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        phone: string;
+        name: string;
+        address: string;
+        orderCount: number;
+        totalSpent: number;
+      }
+    >();
+
+    for (const ord of orders) {
+      const key = ord.phone.trim();
+      const existing = map.get(key);
+      const amt = ord.status === "Cancelled" ? 0 : Number(ord.totalAmount) || 0;
+      if (existing) {
+        existing.orderCount += 1;
+        existing.totalSpent += amt;
+        if (!existing.address && ord.address) existing.address = ord.address;
+      } else {
+        map.set(key, {
+          phone: ord.phone,
+          name: ord.customerName,
+          address: ord.address,
+          orderCount: 1,
+          totalSpent: amt,
+        });
+      }
+    }
+
+    return Array.from(map.values()).filter((c) => {
+      if (!effectiveOrderQuery) return true;
+      return (
+        c.name.toLowerCase().includes(effectiveOrderQuery) ||
+        c.phone.toLowerCase().includes(effectiveOrderQuery) ||
+        c.address.toLowerCase().includes(effectiveOrderQuery)
+      );
+    });
+  }, [orders, effectiveOrderQuery]);
 
   const stats = useMemo(() => {
     const activeOrders = orders.filter((o) => o.status !== "Cancelled");
@@ -578,24 +850,54 @@ export default function AdminPage() {
     const lowStockCount = products.filter(
       (p) => typeof p.stock === "number" && p.stock <= 3
     ).length;
-    return { revenue, pendingCount, deliveredCount, lowStockCount };
+
+    const fashionProducts = products.filter(
+      (p) => !(p.category || "").toLowerCase().includes("gadget")
+    ).length;
+    const gadgetProducts = products.length - fashionProducts;
+
+    const recentSeries = [...activeOrders]
+      .slice(0, 7)
+      .reverse()
+      .map((o, i) => ({
+        label: `#${i + 1}`,
+        amount: Number(o.totalAmount) || 0,
+      }));
+
+    return {
+      revenue,
+      pendingCount,
+      deliveredCount,
+      lowStockCount,
+      fashionProducts,
+      gadgetProducts,
+      recentSeries,
+    };
   }, [orders, products]);
+
+  const maxChartAmount = useMemo(() => {
+    const maxVal = Math.max(
+      ...stats.recentSeries.map((item) => item.amount),
+      100
+    );
+    return maxVal;
+  }, [stats.recentSeries]);
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f7f7f7] p-4">
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f6f9] p-4">
         <form
           onSubmit={handleLogin}
-          className="bg-white p-6 sm:p-7 rounded-2xl shadow-sm border border-neutral-200 w-full max-w-sm space-y-4"
+          className="bg-white p-6 sm:p-7 rounded-2xl shadow-sm border border-slate-200 w-full max-w-sm space-y-4"
         >
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">
               FG Trend Tech
             </p>
-            <h1 className="text-xl font-bold text-neutral-950 mt-0.5">
+            <h1 className="text-xl font-bold text-slate-900 mt-0.5">
               Admin Login
             </h1>
-            <p className="text-sm text-neutral-500 mt-1">
+            <p className="text-sm text-slate-500 mt-1">
               অ্যাডমিন প্যানেলে ঢুকতে পাসওয়ার্ড দিন।
             </p>
           </div>
@@ -606,14 +908,14 @@ export default function AdminPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter Admin Password"
-              className="w-full border border-neutral-300 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-slate-900 outline-none focus:border-slate-900"
               required
             />
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
               aria-label="Toggle password visibility"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-800 cursor-pointer"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 cursor-pointer"
             >
               {showPassword ? (
                 <EyeOff className="w-4 h-4" />
@@ -628,16 +930,16 @@ export default function AdminPage() {
           <button
             type="submit"
             disabled={authLoading}
-            className="w-full bg-neutral-950 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50 transition cursor-pointer"
+            className="w-full bg-slate-900 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition cursor-pointer"
           >
             {authLoading ? "Checking..." : "Login"}
           </button>
 
-          <div className="pt-2 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
-            <Link href="/" className="hover:text-neutral-900">
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <Link href="/" className="hover:text-slate-900">
               ← Back to Store
             </Link>
-            <Link href="/track-order" className="hover:text-neutral-900">
+            <Link href="/track-order" className="hover:text-slate-900">
               Track Order
             </Link>
           </div>
@@ -646,69 +948,105 @@ export default function AdminPage() {
     );
   }
 
+  const navItems: {
+    key: AdminSection;
+    label: string;
+    icon: React.ReactNode;
+    badge?: number;
+  }[] = [
+    {
+      key: "overview",
+      label: "Dashboard",
+      icon: <LayoutDashboard className="w-4 h-4" />,
+    },
+    {
+      key: "orders",
+      label: "Orders",
+      icon: <ShoppingBag className="w-4 h-4" />,
+      badge: stats.pendingCount > 0 ? stats.pendingCount : undefined,
+    },
+    {
+      key: "products",
+      label: "Products",
+      icon: <Package className="w-4 h-4" />,
+      badge: products.length,
+    },
+    {
+      key: "customers",
+      label: "Customers",
+      icon: <Users className="w-4 h-4" />,
+      badge: customersList.length,
+    },
+    {
+      key: "settings",
+      label: "Settings",
+      icon: <Settings className="w-4 h-4" />,
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#f7f7f7] text-neutral-900 p-4 sm:p-6">
+    <div className="min-h-screen bg-[#f4f6f9] text-slate-900 flex flex-col">
       {feedbackMsg && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-neutral-950 text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg">
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-slate-950 text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg">
           {feedbackMsg}
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Top Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl shadow-2xs border border-neutral-200">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-              FG Trend Tech Management
-            </p>
-            <h1 className="text-xl sm:text-2xl font-bold text-neutral-950">
-              Store Admin Panel
-            </h1>
+      <div className="flex-1 flex min-w-0">
+        {/* Desktop Sidebar */}
+        <aside className="hidden lg:flex w-64 shrink-0 bg-slate-950 text-slate-200 flex-col justify-between p-4 border-r border-slate-800">
+          <div className="space-y-6">
+            <div className="px-2 pt-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-400">
+                Admin Workspace
+              </p>
+              <h2 className="text-lg font-black text-white tracking-tight mt-0.5">
+                FG TREND TECH
+              </h2>
+            </div>
+
+            <nav className="space-y-1">
+              {navItems.map((item) => {
+                const isActive = activeSection === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setActiveSection(item.key)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer ${
+                      isActive
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      {item.icon}
+                      {item.label}
+                    </span>
+                    {typeof item.badge === "number" && (
+                      <span
+                        className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                          isActive
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-800 text-slate-300"
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveTab("orders")}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer ${
-                activeTab === "orders"
-                  ? "bg-neutral-950 text-white"
-                  : "bg-neutral-100 text-neutral-800 hover:bg-neutral-200"
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              Orders ({orders.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("products")}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer ${
-                activeTab === "products"
-                  ? "bg-neutral-950 text-white"
-                  : "bg-neutral-100 text-neutral-800 hover:bg-neutral-200"
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              Products ({products.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={fetchDashboardData}
-              title="Refresh data"
-              className="p-2 rounded-xl bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
-            >
-              <RefreshCw
-                className={`w-4 h-4 ${loadingData ? "animate-spin" : ""}`}
-              />
-            </button>
-
+          <div className="space-y-2 pt-4 border-t border-slate-800">
             <Link
               href="/"
-              className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition"
             >
-              Store <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open Live Store</span>
+              <ExternalLink className="w-3.5 h-3.5" />
             </Link>
 
             <button
@@ -717,585 +1055,1258 @@ export default function AdminPage() {
                 sessionStorage.removeItem("admin_authed");
                 setIsAuthenticated(false);
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-950/60 hover:text-rose-200 transition cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               Logout
             </button>
           </div>
-        </div>
+        </aside>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-neutral-200">
-            <p className="text-xs text-neutral-500">Active Revenue</p>
-            <p className="text-xl sm:text-2xl font-extrabold text-neutral-950 mt-1">
-              ৳{stats.revenue.toLocaleString()}
-            </p>
-          </div>
-          <div className="bg-white p-4 rounded-2xl border border-neutral-200">
-            <p className="text-xs text-neutral-500">Pending Orders</p>
-            <p className="text-xl sm:text-2xl font-extrabold text-amber-600 mt-1">
-              {stats.pendingCount}
-            </p>
-          </div>
-          <div className="bg-white p-4 rounded-2xl border border-neutral-200">
-            <p className="text-xs text-neutral-500">Delivered Orders</p>
-            <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1">
-              {stats.deliveredCount}
-            </p>
-          </div>
-          <div className="bg-white p-4 rounded-2xl border border-neutral-200">
-            <p className="text-xs text-neutral-500">Low Stock (≤ 3)</p>
-            <p className="text-xl sm:text-2xl font-extrabold text-rose-600 mt-1">
-              {stats.lowStockCount}
-            </p>
-          </div>
-        </div>
-
-        {loadingData && orders.length === 0 && products.length === 0 ? (
-          <div className="bg-white p-8 rounded-2xl border border-neutral-200 text-center text-sm text-neutral-600">
-            Loading data...
-          </div>
-        ) : activeTab === "orders" ? (
-          <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-2xs border border-neutral-200 space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <h2 className="text-lg font-bold text-neutral-950">
-                Customer Orders ({filteredOrders.length})
-              </h2>
-
-              <div className="flex flex-col sm:flex-row gap-2.5">
-                <div className="flex items-center bg-neutral-100 rounded-xl px-3 py-1.5 border border-neutral-200">
-                  <Search className="w-4 h-4 text-neutral-400 mr-2" />
-                  <input
-                    type="text"
-                    placeholder="Search phone, name or ID..."
-                    value={orderSearch}
-                    onChange={(e) => setOrderSearch(e.target.value)}
-                    className="bg-transparent text-xs sm:text-sm outline-none w-full sm:w-52"
-                  />
+        {/* Mobile Drawer Sidebar */}
+        {mobileSidebarOpen && (
+          <div className="lg:hidden fixed inset-0 z-50 flex bg-black/50 backdrop-blur-xs">
+            <aside className="w-64 bg-slate-950 text-slate-200 h-full p-4 flex flex-col justify-between">
+              <div className="space-y-5">
+                <div className="flex items-center justify-between px-1">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+                      Admin Menu
+                    </p>
+                    <h2 className="text-base font-black text-white">
+                      FG TREND TECH
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileSidebarOpen(false)}
+                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
 
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="border border-neutral-200 rounded-xl px-3 py-2 text-xs sm:text-sm bg-neutral-100 text-neutral-900 font-medium outline-none cursor-pointer"
+                <nav className="space-y-1">
+                  {navItems.map((item) => {
+                    const isActive = activeSection === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => {
+                          setActiveSection(item.key);
+                          setMobileSidebarOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer ${
+                          isActive
+                            ? "bg-indigo-600 text-white"
+                            : "text-slate-300 hover:bg-slate-800"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          {item.icon}
+                          {item.label}
+                        </span>
+                        {typeof item.badge === "number" && (
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-200">
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+
+              <div className="space-y-2 pt-3 border-t border-slate-800">
+                <Link
+                  href="/"
+                  className="block px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800"
                 >
-                  <option value="All">All Statuses</option>
-                  {ORDER_STATUSES.map((st) => (
-                    <option key={st} value={st}>
-                      {st}
-                    </option>
-                  ))}
-                </select>
+                  Open Live Store →
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sessionStorage.removeItem("admin_authed");
+                    setIsAuthenticated(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-950/60 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {/* Main Column */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Top Header */}
+          <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(true)}
+                aria-label="Open menu"
+                className="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+              <div className="truncate">
+                <h1 className="text-base sm:text-lg font-bold text-slate-900 capitalize truncate">
+                  {activeSection}
+                </h1>
               </div>
             </div>
 
-            {filteredOrders.length === 0 ? (
-              <p className="text-neutral-500 text-sm py-6 text-center">
-                কোনো অর্ডার পাওয়া যায়নি।
-              </p>
-            ) : (
-              <div className="space-y-3.5">
-                {filteredOrders.map((order) => (
-                  <div
-                    key={order._id}
-                    className="border border-neutral-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-neutral-300 transition"
-                  >
-                    <div className="space-y-1.5 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${getStatusBadgeStyle(
-                            order.status || "Pending"
-                          )}`}
-                        >
-                          {order.status || "Pending"}
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleCopyText(
-                              order._id,
-                              order._id,
-                              "Order ID কপি করা হয়েছে"
-                            )
-                          }
-                          className="inline-flex items-center gap-1 text-[11px] font-mono bg-neutral-100 hover:bg-neutral-200 text-neutral-700 px-2 py-0.5 rounded-md transition cursor-pointer"
-                          title="Copy Order ID"
-                        >
-                          <span>ID: {order._id}</span>
-                          {copiedId === order._id ? (
-                            <Check className="w-3 h-3 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </button>
-                      </div>
-
-                      <p className="font-bold text-neutral-950 text-sm sm:text-base">
-                        {order.customerName} —{" "}
-                        <span className="font-mono text-neutral-700">
-                          {order.phone}
-                        </span>
-                      </p>
-
-                      <p className="text-xs sm:text-sm text-neutral-600 break-words">
-                        {order.address}
-                      </p>
-
-                      <p className="text-xs sm:text-sm text-neutral-800">
-                        <span className="font-semibold">Items:</span>{" "}
-                        {order.items
-                          ?.map(
-                            (i) =>
-                              `${i.name}${i.size ? ` (${i.size})` : ""} ×${
-                                i.quantity
-                              }`
-                          )
-                          .join(", ")}
-                      </p>
-
-                      <p className="text-sm font-extrabold text-neutral-950">
-                        Total: ৳{Number(order.totalAmount).toLocaleString()}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap sm:flex-nowrap items-end gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedOrder(order)}
-                        className="inline-flex items-center gap-1 border border-neutral-200 hover:border-neutral-400 bg-neutral-50 text-neutral-800 px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        Details
-                      </button>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-neutral-500 mb-1">
-                          Update Status
-                        </label>
-                        <select
-                          disabled={updatingOrderId === order._id}
-                          value={order.status || "Pending"}
-                          onChange={(e) =>
-                            handleStatusChange(order._id, e.target.value)
-                          }
-                          className="border border-neutral-300 rounded-xl px-3 py-2 text-sm bg-white text-neutral-950 font-medium outline-none focus:border-neutral-950 disabled:opacity-50 cursor-pointer"
-                        >
-                          {ORDER_STATUSES.map((st) => (
-                            <option key={st} value={st}>
-                              {st}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Add New Product Form */}
-            <form
-              onSubmit={handleAddProduct}
-              className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-neutral-200 space-y-3 h-fit"
-            >
-              <h2 className="text-lg font-bold text-neutral-950">
-                Add New Product
-              </h2>
-
-              <input
-                type="text"
-                placeholder="Product Name *"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-                required
-              />
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <select
-                  value={category}
-                  onChange={(e) =>
-                    handleCategorySwitch(e.target.value as "fashion" | "gadget")
-                  }
-                  className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm bg-white text-neutral-900 outline-none focus:border-neutral-950 cursor-pointer"
-                >
-                  <option value="fashion">Fashion</option>
-                  <option value="gadget">Gadgets</option>
-                </select>
-
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 w-52 md:w-64">
+                <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
                 <input
                   type="text"
-                  placeholder="Sub-Category"
-                  value={subCategory}
-                  onChange={(e) => setSubCategory(e.target.value)}
-                  className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                  placeholder="Search orders, phones, items..."
+                  value={globalSearch}
+                  onChange={(e) => setGlobalSearch(e.target.value)}
+                  className="bg-transparent text-xs sm:text-sm outline-none w-full text-slate-900"
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <input
-                  type="number"
-                  placeholder="Price (BDT) *"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-                  required
-                />
-                <input
-                  type="number"
-                  placeholder="Old Price (optional)"
-                  value={oldPrice}
-                  onChange={(e) => setOldPrice(e.target.value)}
-                  className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <input
-                  type="text"
-                  placeholder="Badge (e.g. Best Seller)"
-                  value={badge}
-                  onChange={(e) => setBadge(e.target.value)}
-                  className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-                />
-                <input
-                  type="number"
-                  placeholder="Stock"
-                  value={stock}
-                  onChange={(e) => setStock(e.target.value)}
-                  className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-                />
-              </div>
-
-              {category === "fashion" ? (
-                <input
-                  type="text"
-                  placeholder="Sizes (comma separated, e.g. M, L, XL)"
-                  value={sizesText}
-                  onChange={(e) => setSizesText(e.target.value)}
-                  className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-                />
-              ) : (
-                <input
-                  type="text"
-                  placeholder="Specs (e.g. 36H Battery • BT 5.3)"
-                  value={specs}
-                  onChange={(e) => setSpecs(e.target.value)}
-                  className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-                />
-              )}
-
-              {/* Image URL + Upload Own Photo */}
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  placeholder="Image URL (e.g. /images/jacket.jpg or https://...) *"
-                  value={image.startsWith("data:") ? "" : image}
-                  onChange={(e) => {
-                    setUploadedFileName(null);
-                    setImage(e.target.value);
-                  }}
-                  className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-                  required={!image}
-                />
-
-                <div className="flex items-center justify-between gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleImageFileChange(e, "add")}
-                    className="hidden"
-                  />
-
+                {globalSearch && (
                   <button
                     type="button"
-                    disabled={processingImage}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 border border-dashed border-neutral-400 hover:border-neutral-950 bg-neutral-50 hover:bg-neutral-100 text-neutral-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                    onClick={() => setGlobalSearch("")}
+                    className="text-slate-400 hover:text-slate-700 cursor-pointer"
                   >
-                    <Upload className="w-3.5 h-3.5" />
-                    {processingImage
-                      ? "Processing Photo..."
-                      : "Upload Your Own Photo"}
+                    <X className="w-3.5 h-3.5" />
                   </button>
+                )}
+              </div>
 
-                  {image && (
+              <button
+                type="button"
+                onClick={fetchDashboardData}
+                title="Refresh data"
+                className="p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${loadingData ? "animate-spin" : ""}`}
+                />
+              </button>
+
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition"
+              >
+                Store <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </header>
+
+          {/* Main Content Body */}
+          <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl w-full mx-auto">
+            {/* 4 Key Stats Cards */}
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
+                <p className="text-xs font-medium text-slate-500">
+                  Total Revenue
+                </p>
+                <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
+                  ৳{stats.revenue.toLocaleString()}
+                </p>
+                <p className="text-[11px] text-emerald-600 font-semibold mt-1">
+                  Active orders total
+                </p>
+              </div>
+
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
+                <p className="text-xs font-medium text-slate-500">
+                  Total Orders
+                </p>
+                <p className="text-xl sm:text-2xl font-extrabold text-indigo-600 mt-1">
+                  {orders.length}
+                </p>
+                <p className="text-[11px] text-amber-600 font-semibold mt-1">
+                  {stats.pendingCount} pending review
+                </p>
+              </div>
+
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
+                <p className="text-xs font-medium text-slate-500">
+                  Delivered Orders
+                </p>
+                <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1">
+                  {stats.deliveredCount}
+                </p>
+                <p className="text-[11px] text-slate-500 font-medium mt-1">
+                  Completed deliveries
+                </p>
+              </div>
+
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
+                <p className="text-xs font-medium text-slate-500">
+                  Inventory &amp; Low Stock
+                </p>
+                <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
+                  {products.length}{" "}
+                  <span className="text-xs font-bold text-rose-600">
+                    ({stats.lowStockCount} low)
+                  </span>
+                </p>
+                <p className="text-[11px] text-slate-500 font-medium mt-1">
+                  Stock ≤ 3 highlighted
+                </p>
+              </div>
+            </div>
+
+            {/* OVERVIEW SECTION */}
+            {activeSection === "overview" && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  {/* Revenue Trend Bar/Flow Card */}
+                  <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                          Sales Snapshot
+                        </p>
+                        <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-1.5">
+                          <TrendingUp className="w-4 h-4 text-indigo-600" />
+                          Recent Active Orders Value
+                        </h2>
+                      </div>
+                      <span className="text-xs font-bold bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full">
+                        ৳{stats.revenue.toLocaleString()}
+                      </span>
+                    </div>
+
+                    {stats.recentSeries.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-10 text-center">
+                        এখনো কোনো সক্রিয় অর্ডার ডাটা নেই।
+                      </p>
+                    ) : (
+                      <div className="h-44 flex items-end gap-3 pt-4 px-2 border-b border-slate-100">
+                        {stats.recentSeries.map((pt, idx) => {
+                          const heightPct = Math.max(
+                            12,
+                            Math.round((pt.amount / maxChartAmount) * 100)
+                          );
+                          return (
+                            <div
+                              key={`${pt.label}-${idx}`}
+                              className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end"
+                            >
+                              <span className="text-[10px] font-bold text-slate-600">
+                                ৳{pt.amount}
+                              </span>
+                              <div
+                                style={{ height: `${heightPct}%` }}
+                                className="w-full max-w-[38px] rounded-t-xl bg-indigo-600/90 hover:bg-indigo-600 transition"
+                              />
+                              <span className="text-[11px] font-semibold text-slate-500">
+                                {pt.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Catalog Category Breakdown */}
+                  <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between space-y-4">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Catalog Mix
+                      </p>
+                      <h2 className="text-base sm:text-lg font-bold text-slate-900 mt-0.5">
+                        Products by Category
+                      </h2>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex justify-between text-xs font-bold mb-1.5">
+                          <span className="text-slate-800">Fashion</span>
+                          <span className="text-rose-600">
+                            {stats.fashionProducts} items
+                          </span>
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            style={{
+                              width: `${
+                                products.length > 0
+                                  ? Math.round(
+                                      (stats.fashionProducts / products.length) *
+                                        100
+                                    )
+                                  : 0
+                              }%`,
+                            }}
+                            className="h-full bg-rose-500 rounded-full"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-xs font-bold mb-1.5">
+                          <span className="text-slate-800">Gadgets</span>
+                          <span className="text-indigo-600">
+                            {stats.gadgetProducts} items
+                          </span>
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            style={{
+                              width: `${
+                                products.length > 0
+                                  ? Math.round(
+                                      (stats.gadgetProducts / products.length) *
+                                        100
+                                    )
+                                  : 0
+                              }%`,
+                            }}
+                            className="h-full bg-indigo-600 rounded-full"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      <span className="text-slate-500">
+                        Auto-stock on Confirm/Deliver:
+                      </span>
+                      <span
+                        className={`font-bold ${
+                          autoDeductStock ? "text-emerald-600" : "text-slate-500"
+                        }`}
+                      >
+                        {autoDeductStock ? "Enabled" : "Off"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent Orders Preview */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                      Recent Orders
+                    </h2>
                     <button
                       type="button"
-                      onClick={handleClearImage}
-                      title="Clear image"
-                      className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+                      onClick={() => setActiveSection("orders")}
+                      className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
                     >
-                      <X className="w-3.5 h-3.5" />
-                      Clear
+                      Manage All Orders →
                     </button>
+                  </div>
+
+                  {orders.length === 0 ? (
+                    <p className="text-sm text-slate-500 py-4 text-center">
+                      কোনো অর্ডার নেই।
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {orders.slice(0, 5).map((ord) => {
+                        const pay = extractPaymentInfo(ord.address);
+                        return (
+                          <div
+                            key={ord._id}
+                            className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-sm text-slate-900">
+                                  {ord.customerName}
+                                </span>
+                                <span className="text-xs font-mono text-slate-500">
+                                  {ord.phone}
+                                </span>
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadgeStyle(
+                                    ord.status || "Pending"
+                                  )}`}
+                                >
+                                  {ord.status || "Pending"}
+                                </span>
+                                {(pay.method === "bKash" ||
+                                  pay.method === "Nagad") && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
+                                    {pay.method}
+                                    {pay.trxId ? ` • ${pay.trxId}` : ""}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="text-sm font-extrabold text-slate-900">
+                                ৳{Number(ord.totalAmount).toLocaleString()}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOrder(ord)}
+                                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer"
+                              >
+                                Details
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
+            )}
 
-              {image.trim() && (
-                <div className="flex items-center gap-2.5 p-2 rounded-xl bg-neutral-50 border border-neutral-200">
-                  <img
-                    src={image.trim()}
-                    alt="Preview"
-                    className="w-11 h-11 rounded-lg object-cover bg-neutral-200 shrink-0"
-                  />
-                  <span className="text-xs text-neutral-600 truncate">
-                    {uploadedFileName
-                      ? `Uploaded: ${uploadedFileName}`
-                      : "Image URL Preview"}
-                  </span>
-                </div>
-              )}
-
-              <textarea
-                placeholder="Description (optional)"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
-                rows={3}
-              />
-
-              <button
-                type="submit"
-                disabled={creatingProduct || processingImage}
-                className="w-full inline-flex items-center justify-center gap-1.5 bg-neutral-950 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50 transition cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                {creatingProduct ? "Adding..." : "Add Product"}
-              </button>
-            </form>
-
-            {/* All Products List */}
-            <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-neutral-200 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <h2 className="text-lg font-bold text-neutral-950">
-                  All Products ({filteredProducts.length})
-                </h2>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center bg-neutral-100 rounded-xl px-3 py-1.5 border border-neutral-200">
-                    <Search className="w-4 h-4 text-neutral-400 mr-1.5" />
-                    <input
-                      type="text"
-                      placeholder="Search product..."
-                      value={productSearch}
-                      onChange={(e) => setProductSearch(e.target.value)}
-                      className="bg-transparent text-xs outline-none w-36 sm:w-44"
-                    />
+            {/* ORDERS SECTION */}
+            {activeSection === "orders" && (
+              <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-2xs border border-slate-200 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Customer Orders ({filteredOrders.length})
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Confirmed বা Delivered করলে অটো-স্টক গার্ড সক্রিয় থাকে।
+                    </p>
                   </div>
 
-                  {(
-                    [
-                      { key: "all", label: "All" },
-                      { key: "fashion", label: "Fashion" },
-                      { key: "gadget", label: "Gadgets" },
-                    ] as const
-                  ).map((f) => (
-                    <button
-                      key={f.key}
-                      type="button"
-                      onClick={() => setProductCatFilter(f.key)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                        productCatFilter === f.key
-                          ? "bg-neutral-950 text-white"
-                          : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
-                      }`}
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <div className="flex items-center bg-slate-100 rounded-xl px-3 py-1.5 border border-slate-200">
+                      <Search className="w-4 h-4 text-slate-400 mr-2" />
+                      <input
+                        type="text"
+                        placeholder="Search phone, name or ID..."
+                        value={orderSearch}
+                        onChange={(e) => setOrderSearch(e.target.value)}
+                        className="bg-transparent text-xs sm:text-sm outline-none w-full sm:w-52"
+                      />
+                    </div>
+
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm bg-slate-100 text-slate-900 font-medium outline-none cursor-pointer"
                     >
-                      {f.label}
-                    </button>
-                  ))}
+                      <option value="All">All Statuses</option>
+                      {ORDER_STATUSES.map((st) => (
+                        <option key={st} value={st}>
+                          {st}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
 
-              {filteredProducts.length === 0 ? (
-                <p className="text-neutral-500 text-sm py-6 text-center">
-                  {products.length === 0
-                    ? "ডাটাবেজে এখনো কোনো প্রোডাক্ট নেই। বাম পাশ থেকে যোগ করুন।"
-                    : "কোনো ম্যাচিং প্রোডাক্ট পাওয়া যায়নি।"}
-                </p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {filteredProducts.map((prod) => {
-                    const currentStock =
-                      typeof prod.stock === "number" ? prod.stock : 10;
-                    const isLowStock = currentStock <= 3;
+                {loadingData && orders.length === 0 ? (
+                  <p className="text-slate-500 text-sm py-6 text-center">
+                    Loading orders...
+                  </p>
+                ) : filteredOrders.length === 0 ? (
+                  <p className="text-slate-500 text-sm py-6 text-center">
+                    কোনো অর্ডার পাওয়া যায়নি।
+                  </p>
+                ) : (
+                  <div className="space-y-3.5">
+                    {filteredOrders.map((order) => {
+                      const pay = extractPaymentInfo(order.address);
+                      const isMobileWallet =
+                        pay.method === "bKash" || pay.method === "Nagad";
+                      const isStockDeducted = deductedOrderIds.includes(
+                        order._id
+                      );
 
-                    return (
-                      <div
-                        key={prod._id}
-                        className="border border-neutral-200 rounded-2xl p-3.5 flex flex-col justify-between gap-3"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <img
-                            src={prod.image}
-                            alt={prod.name}
-                            className="w-14 h-14 object-cover rounded-xl bg-neutral-100 shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <p className="font-semibold text-sm text-neutral-950 truncate">
-                              {prod.name}
-                            </p>
-                            <p className="text-xs text-neutral-500">
-                              {prod.subCategory || prod.category} •{" "}
-                              <span className="font-bold text-neutral-900">
-                                ৳{prod.price}
-                              </span>
-                              {prod.oldPrice ? (
-                                <span className="line-through text-neutral-400 ml-1">
-                                  ৳{prod.oldPrice}
-                                </span>
-                              ) : null}
-                            </p>
-                            <div className="flex items-center gap-1.5 mt-1">
+                      return (
+                        <div
+                          key={order._id}
+                          className="border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-300 transition"
+                        >
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
                               <span
-                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                                  currentStock === 0
-                                    ? "bg-rose-100 text-rose-700"
-                                    : isLowStock
-                                    ? "bg-amber-100 text-amber-800"
-                                    : "bg-neutral-100 text-neutral-700"
+                                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${getStatusBadgeStyle(
+                                  order.status || "Pending"
+                                )}`}
+                              >
+                                {order.status || "Pending"}
+                              </span>
+
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                  isMobileWallet
+                                    ? "bg-pink-50 text-pink-700 border-pink-200"
+                                    : "bg-slate-100 text-slate-700 border-slate-200"
                                 }`}
                               >
-                                Stock: {currentStock}
+                                <CreditCard className="w-3 h-3" />
+                                {pay.method}
+                                {pay.trxId ? ` • TrxID: ${pay.trxId}` : ""}
                               </span>
+
+                              {isStockDeducted && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  Stock Deducted
+                                </span>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleCopyText(
+                                    order._id,
+                                    order._id,
+                                    "Order ID কপি করা হয়েছে"
+                                  )
+                                }
+                                className="inline-flex items-center gap-1 text-[11px] font-mono bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md transition cursor-pointer"
+                                title="Copy Order ID"
+                              >
+                                <span>ID: {order._id}</span>
+                                {copiedId === order._id ? (
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
                             </div>
+
+                            <p className="font-bold text-slate-900 text-sm sm:text-base">
+                              {order.customerName} —{" "}
+                              <span className="font-mono text-slate-700">
+                                {order.phone}
+                              </span>
+                            </p>
+
+                            <p className="text-xs sm:text-sm text-slate-600 break-words">
+                              {order.address}
+                            </p>
+
+                            <p className="text-xs sm:text-sm text-slate-800">
+                              <span className="font-semibold">Items:</span>{" "}
+                              {order.items
+                                ?.map(
+                                  (i) =>
+                                    `${i.name}${i.size ? ` (${i.size})` : ""} ×${
+                                      i.quantity
+                                    }`
+                                )
+                                .join(", ")}
+                            </p>
+
+                            <p className="text-sm font-extrabold text-slate-900">
+                              Total: ৳{Number(order.totalAmount).toLocaleString()}
+                            </p>
                           </div>
-                        </div>
 
-                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-100">
-                          <div className="flex items-center gap-1">
+                          <div className="flex flex-wrap sm:flex-nowrap items-end gap-2 shrink-0">
                             <button
                               type="button"
-                              disabled={
-                                stockUpdatingId === prod._id ||
-                                currentStock <= 0
-                              }
-                              onClick={() => handleQuickStockChange(prod, -1)}
-                              title="Decrease stock"
-                              className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-800 disabled:opacity-40 cursor-pointer"
+                              onClick={() => setSelectedOrder(order)}
+                              className="inline-flex items-center gap-1 border border-slate-200 hover:border-slate-400 bg-slate-50 text-slate-800 px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer"
                             >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={stockUpdatingId === prod._id}
-                              onClick={() => handleQuickStockChange(prod, 1)}
-                              title="Increase stock"
-                              className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-800 disabled:opacity-40 cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openEditModal(prod)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-neutral-100 text-neutral-800 rounded-xl hover:bg-neutral-200 transition cursor-pointer"
-                            >
-                              <Pencil className="w-3 h-3" />
-                              Edit
+                              <Eye className="w-3.5 h-3.5" />
+                              Details
                             </button>
 
                             <button
                               type="button"
-                              disabled={deletingProductId === prod._id}
-                              onClick={() => handleDeleteProduct(prod._id)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-50 text-rose-700 rounded-xl hover:bg-rose-100 disabled:opacity-50 transition cursor-pointer"
+                              disabled={deletingOrderId === order._id}
+                              onClick={() => handleDeleteOrder(order._id)}
+                              title="Delete order"
+                              className="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 px-2.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 transition cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
-                              {deletingProductId === prod._id
+                              {deletingOrderId === order._id
                                 ? "..."
                                 : "Delete"}
                             </button>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                                Update Status
+                              </label>
+                              <select
+                                disabled={updatingOrderId === order._id}
+                                value={order.status || "Pending"}
+                                onChange={(e) =>
+                                  handleStatusChange(order._id, e.target.value)
+                                }
+                                className="border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 font-medium outline-none focus:border-slate-900 disabled:opacity-50 cursor-pointer"
+                              >
+                                {ORDER_STATUSES.map((st) => (
+                                  <option key={st} value={st}>
+                                    {st}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* PRODUCTS SECTION */}
+            {activeSection === "products" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Add New Product Form */}
+                <form
+                  onSubmit={handleAddProduct}
+                  className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-slate-200 space-y-3 h-fit"
+                >
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Add New Product
+                  </h2>
+
+                  <input
+                    type="text"
+                    placeholder="Product Name *"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                    required
+                  />
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <select
+                      value={category}
+                      onChange={(e) =>
+                        handleCategorySwitch(
+                          e.target.value as "fashion" | "gadget"
+                        )
+                      }
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 outline-none focus:border-slate-900 cursor-pointer"
+                    >
+                      <option value="fashion">Fashion</option>
+                      <option value="gadget">Gadgets</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      placeholder="Sub-Category (e.g. Sneakers)"
+                      value={subCategory}
+                      onChange={(e) => handleSubCategoryChange(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <input
+                      type="number"
+                      placeholder="Price (BDT) *"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                      required
+                    />
+                    <input
+                      type="number"
+                      placeholder="Old Price (optional)"
+                      value={oldPrice}
+                      onChange={(e) => setOldPrice(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <input
+                      type="text"
+                      placeholder="Badge (e.g. Best Seller)"
+                      value={badge}
+                      onChange={(e) => setBadge(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Stock"
+                      value={stock}
+                      onChange={(e) => setStock(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                    />
+                  </div>
+
+                  {category === "fashion" ? (
+                    <div className="space-y-1">
+                      <input
+                        type="text"
+                        placeholder={
+                          isFootwearSubCategory(subCategory)
+                            ? "Shoe Sizes (e.g. 40, 41, 42, 43)"
+                            : "Sizes (e.g. M, L, XL)"
+                        }
+                        value={sizesText}
+                        onChange={(e) => setSizesText(e.target.value)}
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                      />
+                      <p className="text-[11px] text-slate-500 px-1">
+                        {isFootwearSubCategory(subCategory)
+                          ? "Footwear size format (40, 41, 42, 43...)"
+                          : "Garment size format (M, L, XL...)"}
+                      </p>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      placeholder="Specs (e.g. 36H Battery • BT 5.3)"
+                      value={specs}
+                      onChange={(e) => setSpecs(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                    />
+                  )}
+
+                  {/* Image URL + Upload Own Photo */}
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Image URL (e.g. /images/jacket.jpg or https://...) *"
+                      value={image.startsWith("data:") ? "" : image}
+                      onChange={(e) => {
+                        setUploadedFileName(null);
+                        setImage(e.target.value);
+                      }}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                      required={!image}
+                    />
+
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleImageFileChange(e, "add")}
+                        className="hidden"
+                      />
+
+                      <button
+                        type="button"
+                        disabled={processingImage}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 border border-dashed border-slate-400 hover:border-slate-900 bg-slate-50 hover:bg-slate-100 text-slate-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        {processingImage
+                          ? "Processing Photo..."
+                          : "Upload Your Own Photo"}
+                      </button>
+
+                      {image && (
+                        <button
+                          type="button"
+                          onClick={handleClearImage}
+                          title="Clear image"
+                          className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {image.trim() && (
+                    <div className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <img
+                        src={image.trim()}
+                        alt="Preview"
+                        className="w-11 h-11 rounded-lg object-cover bg-slate-200 shrink-0"
+                      />
+                      <span className="text-xs text-slate-600 truncate">
+                        {uploadedFileName
+                          ? `Uploaded: ${uploadedFileName}`
+                          : "Image URL Preview"}
+                      </span>
+                    </div>
+                  )}
+
+                  <textarea
+                    placeholder="Description (optional)"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                    rows={3}
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={creatingProduct || processingImage}
+                    className="w-full inline-flex items-center justify-center gap-1.5 bg-slate-900 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    {creatingProduct ? "Adding..." : "Add Product"}
+                  </button>
+                </form>
+
+                {/* All Products List */}
+                <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-slate-200 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <h2 className="text-lg font-bold text-slate-900">
+                      All Products ({filteredProducts.length})
+                    </h2>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center bg-slate-100 rounded-xl px-3 py-1.5 border border-slate-200">
+                        <Search className="w-4 h-4 text-slate-400 mr-1.5" />
+                        <input
+                          type="text"
+                          placeholder="Search product..."
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                          className="bg-transparent text-xs outline-none w-36 sm:w-44"
+                        />
                       </div>
-                    );
-                  })}
+
+                      {(
+                        [
+                          { key: "all", label: "All" },
+                          { key: "fashion", label: "Fashion" },
+                          { key: "gadget", label: "Gadgets" },
+                        ] as const
+                      ).map((f) => (
+                        <button
+                          key={f.key}
+                          type="button"
+                          onClick={() => setProductCatFilter(f.key)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                            productCatFilter === f.key
+                              ? "bg-slate-900 text-white"
+                              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {filteredProducts.length === 0 ? (
+                    <p className="text-slate-500 text-sm py-6 text-center">
+                      {products.length === 0
+                        ? "ডাটাবেজে এখনো কোনো প্রোডাক্ট নেই। বাম পাশ থেকে যোগ করুন।"
+                        : "কোনো ম্যাচিং প্রোডাক্ট পাওয়া যায়নি।"}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {filteredProducts.map((prod) => {
+                        const currentStock =
+                          typeof prod.stock === "number" ? prod.stock : 10;
+                        const isLowStock = currentStock <= 3;
+
+                        return (
+                          <div
+                            key={prod._id}
+                            className="border border-slate-200 rounded-2xl p-3.5 flex flex-col justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <img
+                                src={prod.image}
+                                alt={prod.name}
+                                className="w-14 h-14 object-cover rounded-xl bg-slate-100 shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <p className="font-semibold text-sm text-slate-900 truncate">
+                                  {prod.name}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {prod.subCategory || prod.category} •{" "}
+                                  <span className="font-bold text-slate-900">
+                                    ৳{prod.price}
+                                  </span>
+                                  {prod.oldPrice ? (
+                                    <span className="line-through text-slate-400 ml-1">
+                                      ৳{prod.oldPrice}
+                                    </span>
+                                  ) : null}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                  <span
+                                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                      currentStock === 0
+                                        ? "bg-rose-100 text-rose-700"
+                                        : isLowStock
+                                        ? "bg-amber-100 text-amber-800"
+                                        : "bg-slate-100 text-slate-700"
+                                    }`}
+                                  >
+                                    Stock: {currentStock}
+                                  </span>
+                                  {prod.sizes && prod.sizes.length > 0 && (
+                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+                                      Sizes: {prod.sizes.join(", ")}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    stockUpdatingId === prod._id ||
+                                    currentStock <= 0
+                                  }
+                                  onClick={() =>
+                                    handleQuickStockChange(prod, -1)
+                                  }
+                                  title="Decrease stock"
+                                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-800 disabled:opacity-40 cursor-pointer"
+                                >
+                                  <Minus className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={stockUpdatingId === prod._id}
+                                  onClick={() =>
+                                    handleQuickStockChange(prod, 1)
+                                  }
+                                  title="Increase stock"
+                                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-800 disabled:opacity-40 cursor-pointer"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(prod)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-slate-100 text-slate-800 rounded-xl hover:bg-slate-200 transition cursor-pointer"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                  Edit
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={deletingProductId === prod._id}
+                                  onClick={() => handleDeleteProduct(prod._id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-50 text-rose-700 rounded-xl hover:bg-rose-100 disabled:opacity-50 transition cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  {deletingProductId === prod._id
+                                    ? "..."
+                                    : "Delete"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        )}
+              </div>
+            )}
+
+            {/* CUSTOMERS SECTION */}
+            {activeSection === "customers" && (
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Customers ({customersList.length})
+                  </h2>
+                </div>
+
+                {customersList.length === 0 ? (
+                  <p className="text-sm text-slate-500 py-6 text-center">
+                    এখনো কোনো কাস্টমার অর্ডার রেকর্ড পাওয়া যায়নি।
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-500">
+                          <th className="py-2.5 px-3 font-semibold">Name</th>
+                          <th className="py-2.5 px-3 font-semibold">Phone</th>
+                          <th className="py-2.5 px-3 font-semibold">Address</th>
+                          <th className="py-2.5 px-3 font-semibold">Orders</th>
+                          <th className="py-2.5 px-3 font-semibold text-right">
+                            Total Spent
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {customersList.map((cust) => (
+                          <tr key={cust.phone} className="hover:bg-slate-50">
+                            <td className="py-3 px-3 font-semibold text-slate-900">
+                              {cust.name}
+                            </td>
+                            <td className="py-3 px-3 font-mono text-slate-700">
+                              {cust.phone}
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 max-w-xs truncate">
+                              {cust.address}
+                            </td>
+                            <td className="py-3 px-3 font-bold text-slate-800">
+                              {cust.orderCount}
+                            </td>
+                            <td className="py-3 px-3 font-extrabold text-slate-900 text-right">
+                              ৳{cust.totalSpent.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SETTINGS SECTION */}
+            {activeSection === "settings" && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <form
+                  onSubmit={handleSaveDeliverySettings}
+                  className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4"
+                >
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Delivery &amp; Wallet Settings
+                  </h2>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        Inside Dhaka Charge (৳)
+                      </label>
+                      <input
+                        type="number"
+                        value={deliverySettings.insideDhakaCharge}
+                        onChange={(e) =>
+                          setDeliverySettings({
+                            ...deliverySettings,
+                            insideDhakaCharge: Number(e.target.value),
+                          })
+                        }
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        Outside Dhaka Charge (৳)
+                      </label>
+                      <input
+                        type="number"
+                        value={deliverySettings.outsideDhakaCharge}
+                        onChange={(e) =>
+                          setDeliverySettings({
+                            ...deliverySettings,
+                            outsideDhakaCharge: Number(e.target.value),
+                          })
+                        }
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Free Delivery Threshold (৳, 0 = disabled)
+                    </label>
+                    <input
+                      type="number"
+                      value={deliverySettings.freeDeliveryThreshold}
+                      onChange={(e) =>
+                        setDeliverySettings({
+                          ...deliverySettings,
+                          freeDeliveryThreshold: Number(e.target.value),
+                        })
+                      }
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        bKash Reference Number
+                      </label>
+                      <input
+                        type="text"
+                        value={deliverySettings.bkashNumber}
+                        onChange={(e) =>
+                          setDeliverySettings({
+                            ...deliverySettings,
+                            bkashNumber: e.target.value,
+                          })
+                        }
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        Nagad Reference Number
+                      </label>
+                      <input
+                        type="text"
+                        value={deliverySettings.nagadNumber}
+                        onChange={(e) =>
+                          setDeliverySettings({
+                            ...deliverySettings,
+                            nagadNumber: e.target.value,
+                          })
+                        }
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition cursor-pointer"
+                  >
+                    Save Settings
+                  </button>
+                </form>
+
+                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4 h-fit">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Auto-Stock Deduction Guard
+                    </h2>
+                  </div>
+
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    অর্ডার <strong>Confirmed</strong> বা{" "}
+                    <strong>Delivered</strong> করলে সংশ্লিষ্ট প্রোডাক্টের স্টক
+                    স্বয়ংক্রিয়ভাবে কমানো হবে এবং একই অর্ডারের জন্য যেন দ্বিতীয়বার
+                    স্টক না কাটে সেটির গার্ড সক্রিয় থাকবে।
+                  </p>
+
+                  <label className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 border border-slate-200 cursor-pointer">
+                    <span className="text-sm font-semibold text-slate-900">
+                      Enable Auto-Stock Guard
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={autoDeductStock}
+                      onChange={(e) => setAutoDeductStock(e.target.checked)}
+                      className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                    />
+                  </label>
+
+                  <p className="text-xs text-slate-500">
+                    Protected orders count:{" "}
+                    <strong>{deductedOrderIds.length}</strong>
+                  </p>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* Footer */}
+          <footer className="bg-white border-t border-slate-200 px-4 sm:px-6 py-4 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p>© 2026 FG Trend Tech Admin Dashboard. All rights reserved.</p>
+            <p>Support: fgtrendtech.bd@gmail.com</p>
+          </footer>
+        </div>
       </div>
 
       {/* Order Details Modal */}
       {selectedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-neutral-200 space-y-4">
-            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   Order Details
                 </p>
-                <h3 className="text-base font-bold font-mono text-neutral-950">
+                <h3 className="text-base font-bold font-mono text-slate-900">
                   #{selectedOrder._id}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedOrder(null)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 cursor-pointer"
+                className="p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-2 text-xs sm:text-sm bg-neutral-50 border border-neutral-200 rounded-2xl p-4">
-              <p>
-                <span className="font-semibold text-neutral-600">
-                  Customer:
-                </span>{" "}
-                <span className="font-bold text-neutral-950">
-                  {selectedOrder.customerName}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-neutral-600">Phone:</span>{" "}
-                <span className="font-mono text-neutral-900">
-                  {selectedOrder.phone}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-neutral-600">Address:</span>{" "}
-                <span className="text-neutral-800">{selectedOrder.address}</span>
-              </p>
-              <p>
-                <span className="font-semibold text-neutral-600">Status:</span>{" "}
-                <span className="font-bold text-neutral-950">
-                  {selectedOrder.status || "Pending"}
-                </span>
-              </p>
-            </div>
+            {(() => {
+              const pay = extractPaymentInfo(selectedOrder.address);
+              return (
+                <div className="space-y-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <p>
+                    <span className="font-semibold text-slate-600">
+                      Customer:
+                    </span>{" "}
+                    <span className="font-bold text-slate-900">
+                      {selectedOrder.customerName}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold text-slate-600">
+                      Phone:
+                    </span>{" "}
+                    <span className="font-mono text-slate-800">
+                      {selectedOrder.phone}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold text-slate-600">
+                      Payment:
+                    </span>{" "}
+                    <span className="font-bold text-pink-700">
+                      {pay.method}
+                    </span>
+                    {pay.trxId && (
+                      <span className="ml-2 font-mono text-xs bg-pink-100 text-pink-800 px-2 py-0.5 rounded-md">
+                        TrxID: {pay.trxId}
+                      </span>
+                    )}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-slate-600">
+                      Address:
+                    </span>{" "}
+                    <span className="text-slate-800">
+                      {selectedOrder.address}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold text-slate-600">
+                      Status:
+                    </span>{" "}
+                    <span className="font-bold text-slate-900">
+                      {selectedOrder.status || "Pending"}
+                    </span>
+                  </p>
+                </div>
+              );
+            })()}
 
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Ordered Items
               </p>
-              <div className="border border-neutral-200 rounded-2xl divide-y divide-neutral-100 px-3.5">
+              <div className="border border-slate-200 rounded-2xl divide-y divide-slate-100 px-3.5">
                 {selectedOrder.items?.map((item, idx) => (
                   <div
                     key={`${item.name}-${idx}`}
                     className="py-2.5 flex items-center justify-between text-xs sm:text-sm"
                   >
                     <div>
-                      <p className="font-semibold text-neutral-900">
+                      <p className="font-semibold text-slate-900">
                         {item.name}
                       </p>
-                      <p className="text-xs text-neutral-500">
+                      <p className="text-xs text-slate-500">
                         {item.size ? `Size: ${item.size} • ` : ""}Qty:{" "}
                         {item.quantity} × ৳{item.price}
                       </p>
                     </div>
-                    <p className="font-bold text-neutral-950">
+                    <p className="font-bold text-slate-900">
                       ৳{item.price * item.quantity}
                     </p>
                   </div>
@@ -1303,15 +2314,15 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
-              <span className="text-sm font-bold text-neutral-950">
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <span className="text-sm font-bold text-slate-900">
                 Total: ৳{Number(selectedOrder.totalAmount).toLocaleString()}
               </span>
 
               <button
                 type="button"
                 onClick={() => handleCopyOrderSummary(selectedOrder)}
-                className="inline-flex items-center gap-1.5 bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer"
               >
                 {copiedId === `sum-${selectedOrder._id}` ? (
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -1330,16 +2341,16 @@ export default function AdminPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 overflow-y-auto">
           <form
             onSubmit={handleSaveProductEdit}
-            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-neutral-200 space-y-3 my-auto"
+            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-3 my-auto"
           >
-            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
-              <h3 className="text-lg font-bold text-neutral-950">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-900">
                 Edit Product
               </h3>
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 cursor-pointer"
+                className="p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1351,7 +2362,7 @@ export default function AdminPage() {
               placeholder="Product Name *"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
             />
 
             <div className="grid grid-cols-2 gap-2.5">
@@ -1360,7 +2371,7 @@ export default function AdminPage() {
                 onChange={(e) =>
                   setEditCategory(e.target.value as "fashion" | "gadget")
                 }
-                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm bg-white text-neutral-900 outline-none focus:border-neutral-950 cursor-pointer"
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 outline-none focus:border-slate-900 cursor-pointer"
               >
                 <option value="fashion">Fashion</option>
                 <option value="gadget">Gadgets</option>
@@ -1371,7 +2382,7 @@ export default function AdminPage() {
                 placeholder="Sub-Category"
                 value={editSubCategory}
                 onChange={(e) => setEditSubCategory(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
             </div>
 
@@ -1382,14 +2393,14 @@ export default function AdminPage() {
                 placeholder="Price (BDT) *"
                 value={editPrice}
                 onChange={(e) => setEditPrice(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
               <input
                 type="number"
                 placeholder="Old Price (optional)"
                 value={editOldPrice}
                 onChange={(e) => setEditOldPrice(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
             </div>
 
@@ -1399,24 +2410,28 @@ export default function AdminPage() {
                 placeholder="Badge"
                 value={editBadge}
                 onChange={(e) => setEditBadge(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
               <input
                 type="number"
                 placeholder="Stock"
                 value={editStock}
                 onChange={(e) => setEditStock(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
             </div>
 
             {editCategory === "fashion" ? (
               <input
                 type="text"
-                placeholder="Sizes (e.g. M, L, XL)"
+                placeholder={
+                  isFootwearSubCategory(editSubCategory)
+                    ? "Shoe Sizes (e.g. 40, 41, 42, 43)"
+                    : "Sizes (e.g. M, L, XL)"
+                }
                 value={editSizesText}
                 onChange={(e) => setEditSizesText(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
             ) : (
               <input
@@ -1424,7 +2439,7 @@ export default function AdminPage() {
                 placeholder="Specs"
                 value={editSpecs}
                 onChange={(e) => setEditSpecs(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
             )}
 
@@ -1434,7 +2449,7 @@ export default function AdminPage() {
                 placeholder="Image URL *"
                 value={editImage.startsWith("data:") ? "" : editImage}
                 onChange={(e) => setEditImage(e.target.value)}
-                className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
                 required={!editImage}
               />
 
@@ -1450,7 +2465,7 @@ export default function AdminPage() {
                 type="button"
                 disabled={processingImage}
                 onClick={() => editFileInputRef.current?.click()}
-                className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-neutral-400 hover:border-neutral-950 bg-neutral-50 text-neutral-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
+                className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-slate-400 hover:border-slate-900 bg-slate-50 text-slate-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
               >
                 <Upload className="w-3.5 h-3.5" />
                 {processingImage ? "Processing Photo..." : "Replace Photo"}
@@ -1458,13 +2473,13 @@ export default function AdminPage() {
             </div>
 
             {editImage.trim() && (
-              <div className="flex items-center gap-2.5 p-2 rounded-xl bg-neutral-50 border border-neutral-200">
+              <div className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-200">
                 <img
                   src={editImage.trim()}
                   alt="Edit Preview"
-                  className="w-11 h-11 rounded-lg object-cover bg-neutral-200 shrink-0"
+                  className="w-11 h-11 rounded-lg object-cover bg-slate-200 shrink-0"
                 />
-                <span className="text-xs text-neutral-600 truncate">
+                <span className="text-xs text-slate-600 truncate">
                   Current Image Preview
                 </span>
               </div>
@@ -1474,7 +2489,7 @@ export default function AdminPage() {
               placeholder="Description (optional)"
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
-              className="w-full border border-neutral-300 rounded-xl px-3.5 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               rows={2}
             />
 
@@ -1482,14 +2497,14 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className="flex-1 border border-neutral-300 text-neutral-800 py-2.5 rounded-xl text-sm font-semibold hover:bg-neutral-100 transition cursor-pointer"
+                className="flex-1 border border-slate-300 text-slate-800 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-100 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={savingEdit || processingImage}
-                className="flex-1 bg-neutral-950 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-neutral-800 disabled:opacity-50 transition cursor-pointer"
+                className="flex-1 bg-slate-900 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition cursor-pointer"
               >
                 {savingEdit ? "Saving..." : "Save Changes"}
               </button>
