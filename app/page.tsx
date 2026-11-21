@@ -1173,7 +1173,7 @@ export default function HomeStore() {
         )}
       </header>
 
-      {/* C. Hero Section (Uses Category Images & Mentions All Categories) */}
+     {/* C. Hero Section */}
       <section className="max-w-7xl mx-auto px-4 pt-5 pb-8">
         <div className="bg-[#121212] text-white rounded-3xl overflow-hidden border border-neutral-800 shadow-lg">
           <div className="grid lg:grid-cols-12 gap-7 p-6 sm:p-10 items-center">
@@ -1217,13 +1217,13 @@ export default function HomeStore() {
               </div>
             </div>
 
-            <div className="lg:col-span-7 grid grid-cols-3 gap-3">
+            <div className="lg:col-span-7 grid grid-cols-3 gap-3 items-stretch">
               <div className="space-y-3">
                 <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
                   <img
                     src={CATEGORY_IMAGES.mensFashion}
                     alt="Men's Fashion"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover object-top"
                   />
                   <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
                     Men&apos;s Fashion
@@ -1246,13 +1246,13 @@ export default function HomeStore() {
                   <img
                     src={CATEGORY_IMAGES.womensFashion}
                     alt="Women's Fashion"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover object-top"
                   />
                   <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
                     Women&apos;s Fashion
                   </span>
                 </div>
-                <div className="aspect-[4/4.3] rounded-2xl overflow-hidden bg-neutral-800 relative">
+                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
                   <img
                     src={CATEGORY_IMAGES.womensFootwear}
                     alt="Women's Footwear"
