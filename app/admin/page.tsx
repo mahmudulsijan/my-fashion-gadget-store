@@ -26,6 +26,8 @@ import {
   TrendingUp,
   CreditCard,
   ShieldCheck,
+  Mail,
+  Star,
 } from "lucide-react";
 
 interface ProductItem {
@@ -63,6 +65,20 @@ interface OrderItem {
   createdAt?: string;
 }
 
+interface SubscriberItem {
+  _id: string;
+  email: string;
+  createdAt?: string;
+}
+
+interface CustomerReviewItem {
+  id: string;
+  name: string;
+  rating: number;
+  comment: string;
+  photo?: string;
+}
+
 interface DeliverySettings {
   insideMymensinghCharge: number;
   outsideMymensinghCharge: number;
@@ -76,6 +92,8 @@ type AdminSection =
   | "orders"
   | "products"
   | "customers"
+  | "subscribers"
+  | "reviews"
   | "settings";
 
 const STORE_SUBCATEGORIES = [
@@ -106,7 +124,12 @@ const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = {
 
 function deriveMainCategory(subCat?: string): "fashion" | "gadget" {
   const val = (subCat || "").trim().toLowerCase();
-  if (val === "gadgets" || val === "mobile accessories" || val.includes("gadget") || val.includes("mobile")) {
+  if (
+    val === "gadgets" ||
+    val === "mobile accessories" ||
+    val.includes("gadget") ||
+    val.includes("mobile")
+  ) {
     return "gadget";
   }
   return "fashion";
@@ -230,9 +253,14 @@ export default function AdminPage() {
 
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [subscribers, setSubscribers] = useState<SubscriberItem[]>([]);
+  const [reviews, setReviews] = useState<CustomerReviewItem[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deletingSubscriberId, setDeletingSubscriberId] = useState<
+    string | null
+  >(null);
 
   // Global search & filters
   const [globalSearch, setGlobalSearch] = useState("");
@@ -305,18 +333,40 @@ export default function AdminPage() {
     }, 2800);
   };
 
+  const loadLocalReviews = () => {
+    try {
+      const savedReviews = localStorage.getItem("fg_simple_reviews");
+      if (savedReviews) {
+        const parsed = JSON.parse(savedReviews);
+        if (Array.isArray(parsed)) {
+          setReviews(parsed);
+        }
+      } else {
+        setReviews([]);
+      }
+    } catch {
+      setReviews([]);
+    }
+  };
+
   const fetchDashboardData = async () => {
     setLoadingData(true);
     try {
-      const [prodRes, ordRes] = await Promise.all([
+      const [prodRes, ordRes, subRes] = await Promise.all([
         fetch("/api/products", { cache: "no-store" }),
         fetch("/api/orders", { cache: "no-store" }),
+        fetch("/api/subscribers", { cache: "no-store" }),
       ]);
       const prodData = await prodRes.json();
       const ordData = await ordRes.json();
+      const subData = await subRes.json();
 
       if (prodData.success) setProducts(prodData.products || []);
       if (ordData.success) setOrders(ordData.orders || []);
+      if (subData.success && Array.isArray(subData.subscribers)) {
+        setSubscribers(subData.subscribers);
+      }
+      loadLocalReviews();
     } catch (err) {
       console.error("Failed to load admin data:", err);
       showToast("ডাটা লোড করতে সমস্যা হয়েছে");
@@ -346,6 +396,7 @@ export default function AdminPage() {
           nagadNumber: String(parsed.nagadNumber || "01700-000000"),
         });
       }
+      loadLocalReviews();
     } catch (err) {
       console.error("Failed to load admin settings:", err);
     }
@@ -736,6 +787,38 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteSubscriber = async (id: string) => {
+    setDeletingSubscriberId(id);
+    try {
+      const res = await fetch(`/api/subscribers?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSubscribers((prev) => prev.filter((item) => item._id !== id));
+        showToast("সাবস্ক্রাইবার ডিলিট করা হয়েছে");
+      } else {
+        showToast(data.message || "ডিলিট করা যায়নি");
+      }
+    } catch (err) {
+      console.error("Delete subscriber failed:", err);
+      showToast("ডিলিট করতে সমস্যা হয়েছে");
+    } finally {
+      setDeletingSubscriberId(null);
+    }
+  };
+
+  const handleDeleteReview = (id: string) => {
+    const updated = reviews.filter((r) => r.id !== id);
+    setReviews(updated);
+    try {
+      localStorage.setItem("fg_simple_reviews", JSON.stringify(updated));
+      showToast("রিভিউ মুছে ফেলা হয়েছে");
+    } catch {
+      showToast("রিভিউ মুছতে সমস্যা হয়েছে");
+    }
+  };
+
   const handleCopyText = async (
     text: string,
     idKey?: string,
@@ -841,6 +924,21 @@ export default function AdminPage() {
       return matchesCat && matchesQuery;
     });
   }, [products, productCatFilter, effectiveProductQuery]);
+
+  const filteredSubscribers = useMemo(() => {
+    const q = globalSearch.trim().toLowerCase();
+    if (!q) return subscribers;
+    return subscribers.filter((s) => s.email.toLowerCase().includes(q));
+  }, [subscribers, globalSearch]);
+
+  const filteredReviews = useMemo(() => {
+    const q = globalSearch.trim().toLowerCase();
+    if (!q) return reviews;
+    return reviews.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) || r.comment.toLowerCase().includes(q)
+    );
+  }, [reviews, globalSearch]);
 
   const customersList = useMemo(() => {
     const map = new Map<
@@ -1025,6 +1123,18 @@ export default function AdminPage() {
       label: "Customers",
       icon: <Users className="w-4 h-4" />,
       badge: customersList.length,
+    },
+    {
+      key: "subscribers",
+      label: "Subscribers",
+      icon: <Mail className="w-4 h-4" />,
+      badge: subscribers.length,
+    },
+    {
+      key: "reviews",
+      label: "Reviews",
+      icon: <Star className="w-4 h-4" />,
+      badge: reviews.length,
     },
     {
       key: "settings",
@@ -1215,7 +1325,7 @@ export default function AdminPage() {
                 <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
                 <input
                   type="text"
-                  placeholder="Search orders, phones, items..."
+                  placeholder="Search orders, emails, items..."
                   value={globalSearch}
                   onChange={(e) => setGlobalSearch(e.target.value)}
                   className="bg-transparent text-xs sm:text-sm outline-none w-full text-slate-900"
@@ -1281,13 +1391,16 @@ export default function AdminPage() {
 
               <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
                 <p className="text-xs font-medium text-slate-500">
-                  Delivered Orders
+                  Subscribers &amp; Reviews
                 </p>
                 <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1">
-                  {stats.deliveredCount}
+                  {subscribers.length}{" "}
+                  <span className="text-xs font-bold text-amber-600">
+                    / {reviews.length} rev
+                  </span>
                 </p>
                 <p className="text-[11px] text-slate-500 font-medium mt-1">
-                  Completed deliveries
+                  Newsletter &amp; customer reviews
                 </p>
               </div>
 
@@ -2072,6 +2185,168 @@ export default function AdminPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* NEWSLETTER SUBSCRIBERS SECTION */}
+            {activeSection === "subscribers" && (
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Newsletter Subscribers ({filteredSubscribers.length})
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      স্টোরফ্রন্ট ফুটার সাবস্ক্রিপশন ফর্ম থেকে সংগৃহীত ইমেইল লিস্ট
+                    </p>
+                  </div>
+
+                  {filteredSubscribers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopyText(
+                          filteredSubscribers.map((s) => s.email).join(", "),
+                          "all-subscribers",
+                          "সব সাবস্ক্রাইবার ইমেইল কপি করা হয়েছে"
+                        )
+                      }
+                      className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto"
+                    >
+                      {copiedId === "all-subscribers" ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      Copy All Emails
+                    </button>
+                  )}
+                </div>
+
+                {loadingData && subscribers.length === 0 ? (
+                  <p className="text-sm text-slate-500 py-6 text-center">
+                    Loading subscribers...
+                  </p>
+                ) : filteredSubscribers.length === 0 ? (
+                  <p className="text-sm text-slate-500 py-6 text-center">
+                    এখনো কোনো নিউজলেটার সাবস্ক্রাইবার পাওয়া যায়নি।
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                    {filteredSubscribers.map((sub) => (
+                      <div
+                        key={sub._id}
+                        className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-50/40 hover:bg-slate-50"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 truncate">
+                            {sub.email}
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            {sub.createdAt
+                              ? `Subscribed: ${new Date(
+                                  sub.createdAt
+                                ).toLocaleDateString()}`
+                              : "Newsletter Subscriber"}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCopyText(
+                                sub.email,
+                                sub._id,
+                                "ইমেইল কপি করা হয়েছে"
+                              )
+                            }
+                            title="Copy email"
+                            className="p-2 text-slate-700 hover:bg-slate-200/70 rounded-xl transition cursor-pointer"
+                          >
+                            {copiedId === sub._id ? (
+                              <Check className="w-4 h-4 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={deletingSubscriberId === sub._id}
+                            onClick={() => handleDeleteSubscriber(sub._id)}
+                            title="Delete subscriber"
+                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition disabled:opacity-50 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CUSTOMER REVIEWS SECTION */}
+            {activeSection === "reviews" && (
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Customer Reviews ({filteredReviews.length})
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      কাস্টমারদের দেওয়া রিভিউ ও রিসিভ করা প্রোডাক্টের ছবি
+                    </p>
+                  </div>
+                </div>
+
+                {filteredReviews.length === 0 ? (
+                  <p className="text-sm text-slate-500 py-6 text-center">
+                    এখনো কোনো কাস্টমার রিভিউ যোগ হয়নি।
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredReviews.map((rev) => (
+                      <div
+                        key={rev.id}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold text-slate-950">
+                            {rev.name}
+                          </span>
+                          <span className="text-xs font-bold text-amber-600">
+                            {rev.rating} ★
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-700 leading-relaxed">
+                          {rev.comment}
+                        </p>
+                        {rev.photo && (
+                          <div className="aspect-video w-full rounded-xl overflow-hidden bg-slate-200 border border-slate-200">
+                            <img
+                              src={rev.photo}
+                              alt={`${rev.name} product review`}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                        <div className="pt-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReview(rev.id)}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:underline cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete Review
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

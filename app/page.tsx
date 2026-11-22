@@ -73,6 +73,7 @@ type SimpleReview = {
   name: string;
   rating: number;
   comment: string;
+  photo?: string;
 };
 
 type SortOption = "featured" | "price-asc" | "price-desc" | "discount";
@@ -132,21 +133,6 @@ const CATEGORY_IMAGES = {
   mobileAccessories:
     "https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=500&q=80",
 };
-
-const DEFAULT_REVIEWS: SimpleReview[] = [
-  {
-    id: "r-1",
-    name: "Rakib Hasan",
-    rating: 5,
-    comment: "Good quality product and quick delivery from Mymensingh.",
-  },
-  {
-    id: "r-2",
-    name: "Mitu Akter",
-    rating: 5,
-    comment: "Exact size and neat packaging. Very satisfied.",
-  },
-];
 
 const FEATURED_CATEGORIES = [
   {
@@ -230,7 +216,11 @@ function canonicalCategoryLabel(raw?: string): string {
   if (isFootwearText(val)) return "Men's Footwear";
   if (val.includes("women") && val.includes("fashion")) return "Women's Fashion";
   if (val.includes("men") && val.includes("fashion")) return "Men's Fashion";
-  if (val.includes("beauty") || val.includes("cosmetic") || val.includes("skincare"))
+  if (
+    val.includes("beauty") ||
+    val.includes("cosmetic") ||
+    val.includes("skincare")
+  )
     return "Beauty Products";
   if (
     val.includes("mobile") ||
@@ -334,11 +324,12 @@ export default function HomeStore() {
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>("home");
 
-  // Simple Customer Reviews State
-  const [reviews, setReviews] = useState<SimpleReview[]>(DEFAULT_REVIEWS);
+  // Real Customer Reviews State (starts empty; populated only by user reviews)
+  const [reviews, setReviews] = useState<SimpleReview[]>([]);
   const [reviewName, setReviewName] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
+  const [reviewPhoto, setReviewPhoto] = useState<string>("");
 
   // Delivery & Wallet Config synced from Admin Settings
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryConfig>(
@@ -423,8 +414,8 @@ export default function HomeStore() {
     if (savedReviews) {
       try {
         const parsed = JSON.parse(savedReviews);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setReviews([...parsed, ...DEFAULT_REVIEWS]);
+        if (Array.isArray(parsed)) {
+          setReviews(parsed);
         }
       } catch {
         // ignore
@@ -709,6 +700,28 @@ export default function HomeStore() {
     );
   };
 
+  const handleReviewPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 3 * 1024 * 1024) {
+      notify(
+        lang === "bn"
+          ? "ছবির সাইজ ৩ MB-এর কম হতে হবে।"
+          : "Photo size must be under 3 MB."
+      );
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setReviewPhoto(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAddSimpleReview = (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewName.trim() || !reviewText.trim()) return;
@@ -718,22 +731,25 @@ export default function HomeStore() {
       name: reviewName.trim(),
       rating: reviewRating,
       comment: reviewText.trim(),
+      photo: reviewPhoto || undefined,
     };
 
     const updated = [item, ...reviews];
     setReviews(updated);
     try {
-      const customOnly = updated.filter(
-        (r) => !DEFAULT_REVIEWS.some((d) => d.id === r.id)
-      );
-      localStorage.setItem("fg_simple_reviews", JSON.stringify(customOnly));
+      localStorage.setItem("fg_simple_reviews", JSON.stringify(updated));
     } catch {
-      // ignore
+      notify(
+        lang === "bn"
+          ? "ছবির সাইজ বড় হওয়ায় ব্রাউজারে সেভ করা যায়নি, ছোট ছবি ব্যবহার করুন।"
+          : "Photo too large for local storage; try a smaller photo."
+      );
     }
 
     setReviewName("");
     setReviewText("");
     setReviewRating(5);
+    setReviewPhoto("");
     notify(lang === "bn" ? "রিভিউ যোগ হয়েছে!" : "Review added!");
   };
 
@@ -1018,15 +1034,49 @@ export default function HomeStore() {
     if (el) el.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleNewsletterSubmit = (e: React.FormEvent) => {
+  const handleNewsletterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newsletterEmail.trim()) return;
-    setNewsletterStatus(
-      lang === "bn"
-        ? "সাবস্ক্রাইব সম্পন্ন হয়েছে! নতুন কালেকশন ও অফারের আপডেট পাবেন।"
-        : "Subscribed! You will receive updates on new arrivals and offers."
-    );
-    setNewsletterEmail("");
+
+    try {
+      const res = await fetch("/api/subscribers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newsletterEmail.trim() }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setNewsletterStatus(
+          data.message ||
+            (lang === "bn"
+              ? "সাবস্ক্রাইব করা যায়নি, আবার চেষ্টা করুন।"
+              : "Could not subscribe. Please try again.")
+        );
+        return;
+      }
+
+      if (data.alreadySubscribed) {
+        setNewsletterStatus(
+          lang === "bn"
+            ? "এই ইমেইলটি আগে থেকেই সাবস্ক্রাইব করা আছে।"
+            : "This email is already subscribed."
+        );
+      } else {
+        setNewsletterStatus(
+          lang === "bn"
+            ? "সাবস্ক্রাইব সম্পন্ন হয়েছে! নতুন কালেকশন ও অফারের আপডেট পাবেন।"
+            : "Subscribed! You will receive updates on new arrivals and offers."
+        );
+      }
+      setNewsletterEmail("");
+    } catch {
+      setNewsletterStatus(
+        lang === "bn"
+          ? "নেটওয়ার্ক সমস্যা হয়েছে, আবার চেষ্টা করুন।"
+          : "Network error. Please try again."
+      );
+    }
   };
 
   return (
@@ -1919,77 +1969,143 @@ export default function HomeStore() {
         </div>
       </section>
 
-      {/* Simple Customer Reviews */}
+      {/* Real Customer Reviews (Starts Empty; Users Post Reviews & Received Product Photos) */}
       <section className="max-w-7xl mx-auto px-4 pb-12">
         <div className="bg-white rounded-3xl border border-neutral-200 p-6 sm:p-8 space-y-6">
-          <h2 className="text-xl font-bold text-neutral-950">
-            {lang === "bn" ? "কাস্টমার রিভিউ" : "Customer Reviews"}
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-neutral-950">
+              {lang === "bn" ? "কাস্টমার রিভিউ" : "Customer Reviews"}
+            </h2>
+            <span className="text-xs text-neutral-500">
+              {reviews.length}{" "}
+              {lang === "bn"
+                ? "টি রিভিউ"
+                : reviews.length === 1
+                ? "review"
+                : "reviews"}
+            </span>
+          </div>
 
-          <form
-            onSubmit={handleAddSimpleReview}
-            className="grid grid-cols-1 sm:grid-cols-12 gap-2.5"
-          >
-            <input
-              type="text"
-              required
-              placeholder={lang === "bn" ? "আপনার নাম *" : "Your name *"}
-              value={reviewName}
-              onChange={(e) => setReviewName(e.target.value)}
-              className="sm:col-span-3 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-neutral-950"
-            />
-            <select
-              value={reviewRating}
-              onChange={(e) => setReviewRating(Number(e.target.value))}
-              aria-label="Rating"
-              className="sm:col-span-2 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs sm:text-sm outline-none cursor-pointer"
-            >
-              <option value={5}>5 ★</option>
-              <option value={4}>4 ★</option>
-              <option value={3}>3 ★</option>
-            </select>
-            <input
-              type="text"
-              required
-              placeholder={
-                lang === "bn"
-                  ? "আপনার মন্তব্য লিখুন... *"
-                  : "Write a short review... *"
-              }
-              value={reviewText}
-              onChange={(e) => setReviewText(e.target.value)}
-              className="sm:col-span-5 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-neutral-950"
-            />
-            <button
-              type="submit"
-              className="sm:col-span-2 bg-neutral-950 hover:bg-neutral-800 text-white text-xs sm:text-sm font-semibold py-2 px-4 rounded-xl transition cursor-pointer"
-            >
-              {lang === "bn" ? "রিভিউ দিন" : "Post"}
-            </button>
+          <form onSubmit={handleAddSimpleReview} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+              <input
+                type="text"
+                required
+                placeholder={lang === "bn" ? "আপনার নাম *" : "Your name *"}
+                value={reviewName}
+                onChange={(e) => setReviewName(e.target.value)}
+                className="sm:col-span-3 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-neutral-950"
+              />
+              <select
+                value={reviewRating}
+                onChange={(e) => setReviewRating(Number(e.target.value))}
+                aria-label="Rating"
+                className="sm:col-span-2 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs sm:text-sm outline-none cursor-pointer"
+              >
+                <option value={5}>5 ★</option>
+                <option value={4}>4 ★</option>
+                <option value={3}>3 ★</option>
+                <option value={2}>2 ★</option>
+                <option value={1}>1 ★</option>
+              </select>
+              <input
+                type="text"
+                required
+                placeholder={
+                  lang === "bn"
+                    ? "রিসিভ করা প্রোডাক্ট নিয়ে আপনার মতামত লিখুন... *"
+                    : "Write your review about the received product... *"
+                }
+                value={reviewText}
+                onChange={(e) => setReviewText(e.target.value)}
+                className="sm:col-span-5 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-neutral-950"
+              />
+              <button
+                type="submit"
+                className="sm:col-span-2 bg-neutral-950 hover:bg-neutral-800 text-white text-xs sm:text-sm font-semibold py-2 px-4 rounded-xl transition cursor-pointer"
+              >
+                {lang === "bn" ? "রিভিউ দিন" : "Post"}
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold px-3.5 py-2 rounded-xl cursor-pointer transition">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>
+                  {lang === "bn"
+                    ? "প্রোডাক্টের ছবি তুলুন / যোগ করুন"
+                    : "Take / Add Product Photo"}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleReviewPhotoChange}
+                  className="hidden"
+                />
+              </label>
+
+              {reviewPhoto && (
+                <div className="flex items-center gap-2 bg-neutral-50 border border-neutral-200 rounded-xl p-1.5 pr-2.5">
+                  <img
+                    src={reviewPhoto}
+                    alt="Preview"
+                    className="w-10 h-10 rounded-lg object-cover"
+                  />
+                  <span className="text-xs text-neutral-600">
+                    {lang === "bn" ? "ছবি যুক্ত হয়েছে" : "Photo attached"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setReviewPhoto("")}
+                    className="text-xs text-rose-600 font-semibold hover:underline cursor-pointer"
+                  >
+                    {lang === "bn" ? "সরান" : "Remove"}
+                  </button>
+                </div>
+              )}
+            </div>
           </form>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {reviews.slice(0, 6).map((rev) => (
-              <div
-                key={rev.id}
-                className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80 space-y-1.5"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-neutral-900">
-                    {rev.name}
-                  </span>
-                  <span className="flex items-center gap-0.5 text-amber-500">
-                    {Array.from({ length: rev.rating }).map((_, i) => (
-                      <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
-                    ))}
-                  </span>
+          {reviews.length === 0 ? (
+            <p className="text-xs sm:text-sm text-neutral-500 py-4">
+              {lang === "bn"
+                ? "এখনো কোনো রিভিউ দেওয়া হয়নি। পণ্য রিসিভ করার পর প্রথম রিভিউ ও ছবি দিন।"
+                : "No reviews yet. Be the first to post a review with a photo of your received product."}
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {reviews.map((rev) => (
+                <div
+                  key={rev.id}
+                  className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80 space-y-2.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-neutral-900">
+                      {rev.name}
+                    </span>
+                    <span className="flex items-center gap-0.5 text-amber-500">
+                      {Array.from({ length: rev.rating }).map((_, i) => (
+                        <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
+                      ))}
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-600 leading-relaxed">
+                    {rev.comment}
+                  </p>
+                  {rev.photo && (
+                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-neutral-200 border border-neutral-200">
+                      <img
+                        src={rev.photo}
+                        alt={`${rev.name} product review`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs text-neutral-600 leading-relaxed">
-                  {rev.comment}
-                </p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
