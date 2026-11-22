@@ -1,20 +1,40 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL || "https://my-fashion-gadget-store.vercel.app";
 
 export const metadata: Metadata = {
-  title: "FG Trend Tech — Fashion & Smart Gadgets",
-  description: "Curated fashion essentials and smart gadgets across Bangladesh.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "FG Trend Tech | Elevated Style & Everyday Tech",
+    template: "%s | FG Trend Tech",
+  },
+  description:
+    "Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories with Cash on Delivery from Mymensingh.",
+  openGraph: {
+    type: "website",
+    siteName: "FG Trend Tech",
+    title: "FG Trend Tech | Elevated Style & Everyday Tech",
+    description:
+      "Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories with Cash on Delivery from Mymensingh.",
+    url: SITE_URL,
+    images: [
+      {
+        url: "/hero-banner.jpg",
+        width: 1200,
+        height: 630,
+        alt: "FG Trend Tech Storefront Banner",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "FG Trend Tech | Elevated Style & Everyday Tech",
+    description:
+      "Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories with Cash on Delivery from Mymensingh.",
+    images: ["/hero-banner.jpg"],
+  },
 };
 
 export default function RootLayout({
@@ -23,14 +43,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      suppressHydrationWarning
-    >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        {children}
-      </body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }

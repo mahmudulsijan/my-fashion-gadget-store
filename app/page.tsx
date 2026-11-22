@@ -28,6 +28,8 @@ import {
   Package,
   LogOut,
   Flame,
+  Star,
+  Globe,
 } from "lucide-react";
 
 type Product = {
@@ -66,8 +68,16 @@ type DeliveryConfig = {
   nagadNumber: string;
 };
 
+type SimpleReview = {
+  id: string;
+  name: string;
+  rating: number;
+  comment: string;
+};
+
 type SortOption = "featured" | "price-asc" | "price-desc" | "discount";
 type BottomTab = "home" | "categories" | "cart" | "orders" | "account";
+type Lang = "en" | "bn";
 
 const DEFAULT_DELIVERY_CONFIG: DeliveryConfig = {
   insideMymensingh: 70,
@@ -96,6 +106,16 @@ export const STORE_CATEGORIES = [
   "Mobile Accessories",
 ] as const;
 
+const CATEGORY_BN: Record<string, string> = {
+  "Men's Fashion": "মেনস ফ্যাশন",
+  "Women's Fashion": "উইমেনস ফ্যাশন",
+  "Men's Footwear": "মেনস ফুটওয়্যার",
+  "Women's Footwear": "উইমেনস ফুটওয়্যার",
+  Gadgets: "গ্যাজেটস",
+  "Beauty Products": "বিউটি প্রোডাক্টস",
+  "Mobile Accessories": "মোবাইল অ্যাক্সেসরিজ",
+};
+
 const CATEGORY_IMAGES = {
   mensFashion:
     "https://images.unsplash.com/photo-1516257984-b1b4d707412e?auto=format&fit=crop&w=500&q=80",
@@ -112,6 +132,21 @@ const CATEGORY_IMAGES = {
   mobileAccessories:
     "https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=500&q=80",
 };
+
+const DEFAULT_REVIEWS: SimpleReview[] = [
+  {
+    id: "r-1",
+    name: "Rakib Hasan",
+    rating: 5,
+    comment: "Good quality product and quick delivery from Mymensingh.",
+  },
+  {
+    id: "r-2",
+    name: "Mitu Akter",
+    rating: 5,
+    comment: "Exact size and neat packaging. Very satisfied.",
+  },
+];
 
 const FEATURED_CATEGORIES = [
   {
@@ -282,6 +317,7 @@ function getDiscountPercent(price: number, oldPrice?: number): number | null {
 }
 
 export default function HomeStore() {
+  const [lang, setLang] = useState<Lang>("en");
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
@@ -297,6 +333,12 @@ export default function HomeStore() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>("home");
+
+  // Simple Customer Reviews State
+  const [reviews, setReviews] = useState<SimpleReview[]>(DEFAULT_REVIEWS);
+  const [reviewName, setReviewName] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewText, setReviewText] = useState("");
 
   // Delivery & Wallet Config synced from Admin Settings
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryConfig>(
@@ -352,6 +394,9 @@ export default function HomeStore() {
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterStatus, setNewsletterStatus] = useState<string>("");
 
+  const catLabelText = (label: string) =>
+    lang === "bn" ? CATEGORY_BN[label] || label : label;
+
   const notify = (msg: string) => {
     setToastMessage(msg);
     window.setTimeout(() => {
@@ -359,21 +404,44 @@ export default function HomeStore() {
     }, 2600);
   };
 
-  // Keep page at top on load/refresh
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      if ("scrollRestoration" in window.history) {
-        window.history.scrollRestoration = "manual";
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "instant" as ScrollBehavior,
+    });
+
+    const savedLang = localStorage.getItem("fg_store_lang");
+    if (savedLang === "en" || savedLang === "bn") {
+      setLang(savedLang);
+    }
+
+    const savedReviews = localStorage.getItem("fg_simple_reviews");
+    if (savedReviews) {
+      try {
+        const parsed = JSON.parse(savedReviews);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setReviews([...parsed, ...DEFAULT_REVIEWS]);
+        }
+      } catch {
+        // ignore
       }
-      window.scrollTo({
-        top: 0,
-        left: 0,
-        behavior: "instant" as ScrollBehavior,
-      });
     }
   }, []);
 
-  // Load saved delivery settings & customer profile
+  const toggleLanguage = () => {
+    const next: Lang = lang === "en" ? "bn" : "en";
+    setLang(next);
+    try {
+      localStorage.setItem("fg_store_lang", next);
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     try {
       const rawSettings = localStorage.getItem("fg_admin_delivery_settings");
@@ -474,7 +542,6 @@ export default function HomeStore() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Fetch real products only from database
   useEffect(() => {
     let active = true;
 
@@ -504,8 +571,7 @@ export default function HomeStore() {
                 price: Number(item.price) || 0,
                 oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
                 image:
-                  String(item.image || "") ||
-                  CATEGORY_IMAGES.mensFootwear,
+                  String(item.image || "") || CATEGORY_IMAGES.mensFootwear,
                 badge:
                   String(item.badge || "") ||
                   (cat === "fashion" ? "New Collection" : "Smart Tech"),
@@ -579,7 +645,9 @@ export default function HomeStore() {
 
     if (!isValidBdPhone(loginPhoneInput)) {
       setLoginError(
-        "Please enter a valid 11-digit Bangladesh mobile number (e.g. 017XXXXXXXX)."
+        lang === "bn"
+          ? "সঠিক ১১ সংখ্যার মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।"
+          : "Please enter a valid 11-digit Bangladesh mobile number (e.g. 017XXXXXXXX)."
       );
       return;
     }
@@ -614,7 +682,9 @@ export default function HomeStore() {
     setLoginError("");
     setIsAccountModalOpen(false);
     setActiveBottomTab("home");
-    notify(`Welcome, ${profile.name}!`);
+    notify(
+      lang === "bn" ? `স্বাগতম, ${profile.name}!` : `Welcome, ${profile.name}!`
+    );
   };
 
   const handleCustomerLogout = () => {
@@ -624,7 +694,7 @@ export default function HomeStore() {
     } catch (err) {
       console.error("Failed to remove user:", err);
     }
-    notify("Signed out of your account");
+    notify(lang === "bn" ? "সাইন আউট সম্পন্ন হয়েছে" : "Signed out of your account");
   };
 
   const handleSelectLocation = (loc: (typeof DELIVERY_LOCATIONS)[number]) => {
@@ -632,7 +702,39 @@ export default function HomeStore() {
     setCustomerDistrict(loc.district);
     setDeliveryZone(loc.zone);
     setIsLocationModalOpen(false);
-    notify(`Delivery location set to ${loc.label}`);
+    notify(
+      lang === "bn"
+        ? `ডেলিভারি লোকেশন ${loc.label} সেট করা হয়েছে`
+        : `Delivery location set to ${loc.label}`
+    );
+  };
+
+  const handleAddSimpleReview = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewName.trim() || !reviewText.trim()) return;
+
+    const item: SimpleReview = {
+      id: `r-${Date.now()}`,
+      name: reviewName.trim(),
+      rating: reviewRating,
+      comment: reviewText.trim(),
+    };
+
+    const updated = [item, ...reviews];
+    setReviews(updated);
+    try {
+      const customOnly = updated.filter(
+        (r) => !DEFAULT_REVIEWS.some((d) => d.id === r.id)
+      );
+      localStorage.setItem("fg_simple_reviews", JSON.stringify(customOnly));
+    } catch {
+      // ignore
+    }
+
+    setReviewName("");
+    setReviewText("");
+    setReviewRating(5);
+    notify(lang === "bn" ? "রিভিউ যোগ হয়েছে!" : "Review added!");
   };
 
   const toggleWishlist = (product: Product) => {
@@ -643,7 +745,11 @@ export default function HomeStore() {
         : [...prev, product.id];
       notify(
         exists
-          ? `Removed "${product.name}" from wishlist`
+          ? lang === "bn"
+            ? `"${product.name}" উইশলিস্ট থেকে সরানো হয়েছে`
+            : `Removed "${product.name}" from wishlist`
+          : lang === "bn"
+          ? `"${product.name}" উইশলিস্টে সেভ হয়েছে`
           : `Saved "${product.name}" to wishlist`
       );
       return next;
@@ -744,7 +850,11 @@ export default function HomeStore() {
 
     setOrderError("");
     setOrderSuccess(false);
-    notify(`Added "${product.name}" to bag`);
+    notify(
+      lang === "bn"
+        ? `"${product.name}" কার্টে যোগ হয়েছে`
+        : `Added "${product.name}" to bag`
+    );
     if (openDrawer) {
       setIsCartOpen(true);
       setActiveBottomTab("cart");
@@ -794,7 +904,9 @@ export default function HomeStore() {
 
     if (!isValidBdPhone(customerPhone)) {
       setOrderError(
-        "Please enter a valid 11-digit Bangladesh mobile number (e.g. 017XXXXXXXX)."
+        lang === "bn"
+          ? "সঠিক ১১ সংখ্যার মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।"
+          : "Please enter a valid 11-digit Bangladesh mobile number (e.g. 017XXXXXXXX)."
       );
       return;
     }
@@ -802,7 +914,9 @@ export default function HomeStore() {
     if (paymentMethod === "bKash" || paymentMethod === "Nagad") {
       if (!senderNumber.trim() || !trxId.trim()) {
         setOrderError(
-          `Please enter your ${paymentMethod} sender number and Transaction ID (TrxID).`
+          lang === "bn"
+            ? `আপনার ${paymentMethod} সেন্ডার নম্বর এবং TrxID দিন।`
+            : `Please enter your ${paymentMethod} sender number and Transaction ID (TrxID).`
         );
         return;
       }
@@ -869,7 +983,11 @@ export default function HomeStore() {
       setTrxId("");
       setOrderNotes("");
       setOrderSuccess(true);
-      notify("Order placed successfully!");
+      notify(
+        lang === "bn"
+          ? "অর্ডার সফলভাবে সম্পন্ন হয়েছে!"
+          : "Order placed successfully!"
+      );
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -904,7 +1022,9 @@ export default function HomeStore() {
     e.preventDefault();
     if (!newsletterEmail.trim()) return;
     setNewsletterStatus(
-      "Subscribed! You will receive updates on new arrivals and offers."
+      lang === "bn"
+        ? "সাবস্ক্রাইব সম্পন্ন হয়েছে! নতুন কালেকশন ও অফারের আপডেট পাবেন।"
+        : "Subscribed! You will receive updates on new arrivals and offers."
     );
     setNewsletterEmail("");
   };
@@ -920,12 +1040,14 @@ export default function HomeStore() {
 
       {/* A. Announcement Bar */}
       <div className="bg-neutral-950 text-neutral-200 text-xs py-2 px-4 text-center tracking-wide border-b border-neutral-800">
-        Nationwide Cash on Delivery &amp; Mobile Pay • Inside Mymensingh ৳
-        {deliveryConfig.insideMymensingh} &amp; Outside Mymensingh ৳
-        {deliveryConfig.outsideMymensingh}
+        {lang === "bn"
+          ? `সারা দেশে ক্যাশ অন ডেলিভারি ও মোবাইল পে • ময়মনসিংহের ভেতরে ৳${deliveryConfig.insideMymensingh} এবং বাইরে ৳${deliveryConfig.outsideMymensingh}`
+          : `Nationwide Cash on Delivery & Mobile Pay • Inside Mymensingh ৳${deliveryConfig.insideMymensingh} & Outside Mymensingh ৳${deliveryConfig.outsideMymensingh}`}
         {deliveryConfig.freeThreshold > 0
-          ? ` • Free Delivery over ৳${deliveryConfig.freeThreshold}`
-          : " • Authentic Men's & Women's Fashion, Footwear, Beauty, Gadgets & Mobile Accessories"}
+          ? lang === "bn"
+            ? ` • ৳${deliveryConfig.freeThreshold}+ অর্ডারে ফ্রি ডেলিভারি`
+            : ` • Free Delivery over ৳${deliveryConfig.freeThreshold}`
+          : ""}
       </div>
 
       {/* B. Modern Navigation Bar */}
@@ -964,7 +1086,9 @@ export default function HomeStore() {
             >
               <MapPin className="w-3.5 h-3.5 text-rose-600 shrink-0" />
               <span className="truncate max-w-[125px]">
-                Deliver to {deliveryLocation}
+                {lang === "bn"
+                  ? `ডেলিভারি: ${deliveryLocation}`
+                  : `Deliver to ${deliveryLocation}`}
               </span>
             </button>
           </div>
@@ -978,35 +1102,35 @@ export default function HomeStore() {
               }}
               className="hover:text-neutral-950 transition"
             >
-              Home
+              {lang === "bn" ? "হোম" : "Home"}
             </a>
             <button
               type="button"
               onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
               className="hover:text-neutral-950 transition cursor-pointer"
             >
-              All Products
+              {lang === "bn" ? "সব প্রোডাক্ট" : "All Products"}
             </button>
             <button
               type="button"
               onClick={() => jumpToCatalog({ sub: "Men's Fashion" })}
               className="hover:text-neutral-950 transition cursor-pointer"
             >
-              Men&apos;s Fashion
+              {lang === "bn" ? "মেনস ফ্যাশন" : "Men's Fashion"}
             </button>
             <button
               type="button"
               onClick={() => jumpToCatalog({ sub: "Women's Fashion" })}
               className="hover:text-neutral-950 transition cursor-pointer"
             >
-              Women&apos;s Fashion
+              {lang === "bn" ? "উইমেনস ফ্যাশন" : "Women's Fashion"}
             </button>
             <button
               type="button"
               onClick={() => jumpToCatalog({ sub: "Gadgets" })}
               className="hover:text-neutral-950 transition cursor-pointer"
             >
-              Gadgets
+              {lang === "bn" ? "গ্যাজেটস" : "Gadgets"}
             </button>
             <button
               type="button"
@@ -1015,22 +1139,22 @@ export default function HomeStore() {
               }
               className="hover:text-neutral-950 transition cursor-pointer"
             >
-              Flash Sale
+              {lang === "bn" ? "ফ্ল্যাশ সেল" : "Flash Sale"}
             </button>
             <Link
               href="/track-order"
               className="hover:text-neutral-950 transition font-semibold text-neutral-900"
             >
-              Track Order
+              {lang === "bn" ? "অর্ডার ট্র্যাক" : "Track Order"}
             </Link>
           </nav>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            <div className="hidden md:flex items-center bg-neutral-100 rounded-full px-3.5 py-1.5 w-44">
+            <div className="hidden md:flex items-center bg-neutral-100 rounded-full px-3.5 py-1.5 w-40">
               <Search className="w-4 h-4 text-neutral-400 mr-2 shrink-0" />
               <input
                 type="text"
-                placeholder="Search products..."
+                placeholder={lang === "bn" ? "সার্চ করুন..." : "Search..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-transparent text-xs sm:text-sm outline-none w-full text-neutral-900"
@@ -1048,6 +1172,16 @@ export default function HomeStore() {
 
             <button
               type="button"
+              onClick={toggleLanguage}
+              title="Switch Language (English / বাংলা)"
+              className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-full border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 flex items-center gap-1.5 text-xs font-bold transition cursor-pointer"
+            >
+              <Globe className="w-3.5 h-3.5 text-neutral-700 shrink-0" />
+              <span>{lang === "en" ? "বাংলা" : "EN"}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={openAccountModal}
               title={customerUser ? customerUser.name : "User Login"}
               className={`h-9 sm:h-10 px-2.5 sm:px-3 rounded-full border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
@@ -1058,7 +1192,11 @@ export default function HomeStore() {
             >
               <User className="w-4 h-4 shrink-0" />
               <span className="hidden sm:inline max-w-[85px] truncate">
-                {customerUser ? customerUser.name.split(" ")[0] : "Login"}
+                {customerUser
+                  ? customerUser.name.split(" ")[0]
+                  : lang === "bn"
+                  ? "লগইন"
+                  : "Login"}
               </span>
             </button>
 
@@ -1093,7 +1231,7 @@ export default function HomeStore() {
               className="relative flex items-center gap-1.5 sm:gap-2 bg-neutral-950 hover:bg-neutral-800 text-white px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition cursor-pointer"
             >
               <ShoppingBag className="w-4 h-4" />
-              <span>Cart</span>
+              <span>{lang === "bn" ? "কার্ট" : "Cart"}</span>
               {totalCartCount > 0 && (
                 <span className="bg-white text-neutral-950 text-[11px] font-extrabold px-2 py-0.5 rounded-full">
                   {totalCartCount}
@@ -1116,7 +1254,11 @@ export default function HomeStore() {
                 className="inline-flex items-center gap-1.5 bg-neutral-100 text-neutral-800 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer"
               >
                 <MapPin className="w-3.5 h-3.5 text-rose-600" />
-                <span>Deliver to {deliveryLocation}</span>
+                <span>
+                  {lang === "bn"
+                    ? `ডেলিভারি: ${deliveryLocation}`
+                    : `Deliver to ${deliveryLocation}`}
+                </span>
               </button>
 
               <button
@@ -1128,7 +1270,13 @@ export default function HomeStore() {
                 className="inline-flex items-center gap-1.5 bg-neutral-950 text-white px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer"
               >
                 <User className="w-3.5 h-3.5" />
-                <span>{customerUser ? customerUser.name : "User Login"}</span>
+                <span>
+                  {customerUser
+                    ? customerUser.name
+                    : lang === "bn"
+                    ? "ইউজার লগইন"
+                    : "User Login"}
+                </span>
               </button>
             </div>
 
@@ -1136,7 +1284,11 @@ export default function HomeStore() {
               <Search className="w-4 h-4 text-neutral-400 mr-2" />
               <input
                 type="text"
-                placeholder="Search fashion, footwear, beauty or gadgets..."
+                placeholder={
+                  lang === "bn"
+                    ? "ফ্যাশন, জুতা, বিউটি বা গ্যাজেট খুঁজুন..."
+                    : "Search fashion, footwear, beauty or gadgets..."
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-transparent text-sm outline-none w-full"
@@ -1151,7 +1303,7 @@ export default function HomeStore() {
                   onClick={() => jumpToCatalog({ sub: catName })}
                   className="text-left py-1.5 cursor-pointer hover:text-neutral-950"
                 >
-                  {catName}
+                  {catLabelText(catName)}
                 </button>
               ))}
               <Link
@@ -1159,132 +1311,71 @@ export default function HomeStore() {
                 onClick={() => setMobileMenuOpen(false)}
                 className="py-1.5 font-semibold text-neutral-950 block"
               >
-                Track Order
+                {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track Order"}
               </Link>
-              <a
-                href="#footer-section"
+              <Link
+                href="/policies"
                 onClick={() => setMobileMenuOpen(false)}
-                className="py-1.5"
+                className="py-1.5 block"
               >
-                Contact Us
-              </a>
+                {lang === "bn"
+                  ? "রিটার্ন, এক্সচেঞ্জ ও ডেলিভারি পলিসি"
+                  : "Return, Exchange & Delivery Policy"}
+              </Link>
             </div>
           </div>
         )}
       </header>
 
-     {/* C. Hero Section */}
+      {/* C. Hero Section */}
       <section className="max-w-7xl mx-auto px-4 pt-5 pb-8">
         <div className="bg-[#121212] text-white rounded-3xl overflow-hidden border border-neutral-800 shadow-lg">
           <div className="grid lg:grid-cols-12 gap-7 p-6 sm:p-10 items-center">
             <div className="lg:col-span-5 space-y-5">
               <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
-                FG Trend Tech • Mymensingh Storefront
+                {lang === "bn"
+                  ? "এফজি ট্রেন্ড টেক • ময়মনসিংহ স্টোরফ্রন্ট"
+                  : "FG Trend Tech • Mymensingh Storefront"}
               </p>
-              <h1 className="text-3xl sm:text-5xl font-bold leading-[1.1] tracking-tight">
-                Elevated Style.
-                <br />
-                Everyday Tech.
+              <h1 className="text-3xl sm:text-5xl font-bold leading-[1.12] tracking-tight">
+                {lang === "bn" ? (
+                  <>
+                    আধুনিক স্টাইল।
+                    <br />
+                    প্রতিদিনের স্মার্ট টেক।
+                  </>
+                ) : (
+                  <>
+                    Elevated Style.
+                    <br />
+                    Everyday Tech.
+                  </>
+                )}
               </h1>
               <p className="text-sm text-neutral-400 max-w-md leading-relaxed">
-                Explore Men&apos;s Fashion, Women&apos;s Fashion, Men&apos;s
-                Footwear, Women&apos;s Footwear, Gadgets, Beauty Products, and
-                Mobile Accessories with cash on delivery from Mymensingh.
+                {lang === "bn"
+                  ? "মেনস ও উইমেনস ফ্যাশন, ফুটওয়্যার, বিউটি প্রোডাক্টস, গ্যাজেটস এবং মোবাইল অ্যাক্সেসরিজ অর্ডার করুন সারা দেশে ক্যাশ অন ডেলিভারিতে।"
+                  : "Explore curated Fashion, Footwear, Beauty Products, Gadgets, and Mobile Accessories with nationwide Cash on Delivery from Mymensingh."}
               </p>
 
-              <div className="flex flex-wrap gap-3 pt-1">
+              <div className="pt-1">
                 <button
                   type="button"
-                  onClick={() => jumpToCatalog({ sub: "Men's Footwear" })}
-                  className="bg-white text-neutral-950 hover:bg-neutral-200 text-xs sm:text-sm font-semibold px-5 py-3 rounded-xl transition cursor-pointer"
+                  onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
+                  className="bg-white text-neutral-950 hover:bg-neutral-200 text-sm sm:text-base font-bold px-7 py-3.5 rounded-xl transition cursor-pointer shadow-sm"
                 >
-                  Men&apos;s Footwear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => jumpToCatalog({ sub: "Women's Footwear" })}
-                  className="border border-neutral-600 hover:border-white text-white text-xs sm:text-sm font-semibold px-5 py-3 rounded-xl transition cursor-pointer"
-                >
-                  Women&apos;s Footwear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => jumpToCatalog({ sub: "Beauty Products" })}
-                  className="border border-white/25 hover:border-white/60 text-neutral-100 hover:text-white text-xs sm:text-sm font-semibold px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl transition cursor-pointer"
-                >
-                  Beauty Products
+                  {lang === "bn" ? "এখনই কিনুন (Shop Now)" : "Shop Now"}
                 </button>
               </div>
             </div>
 
-            <div className="lg:col-span-7 grid grid-cols-3 gap-3 items-stretch">
-              <div className="space-y-3">
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
-                  <img
-                    src={CATEGORY_IMAGES.mensFashion}
-                    alt="Men's Fashion"
-                    className="w-full h-full object-cover object-top"
-                  />
-                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                    Men&apos;s Fashion
-                  </span>
-                </div>
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
-                  <img
-                    src={CATEGORY_IMAGES.mensFootwear}
-                    alt="Men's Footwear"
-                    className="w-full h-full object-cover"
-                  />
-                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                    Men&apos;s Footwear
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
-                  <img
-                    src={CATEGORY_IMAGES.womensFashion}
-                    alt="Women's Fashion"
-                    className="w-full h-full object-cover object-top"
-                  />
-                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                    Women&apos;s Fashion
-                  </span>
-                </div>
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
-                  <img
-                    src={CATEGORY_IMAGES.womensFootwear}
-                    alt="Women's Footwear"
-                    className="w-full h-full object-cover"
-                  />
-                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                    Women&apos;s Footwear
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
-                  <img
-                    src={CATEGORY_IMAGES.beautyProducts}
-                    alt="Beauty Products"
-                    className="w-full h-full object-cover"
-                  />
-                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                    Beauty Products
-                  </span>
-                </div>
-                <div className="aspect-square rounded-2xl overflow-hidden bg-neutral-800 relative">
-                  <img
-                    src={CATEGORY_IMAGES.mobileAccessories}
-                    alt="Mobile Accessories"
-                    className="w-full h-full object-cover"
-                  />
-                  <span className="absolute bottom-2 left-2 bg-black/75 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                    Mobile Accessories
-                  </span>
-                </div>
+            <div className="lg:col-span-7">
+              <div className="aspect-[16/10] w-full rounded-2xl overflow-hidden border border-neutral-700/80 bg-neutral-900 shadow-md">
+                <img
+                  src="/hero-banner.jpg"
+                  alt="FG Trend Tech Fashion, Footwear, Beauty & Gadgets Showcase"
+                  className="w-full h-full object-cover"
+                />
               </div>
             </div>
           </div>
@@ -1301,15 +1392,18 @@ export default function HomeStore() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400 text-neutral-950">
-                  Flash Sale
+                  {lang === "bn" ? "ফ্ল্যাশ সেল" : "Flash Sale"}
                 </span>
                 <span className="text-xs text-neutral-300">
-                  {flashSaleCount} discounted items available
+                  {lang === "bn"
+                    ? `${flashSaleCount}টি ডিসকাউন্টেড প্রোডাক্ট রয়েছে`
+                    : `${flashSaleCount} discounted items available`}
                 </span>
               </div>
               <h2 className="text-base sm:text-lg font-bold mt-0.5">
-                বিশেষ ছাড়ে Men&apos;s &amp; Women&apos;s Fashion, Footwear,
-                Beauty, Gadgets &amp; Mobile Accessories অফার
+                {lang === "bn"
+                  ? "বিশেষ ছাড়ে ফ্যাশন, ফুটওয়্যার, বিউটি, গ্যাজেটস ও মোবাইল অ্যাক্সেসরিজ অফার"
+                  : "Special Discounts on Fashion, Footwear, Beauty, Gadgets & Mobile Accessories"}
               </h2>
             </div>
           </div>
@@ -1332,23 +1426,29 @@ export default function HomeStore() {
                 : "bg-white text-neutral-950 hover:bg-neutral-200"
             }`}
           >
-            {flashSaleOnly ? "সব প্রোডাক্ট দেখুন" : "অফার প্রোডাক্ট দেখুন"}
+            {flashSaleOnly
+              ? lang === "bn"
+                ? "সব প্রোডাক্ট দেখুন"
+                : "Show All Products"
+              : lang === "bn"
+              ? "অফার প্রোডাক্ট দেখুন"
+              : "View Offer Products"}
           </button>
         </div>
       </section>
 
-      {/* D. Featured Categories (Exact requested order) */}
+      {/* D. Featured Categories */}
       <section id="categories-section" className="max-w-7xl mx-auto px-4 pb-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950">
-            Shop by Category
+            {lang === "bn" ? "ক্যাটাগরি অনুযায়ী কিনুন" : "Shop by Category"}
           </h2>
           <button
             type="button"
             onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
             className="text-xs sm:text-sm font-semibold text-neutral-700 hover:text-neutral-950 cursor-pointer"
           >
-            View All →
+            {lang === "bn" ? "সব দেখুন →" : "View All →"}
           </button>
         </div>
 
@@ -1374,7 +1474,7 @@ export default function HomeStore() {
               </div>
               <div className="p-3">
                 <p className="text-xs sm:text-sm font-semibold text-neutral-900 truncate">
-                  {catItem.title}
+                  {catLabelText(catItem.title)}
                 </p>
               </div>
             </button>
@@ -1389,11 +1489,17 @@ export default function HomeStore() {
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950 mr-2">
                 {showWishlistOnly
-                  ? "Saved Wishlist"
+                  ? lang === "bn"
+                    ? "সেভ করা উইশলিস্ট"
+                    : "Saved Wishlist"
                   : flashSaleOnly
-                  ? "Flash Sale Deals"
+                  ? lang === "bn"
+                    ? "ফ্ল্যাশ সেল অফার"
+                    : "Flash Sale Deals"
                   : selectedSubCategory !== "all"
-                  ? selectedSubCategory
+                  ? catLabelText(selectedSubCategory)
+                  : lang === "bn"
+                  ? "ফিচার্ড কালেকশন"
                   : "Featured Collection"}
               </h2>
 
@@ -1414,7 +1520,7 @@ export default function HomeStore() {
                     : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
                 }`}
               >
-                ALL
+                {lang === "bn" ? "সব" : "ALL"}
               </button>
 
               {STORE_CATEGORIES.map((catLabel) => (
@@ -1425,9 +1531,7 @@ export default function HomeStore() {
                     setShowWishlistOnly(false);
                     setFlashSaleOnly(false);
                     setSelectedSubCategory(catLabel);
-                    setSelectedCategory(
-                      normalizeCategory(catLabel)
-                    );
+                    setSelectedCategory(normalizeCategory(catLabel));
                   }}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide transition cursor-pointer ${
                     !showWishlistOnly &&
@@ -1437,7 +1541,7 @@ export default function HomeStore() {
                       : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
                   }`}
                 >
-                  {catLabel}
+                  {catLabelText(catLabel)}
                 </button>
               ))}
             </div>
@@ -1449,10 +1553,18 @@ export default function HomeStore() {
                 aria-label="Sort products"
                 className="bg-neutral-100 border border-neutral-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-neutral-800 outline-none cursor-pointer"
               >
-                <option value="featured">Sort: Featured</option>
-                <option value="price-asc">Price: Low to High</option>
-                <option value="price-desc">Price: High to Low</option>
-                <option value="discount">Biggest Discount</option>
+                <option value="featured">
+                  {lang === "bn" ? "সাজান: ফিচার্ড" : "Sort: Featured"}
+                </option>
+                <option value="price-asc">
+                  {lang === "bn" ? "দাম: কম থেকে বেশি" : "Price: Low to High"}
+                </option>
+                <option value="price-desc">
+                  {lang === "bn" ? "দাম: বেশি থেকে কম" : "Price: High to Low"}
+                </option>
+                <option value="discount">
+                  {lang === "bn" ? "সর্বোচ্চ ছাড়" : "Biggest Discount"}
+                </option>
               </select>
 
               <div className="flex items-center bg-neutral-100 p-1 rounded-xl border border-neutral-200">
@@ -1486,10 +1598,12 @@ export default function HomeStore() {
 
           {(selectedSubCategory !== "all" || flashSaleOnly) && (
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-neutral-500">Active filter:</span>
+              <span className="text-neutral-500">
+                {lang === "bn" ? "চালু ফিল্টার:" : "Active filter:"}
+              </span>
               {flashSaleOnly && (
                 <span className="bg-rose-600 text-white px-3 py-1 rounded-full font-medium flex items-center gap-1.5">
-                  Flash Sale
+                  {lang === "bn" ? "ফ্ল্যাশ সেল" : "Flash Sale"}
                   <button
                     type="button"
                     onClick={() => setFlashSaleOnly(false)}
@@ -1501,7 +1615,7 @@ export default function HomeStore() {
               )}
               {selectedSubCategory !== "all" && (
                 <span className="bg-neutral-900 text-white px-3 py-1 rounded-full font-medium flex items-center gap-1.5">
-                  {selectedSubCategory}
+                  {catLabelText(selectedSubCategory)}
                   <button
                     type="button"
                     onClick={() => setSelectedSubCategory("all")}
@@ -1528,11 +1642,12 @@ export default function HomeStore() {
           <div className="bg-white rounded-3xl p-10 text-center border border-neutral-200 space-y-3">
             <p className="text-sm text-neutral-700 font-semibold">
               {products.length === 0
-                ? "বর্তমানে স্টোরে কোনো প্রোডাক্ট তালিকাভুক্ত নেই।"
-                : "এই ফিল্টারে কোনো প্রোডাক্ট পাওয়া যায়নি।"}
-            </p>
-            <p className="text-xs text-neutral-500">
-              অন্য ক্যাটাগরি বা সার্চ টার্ম ব্যবহার করে আবার চেষ্টা করুন।
+                ? lang === "bn"
+                  ? "বর্তমানে স্টোরে কোনো প্রোডাক্ট তালিকাভুক্ত নেই।"
+                  : "No products are currently listed in the store."
+                : lang === "bn"
+                ? "এই ফিল্টারে কোনো প্রোডাক্ট পাওয়া যায়নি।"
+                : "No products found matching your filter."}
             </p>
             <div className="flex items-center justify-center gap-2.5 pt-1">
               <button
@@ -1543,7 +1658,7 @@ export default function HomeStore() {
                 }}
                 className="bg-neutral-950 text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
               >
-                Show All Products
+                {lang === "bn" ? "সব প্রোডাক্ট দেখুন" : "Show All Products"}
               </button>
             </div>
           </div>
@@ -1574,7 +1689,7 @@ export default function HomeStore() {
                   <div
                     className={
                       viewMode === "grid"
-                        ? "relative aspect-[4/4.2] rounded-2xl bg-[#eceef0] overflow-hidden w-full"
+                        ? "relative aspect-square rounded-2xl bg-[#eceef0] overflow-hidden w-full"
                         : "relative w-full sm:w-44 aspect-square rounded-2xl bg-[#eceef0] overflow-hidden shrink-0"
                     }
                   >
@@ -1626,12 +1741,16 @@ export default function HomeStore() {
                     <div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-                          {product.subCategory}
+                          {catLabelText(product.subCategory)}
                         </span>
                         {typeof product.stock === "number" && (
                           <span className="text-[11px] font-medium text-neutral-500">
                             {product.stock > 0
-                              ? `${product.stock} in stock`
+                              ? lang === "bn"
+                                ? `স্টকে আছে (${product.stock})`
+                                : `${product.stock} in stock`
+                              : lang === "bn"
+                              ? "স্টক শেষ"
                               : "Out of stock"}
                           </span>
                         )}
@@ -1657,7 +1776,7 @@ export default function HomeStore() {
                       product.sizes.length > 0 ? (
                         <div className="mt-3 flex flex-wrap items-center gap-1.5">
                           <span className="text-xs text-neutral-500 mr-1">
-                            Size:
+                            {lang === "bn" ? "সাইজ:" : "Size:"}
                           </span>
                           {product.sizes.map((size) => (
                             <button
@@ -1695,13 +1814,13 @@ export default function HomeStore() {
                         onClick={() => addToCart(product)}
                         className="flex-1 bg-neutral-950 hover:bg-neutral-800 text-white text-xs sm:text-sm font-semibold py-2.5 px-4 rounded-xl transition cursor-pointer"
                       >
-                        Add to Cart
+                        {lang === "bn" ? "কার্টে যোগ করুন" : "Add to Cart"}
                       </button>
                       <Link
                         href={`/product/${product.id}`}
                         className="border border-neutral-200 hover:border-neutral-400 text-neutral-800 text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center"
                       >
-                        Details
+                        {lang === "bn" ? "বিস্তারিত" : "Details"}
                       </Link>
                     </div>
                   </div>
@@ -1717,15 +1836,19 @@ export default function HomeStore() {
         <div className="bg-neutral-900 text-white rounded-3xl p-6 sm:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2 max-w-xl">
             <span className="text-xs uppercase tracking-widest text-neutral-400">
-              Mymensingh Local &amp; Nationwide Delivery
+              {lang === "bn"
+                ? "ময়মনসিংহ ও সারা দেশে ক্যাশ অন ডেলিভারি"
+                : "Mymensingh Local & Nationwide Delivery"}
             </span>
             <h3 className="text-2xl sm:text-3xl font-bold">
-              Upgrade Your Style, Footwear, Beauty &amp; Tech
+              {lang === "bn"
+                ? "আপনার স্টাইল, ফুটওয়্যার, বিউটি ও স্মার্ট টেক আপগ্রেড করুন"
+                : "Upgrade Your Style, Footwear, Beauty & Tech"}
             </h3>
             <p className="text-sm text-neutral-300">
-              Fast delivery Inside Mymensingh (৳{deliveryConfig.insideMymensingh}
-              ) and Outside Mymensingh (৳{deliveryConfig.outsideMymensingh})
-              with cash on delivery.
+              {lang === "bn"
+                ? "পার্সেল হাতে পেয়ে চেক করে মূল্য পরিশোধ করার সুবিধাসহ দ্রুত হোম ডেলিভারি।"
+                : "Fast doorstep delivery across Bangladesh with Cash on Delivery and open-parcel inspection."}
             </p>
           </div>
           <button
@@ -1733,7 +1856,7 @@ export default function HomeStore() {
             onClick={() => jumpToCatalog({ sort: "discount" })}
             className="bg-white text-neutral-950 hover:bg-neutral-200 text-sm font-semibold px-6 py-3 rounded-xl shrink-0 transition cursor-pointer"
           >
-            Explore Deals
+            {lang === "bn" ? "অফার দেখুন" : "Explore Deals"}
           </button>
         </div>
       </section>
@@ -1741,18 +1864,23 @@ export default function HomeStore() {
       {/* H. Why Choose Us */}
       <section className="max-w-7xl mx-auto px-4 pb-12">
         <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950 mb-5">
-          Why Choose FG Trend Tech
+          {lang === "bn"
+            ? "কেন এফজি ট্রেন্ড টেক বেছে নেবেন"
+            : "Why Choose FG Trend Tech"}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-neutral-200 flex items-start gap-3.5">
             <ShieldCheck className="w-6 h-6 text-neutral-900 shrink-0 mt-0.5" />
             <div>
               <h4 className="font-bold text-sm text-neutral-950">
-                100% Authentic Products
+                {lang === "bn"
+                  ? "১০০% অরিজিনাল ও যাচাইকৃত পণ্য"
+                  : "100% Authentic Products"}
               </h4>
               <p className="text-xs text-neutral-500 mt-1">
-                Verified Men&apos;s &amp; Women&apos;s Fashion, Footwear,
-                Beauty, Gadgets &amp; Mobile Accessories.
+                {lang === "bn"
+                  ? "মান যাচাইকৃত ফ্যাশন, ফুটওয়্যার, বিউটি, গ্যাজেট ও মোবাইল অ্যাক্সেসরিজ।"
+                  : "Verified Men's & Women's Fashion, Footwear, Beauty, Gadgets & Mobile Accessories."}
               </p>
             </div>
           </div>
@@ -1761,12 +1889,14 @@ export default function HomeStore() {
             <Truck className="w-6 h-6 text-neutral-900 shrink-0 mt-0.5" />
             <div>
               <h4 className="font-bold text-sm text-neutral-950">
-                Inside &amp; Outside Mymensingh COD
+                {lang === "bn"
+                  ? "সারা দেশে ক্যাশ অন ডেলিভারি"
+                  : "Nationwide Cash on Delivery"}
               </h4>
               <p className="text-xs text-neutral-500 mt-1">
-                Inside Mymensingh ৳{deliveryConfig.insideMymensingh} &amp;
-                Outside Mymensingh ৳{deliveryConfig.outsideMymensingh} delivery
-                charge.
+                {lang === "bn"
+                  ? "ময়মনসিংহ থেকে সারা বাংলাদেশে নির্ভরযোগ্য কুরিয়ার ডেলিভারি সুবিধা।"
+                  : "Reliable courier dispatch from Mymensingh to every district in Bangladesh."}
               </p>
             </div>
           </div>
@@ -1775,12 +1905,90 @@ export default function HomeStore() {
             <Sparkles className="w-6 h-6 text-neutral-900 shrink-0 mt-0.5" />
             <div>
               <h4 className="font-bold text-sm text-neutral-950">
-                Fast Home Delivery &amp; Open Parcel
+                {lang === "bn"
+                  ? "ওপেন পার্সেল চেক ও এক্সচেঞ্জ"
+                  : "Open Parcel Check & Easy Exchange"}
               </h4>
               <p className="text-xs text-neutral-500 mt-1">
-                Quick doorstep delivery with parcel inspection option.
+                {lang === "bn"
+                  ? "ডেলিভারি রাইডারের সামনে পার্সেল দেখে বুঝে নেওয়ার সুবিধা।"
+                  : "Quick doorstep delivery with parcel inspection and 7-day size exchange."}
               </p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Simple Customer Reviews */}
+      <section className="max-w-7xl mx-auto px-4 pb-12">
+        <div className="bg-white rounded-3xl border border-neutral-200 p-6 sm:p-8 space-y-6">
+          <h2 className="text-xl font-bold text-neutral-950">
+            {lang === "bn" ? "কাস্টমার রিভিউ" : "Customer Reviews"}
+          </h2>
+
+          <form
+            onSubmit={handleAddSimpleReview}
+            className="grid grid-cols-1 sm:grid-cols-12 gap-2.5"
+          >
+            <input
+              type="text"
+              required
+              placeholder={lang === "bn" ? "আপনার নাম *" : "Your name *"}
+              value={reviewName}
+              onChange={(e) => setReviewName(e.target.value)}
+              className="sm:col-span-3 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-neutral-950"
+            />
+            <select
+              value={reviewRating}
+              onChange={(e) => setReviewRating(Number(e.target.value))}
+              aria-label="Rating"
+              className="sm:col-span-2 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs sm:text-sm outline-none cursor-pointer"
+            >
+              <option value={5}>5 ★</option>
+              <option value={4}>4 ★</option>
+              <option value={3}>3 ★</option>
+            </select>
+            <input
+              type="text"
+              required
+              placeholder={
+                lang === "bn"
+                  ? "আপনার মন্তব্য লিখুন... *"
+                  : "Write a short review... *"
+              }
+              value={reviewText}
+              onChange={(e) => setReviewText(e.target.value)}
+              className="sm:col-span-5 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-neutral-950"
+            />
+            <button
+              type="submit"
+              className="sm:col-span-2 bg-neutral-950 hover:bg-neutral-800 text-white text-xs sm:text-sm font-semibold py-2 px-4 rounded-xl transition cursor-pointer"
+            >
+              {lang === "bn" ? "রিভিউ দিন" : "Post"}
+            </button>
+          </form>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {reviews.slice(0, 6).map((rev) => (
+              <div
+                key={rev.id}
+                className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80 space-y-1.5"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-neutral-900">
+                    {rev.name}
+                  </span>
+                  <span className="flex items-center gap-0.5 text-amber-500">
+                    {Array.from({ length: rev.rating }).map((_, i) => (
+                      <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
+                    ))}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-600 leading-relaxed">
+                  {rev.comment}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -1790,11 +1998,14 @@ export default function HomeStore() {
         <div className="bg-white rounded-3xl border border-neutral-200 p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1 max-w-md">
             <h3 className="text-lg sm:text-xl font-bold text-neutral-950">
-              Stay Updated with FG Trend Tech
+              {lang === "bn"
+                ? "নতুন কালেকশন ও অফারের আপডেট পান"
+                : "Stay Updated with FG Trend Tech"}
             </h3>
             <p className="text-xs sm:text-sm text-neutral-500">
-              Get notified about new fashion, footwear, beauty, gadgets, and
-              mobile accessories offers.
+              {lang === "bn"
+                ? "নতুন ফ্যাশন, ফুটওয়্যার, বিউটি ও গ্যাজেট অফারের খবর সবার আগে পেতে ইমেইল দিন।"
+                : "Get notified about new fashion, footwear, beauty, gadgets, and mobile accessories offers."}
             </p>
           </div>
 
@@ -1807,14 +2018,18 @@ export default function HomeStore() {
               required
               value={newsletterEmail}
               onChange={(e) => setNewsletterEmail(e.target.value)}
-              placeholder="Enter your email address"
+              placeholder={
+                lang === "bn"
+                  ? "আপনার ইমেইল লিখুন"
+                  : "Enter your email address"
+              }
               className="bg-neutral-50 border border-neutral-300 rounded-xl px-4 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950 sm:w-64"
             />
             <button
               type="submit"
               className="bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition cursor-pointer"
             >
-              Subscribe
+              {lang === "bn" ? "সাবস্ক্রাইব" : "Subscribe"}
             </button>
           </form>
         </div>
@@ -1836,14 +2051,16 @@ export default function HomeStore() {
               FG TREND TECH
             </h3>
             <p className="text-xs text-neutral-400 leading-relaxed">
-              Operating from Mymensingh—serving Men&apos;s Fashion, Women&apos;s
-              Fashion, Men&apos;s Footwear, Women&apos;s Footwear, Gadgets,
-              Beauty Products, and Mobile Accessories.
+              {lang === "bn"
+                ? "ময়মনসিংহ থেকে পরিচালিত—মেনস ও উইমেনস ফ্যাশন, ফুটওয়্যার, গ্যাজেটস, বিউটি প্রোডাক্টস এবং মোবাইল অ্যাক্সেসরিজের বিশ্বস্ত অনলাইন স্টোর।"
+                : "Operating from Mymensingh—serving Men's Fashion, Women's Fashion, Men's Footwear, Women's Footwear, Gadgets, Beauty Products, and Mobile Accessories."}
             </p>
           </div>
 
           <div className="space-y-2.5 text-xs">
-            <h4 className="text-white font-bold text-sm">Categories</h4>
+            <h4 className="text-white font-bold text-sm">
+              {lang === "bn" ? "ক্যাটাগরি" : "Categories"}
+            </h4>
             <ul className="space-y-2 text-neutral-400">
               {STORE_CATEGORIES.map((catName) => (
                 <li key={catName}>
@@ -1852,7 +2069,7 @@ export default function HomeStore() {
                     onClick={() => jumpToCatalog({ sub: catName })}
                     className="hover:text-white cursor-pointer"
                   >
-                    {catName}
+                    {catLabelText(catName)}
                   </button>
                 </li>
               ))}
@@ -1861,25 +2078,46 @@ export default function HomeStore() {
 
           <div className="space-y-2.5 text-xs">
             <h4 className="text-white font-bold text-sm">
-              Policies &amp; Support
+              {lang === "bn" ? "পলিসি ও সাপোর্ট" : "Policies & Support"}
             </h4>
             <ul className="space-y-2 text-neutral-400">
               <li>
-                Inside Mymensingh ৳{deliveryConfig.insideMymensingh} / Outside
-                Mymensingh ৳{deliveryConfig.outsideMymensingh}
+                {lang === "bn"
+                  ? `ময়মনসিংহের ভেতরে ৳${deliveryConfig.insideMymensingh} / বাইরে ৳${deliveryConfig.outsideMymensingh}`
+                  : `Inside Mymensingh ৳${deliveryConfig.insideMymensingh} / Outside Mymensingh ৳${deliveryConfig.outsideMymensingh}`}
               </li>
-              <li>7-Day Size Exchange &amp; Gadget Warranty</li>
-              <li>Privacy Policy &amp; Terms of Service</li>
+              <li>
+                <Link
+                  href="/policies"
+                  className="hover:text-white underline underline-offset-4"
+                >
+                  {lang === "bn"
+                    ? "রিটার্ন, এক্সচেঞ্জ ও ডেলিভারি পলিসি"
+                    : "Return, Exchange & Delivery Policy"}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/privacy"
+                  className="hover:text-white underline underline-offset-4"
+                >
+                  {lang === "bn"
+                    ? "প্রাইভেসি পলিসি ও ডেটা ব্যবহার"
+                    : "Privacy Policy & Data Use"}
+                </Link>
+              </li>
               <li>
                 <Link href="/track-order" className="hover:text-white">
-                  Track Your Order
+                  {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track Your Order"}
                 </Link>
               </li>
             </ul>
           </div>
 
           <div className="space-y-2.5 text-xs">
-            <h4 className="text-white font-bold text-sm">Contact</h4>
+            <h4 className="text-white font-bold text-sm">
+              {lang === "bn" ? "যোগাযোগ" : "Contact"}
+            </h4>
             <ul className="space-y-2 text-neutral-400">
               <li className="flex items-center gap-2">
                 <MapPin className="w-3.5 h-3.5 shrink-0" />
@@ -1953,11 +2191,8 @@ export default function HomeStore() {
                   : "text-neutral-600"
               }`}
             >
-              Home
+              {lang === "bn" ? "হোম" : "Home"}
             </span>
-            {activeBottomTab === "home" && (
-              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
-            )}
           </button>
 
           <button
@@ -1984,11 +2219,8 @@ export default function HomeStore() {
                   : "text-neutral-600"
               }`}
             >
-              Categories
+              {lang === "bn" ? "ক্যাটাগরি" : "Categories"}
             </span>
-            {activeBottomTab === "categories" && (
-              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
-            )}
           </button>
 
           <button
@@ -2020,11 +2252,8 @@ export default function HomeStore() {
                   : "text-neutral-600"
               }`}
             >
-              Cart
+              {lang === "bn" ? "কার্ট" : "Cart"}
             </span>
-            {activeBottomTab === "cart" && (
-              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
-            )}
           </button>
 
           <Link
@@ -2048,11 +2277,8 @@ export default function HomeStore() {
                   : "text-neutral-600"
               }`}
             >
-              Orders
+              {lang === "bn" ? "অর্ডার" : "Orders"}
             </span>
-            {activeBottomTab === "orders" && (
-              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
-            )}
           </Link>
 
           <button
@@ -2076,11 +2302,14 @@ export default function HomeStore() {
                   : "text-neutral-600"
               }`}
             >
-              {customerUser ? "Account" : "Login"}
+              {customerUser
+                ? lang === "bn"
+                  ? "অ্যাকাউন্ট"
+                  : "Account"
+                : lang === "bn"
+                ? "লগইন"
+                : "Login"}
             </span>
-            {activeBottomTab === "account" && (
-              <span className="w-1 h-1 rounded-full bg-rose-600 mt-0.5" />
-            )}
           </button>
         </div>
       </nav>
@@ -2093,7 +2322,9 @@ export default function HomeStore() {
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-rose-600" />
                 <h3 className="text-base font-bold text-neutral-950">
-                  Select Delivery Location
+                  {lang === "bn"
+                    ? "ডেলিভারি এলাকা নির্বাচন করুন"
+                    : "Select Delivery Location"}
                 </h3>
               </div>
               <button
@@ -2147,7 +2378,13 @@ export default function HomeStore() {
                   FG Trend Tech Member
                 </p>
                 <h3 className="text-lg font-bold text-neutral-950">
-                  {customerUser ? "My Account" : "User Login"}
+                  {customerUser
+                    ? lang === "bn"
+                      ? "আমার অ্যাকাউন্ট"
+                      : "My Account"
+                    : lang === "bn"
+                    ? "ইউজার লগইন"
+                    : "User Login"}
                 </h3>
               </div>
               <button
@@ -2184,7 +2421,7 @@ export default function HomeStore() {
                     onClick={() => setIsAccountModalOpen(false)}
                     className="bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold py-3 px-4 rounded-xl text-center transition"
                   >
-                    Track My Orders
+                    {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track My Orders"}
                   </Link>
                   <button
                     type="button"
@@ -2192,21 +2429,22 @@ export default function HomeStore() {
                     className="inline-flex items-center justify-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold py-3 px-4 rounded-xl transition cursor-pointer"
                   >
                     <LogOut className="w-3.5 h-3.5" />
-                    Sign Out
+                    {lang === "bn" ? "সাইন আউট" : "Sign Out"}
                   </button>
                 </div>
               </div>
             ) : (
               <form onSubmit={handleCustomerLogin} className="space-y-3">
                 <p className="text-xs text-neutral-500">
-                  Sign in with your name and phone number to auto-fill checkout
-                  details and track orders easily.
+                  {lang === "bn"
+                    ? "দ্রুত চেকআউট ও অর্ডার ট্র্যাক করতে আপনার নাম ও ফোন নম্বর দিয়ে সাইন ইন করুন।"
+                    : "Sign in with your name and phone number to auto-fill checkout details and track orders easily."}
                 </p>
 
                 <input
                   type="text"
                   required
-                  placeholder="Full Name *"
+                  placeholder={lang === "bn" ? "পুরো নাম *" : "Full Name *"}
                   value={loginNameInput}
                   onChange={(e) => setLoginNameInput(e.target.value)}
                   className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2215,7 +2453,11 @@ export default function HomeStore() {
                 <input
                   type="tel"
                   required
-                  placeholder="Phone Number (e.g. 017XXXXXXXX) *"
+                  placeholder={
+                    lang === "bn"
+                      ? "ফোন নম্বর (যেমন: 017XXXXXXXX) *"
+                      : "Phone Number (e.g. 017XXXXXXXX) *"
+                  }
                   value={loginPhoneInput}
                   onChange={(e) => setLoginPhoneInput(e.target.value)}
                   className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2223,7 +2465,11 @@ export default function HomeStore() {
 
                 <input
                   type="text"
-                  placeholder="District (e.g. Mymensingh, Dhaka)"
+                  placeholder={
+                    lang === "bn"
+                      ? "জেলা (যেমন: Mymensingh, Dhaka)"
+                      : "District (e.g. Mymensingh, Dhaka)"
+                  }
                   value={loginDistrictInput}
                   onChange={(e) => setLoginDistrictInput(e.target.value)}
                   className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2231,7 +2477,11 @@ export default function HomeStore() {
 
                 <input
                   type="text"
-                  placeholder="Delivery Address (optional)"
+                  placeholder={
+                    lang === "bn"
+                      ? "ডেলিভারি ঠিকানা (ঐচ্ছিক)"
+                      : "Delivery Address (optional)"
+                  }
                   value={loginAddressInput}
                   onChange={(e) => setLoginAddressInput(e.target.value)}
                   className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2247,7 +2497,9 @@ export default function HomeStore() {
                   type="submit"
                   className="w-full bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold py-3 rounded-xl transition cursor-pointer"
                 >
-                  Login / Save Profile
+                  {lang === "bn"
+                    ? "লগইন / প্রোফাইল সেভ করুন"
+                    : "Login / Save Profile"}
                 </button>
               </form>
             )}
@@ -2271,7 +2523,7 @@ export default function HomeStore() {
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-                      {quickViewProduct.subCategory}
+                      {catLabelText(quickViewProduct.subCategory)}
                     </span>
                     <button
                       type="button"
@@ -2308,7 +2560,7 @@ export default function HomeStore() {
                     quickViewProduct.sizes.length > 0 && (
                       <div className="mt-4">
                         <span className="text-xs text-neutral-500 block mb-1.5">
-                          Select Size:
+                          {lang === "bn" ? "সাইজ নির্বাচন করুন:" : "Select Size:"}
                         </span>
                         <div className="flex flex-wrap gap-2">
                           {quickViewProduct.sizes.map((sz) => (
@@ -2345,7 +2597,9 @@ export default function HomeStore() {
                   }}
                   className="w-full bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold py-3 rounded-xl transition cursor-pointer"
                 >
-                  Add to Cart — ৳{quickViewProduct.price}
+                  {lang === "bn"
+                    ? `কার্টে যোগ করুন — ৳${quickViewProduct.price}`
+                    : `Add to Cart — ৳${quickViewProduct.price}`}
                 </button>
               </div>
             </div>
@@ -2353,7 +2607,7 @@ export default function HomeStore() {
             {relatedProducts.length > 0 && (
               <div className="p-5 bg-neutral-50 border-t border-neutral-200 space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">
-                  Related Products
+                  {lang === "bn" ? "আরও প্রোডাক্ট" : "Related Products"}
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   {relatedProducts.map((rel) => (
@@ -2393,7 +2647,11 @@ export default function HomeStore() {
               <div className="flex items-center justify-between pb-4 border-b border-neutral-200">
                 <h2 className="text-lg font-bold text-neutral-950">
                   {orderSuccess
-                    ? "Order Confirmation"
+                    ? lang === "bn"
+                      ? "অর্ডার নিশ্চিত হয়েছে"
+                      : "Order Confirmation"
+                    : lang === "bn"
+                    ? `কার্ট ও চেকআউট (${totalCartCount})`
                     : `Cart & Checkout (${totalCartCount})`}
                 </h2>
                 <button
@@ -2414,17 +2672,18 @@ export default function HomeStore() {
                     <CheckCircle2 className="w-8 h-8 text-emerald-600" />
                   </div>
                   <h3 className="text-xl font-bold text-neutral-950">
-                    Order Confirmed!
+                    {lang === "bn" ? "অর্ডার কনফার্ম হয়েছে!" : "Order Confirmed!"}
                   </h3>
                   <p className="text-xs text-neutral-500">
-                    Order Reference:{" "}
+                    {lang === "bn" ? "অর্ডার আইডি:" : "Order Reference:"}{" "}
                     <span className="font-mono font-semibold text-neutral-800">
                       {confirmedOrderId}
                     </span>
                   </p>
                   <p className="text-sm text-neutral-600 leading-relaxed">
-                    Your order has been received and saved. Our support team will
-                    call shortly to confirm delivery.
+                    {lang === "bn"
+                      ? "আপনার অর্ডারটি গৃহীত হয়েছে। ডেলিভারি নিশ্চিত করতে আমাদের টিম শীঘ্রই কল করবে।"
+                      : "Your order has been received and saved. Our support team will call shortly to confirm delivery."}
                   </p>
                   <button
                     type="button"
@@ -2435,12 +2694,16 @@ export default function HomeStore() {
                     }}
                     className="mt-3 w-full bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold py-3 rounded-2xl transition cursor-pointer"
                   >
-                    Continue Shopping
+                    {lang === "bn" ? "শপিং চালিয়ে যান" : "Continue Shopping"}
                   </button>
                 </div>
               ) : cart.length === 0 ? (
                 <div className="text-center text-neutral-500 my-16 text-sm space-y-3">
-                  <p>Your shopping cart is empty.</p>
+                  <p>
+                    {lang === "bn"
+                      ? "আপনার শপিং কার্ট বর্তমানে খালি।"
+                      : "Your shopping cart is empty."}
+                  </p>
                   <button
                     type="button"
                     onClick={() => {
@@ -2449,7 +2712,7 @@ export default function HomeStore() {
                     }}
                     className="bg-neutral-950 text-white text-xs font-semibold px-4 py-2.5 rounded-xl cursor-pointer"
                   >
-                    Browse Products
+                    {lang === "bn" ? "প্রোডাক্ট দেখুন" : "Browse Products"}
                   </button>
                 </div>
               ) : (
@@ -2466,7 +2729,8 @@ export default function HomeStore() {
                           </h4>
                           {item.selectedOption && (
                             <span className="text-xs text-neutral-500">
-                              Size: {item.selectedOption}
+                              {lang === "bn" ? "সাইজ:" : "Size:"}{" "}
+                              {item.selectedOption}
                             </span>
                           )}
                           <p className="text-sm font-bold text-neutral-950 mt-0.5">
@@ -2507,13 +2771,13 @@ export default function HomeStore() {
                   <form onSubmit={handlePlaceOrder} className="space-y-3">
                     <div className="bg-white rounded-2xl border border-neutral-200/80 p-4 space-y-3">
                       <h3 className="font-bold text-sm text-neutral-900">
-                        Delivery Details
+                        {lang === "bn" ? "ডেলিভারি তথ্য" : "Delivery Details"}
                       </h3>
 
                       <input
                         type="text"
                         required
-                        placeholder="Full Name *"
+                        placeholder={lang === "bn" ? "পুরো নাম *" : "Full Name *"}
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
                         className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2522,7 +2786,11 @@ export default function HomeStore() {
                       <input
                         type="tel"
                         required
-                        placeholder="Phone Number (e.g. 017XXXXXXXX) *"
+                        placeholder={
+                          lang === "bn"
+                            ? "ফোন নম্বর (যেমন: 017XXXXXXXX) *"
+                            : "Phone Number (e.g. 017XXXXXXXX) *"
+                        }
                         value={customerPhone}
                         onChange={(e) => setCustomerPhone(e.target.value)}
                         className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2531,7 +2799,11 @@ export default function HomeStore() {
                       <input
                         type="text"
                         required
-                        placeholder="District (e.g. Mymensingh, Dhaka) *"
+                        placeholder={
+                          lang === "bn"
+                            ? "জেলা (যেমন: Mymensingh, Dhaka) *"
+                            : "District (e.g. Mymensingh, Dhaka) *"
+                        }
                         value={customerDistrict}
                         onChange={(e) => setCustomerDistrict(e.target.value)}
                         className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2540,7 +2812,11 @@ export default function HomeStore() {
                       <textarea
                         required
                         rows={2}
-                        placeholder="Full Address (House, Road, Area) *"
+                        placeholder={
+                          lang === "bn"
+                            ? "বিস্তারিত ঠিকানা (বাসা, রোড, এলাকা) *"
+                            : "Full Address (House, Road, Area) *"
+                        }
                         value={customerAddress}
                         onChange={(e) => setCustomerAddress(e.target.value)}
                         className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2548,7 +2824,11 @@ export default function HomeStore() {
 
                       <input
                         type="text"
-                        placeholder="Order notes (optional)"
+                        placeholder={
+                          lang === "bn"
+                            ? "অর্ডার নোট (ঐচ্ছিক)"
+                            : "Order notes (optional)"
+                        }
                         value={orderNotes}
                         onChange={(e) => setOrderNotes(e.target.value)}
                         className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
@@ -2564,7 +2844,9 @@ export default function HomeStore() {
                               : "bg-white border-neutral-200 text-neutral-700"
                           }`}
                         >
-                          Inside Mymensingh (৳{deliveryConfig.insideMymensingh})
+                          {lang === "bn"
+                            ? `ময়মনসিংহের ভেতরে (৳${deliveryConfig.insideMymensingh})`
+                            : `Inside Mymensingh (৳${deliveryConfig.insideMymensingh})`}
                         </button>
                         <button
                           type="button"
@@ -2575,15 +2857,23 @@ export default function HomeStore() {
                               : "bg-white border-neutral-200 text-neutral-700"
                           }`}
                         >
-                          Outside Mymensingh (৳
-                          {deliveryConfig.outsideMymensingh})
+                          {lang === "bn"
+                            ? `ময়মনসিংহের বাইরে (৳${deliveryConfig.outsideMymensingh})`
+                            : `Outside Mymensingh (৳${deliveryConfig.outsideMymensingh})`}
                         </button>
                       </div>
 
                       {deliveryConfig.freeThreshold > 0 && (
                         <p className="text-[11px] text-emerald-700 font-semibold">
                           {isFreeDeliveryUnlocked
-                            ? "Free delivery unlocked for your order!"
+                            ? lang === "bn"
+                              ? "আপনার অর্ডারে ফ্রি ডেলিভারি আনলক হয়েছে!"
+                              : "Free delivery unlocked for your order!"
+                            : lang === "bn"
+                            ? `ফ্রি ডেলিভারির জন্য আরও ৳${Math.max(
+                                0,
+                                deliveryConfig.freeThreshold - subtotal
+                              )} যোগ করুন।`
                             : `Add ৳${Math.max(
                                 0,
                                 deliveryConfig.freeThreshold - subtotal
@@ -2593,7 +2883,7 @@ export default function HomeStore() {
 
                       <div className="pt-1">
                         <span className="text-xs font-semibold text-neutral-600 block mb-1.5">
-                          Payment Method:
+                          {lang === "bn" ? "পেমেন্ট মেথড:" : "Payment Method:"}
                         </span>
                         <div className="grid grid-cols-3 gap-1.5">
                           {(
@@ -2629,7 +2919,7 @@ export default function HomeStore() {
                           <input
                             type="tel"
                             required
-                            placeholder={`আপনার ${paymentMethod} Sender Number (017XXXXXXXX) *`}
+                            placeholder={`${paymentMethod} Sender Number (017XXXXXXXX) *`}
                             value={senderNumber}
                             onChange={(e) => setSenderNumber(e.target.value)}
                             className="w-full bg-white border border-pink-200 rounded-xl px-3 py-2 text-xs text-neutral-900 outline-none focus:border-pink-500"
@@ -2648,21 +2938,29 @@ export default function HomeStore() {
 
                     <div className="bg-white rounded-2xl border border-neutral-200/80 p-4 space-y-2 text-sm">
                       <div className="flex justify-between text-neutral-500">
-                        <span>Subtotal</span>
+                        <span>{lang === "bn" ? "সাবটোটাল" : "Subtotal"}</span>
                         <span className="font-semibold text-neutral-900">
                           ৳{subtotal}
                         </span>
                       </div>
                       <div className="flex justify-between text-neutral-500">
-                        <span>Delivery Charge</span>
+                        <span>
+                          {lang === "bn"
+                            ? "ডেলিভারি চার্জ"
+                            : "Delivery Charge"}
+                        </span>
                         <span className="font-semibold text-neutral-900">
                           {deliveryCharge === 0
-                            ? "Free (৳0)"
+                            ? lang === "bn"
+                              ? "ফ্রি (৳0)"
+                              : "Free (৳0)"
                             : `৳${deliveryCharge}`}
                         </span>
                       </div>
                       <div className="flex justify-between font-bold text-base text-neutral-950 pt-2 border-t border-neutral-100">
-                        <span>Total Payable</span>
+                        <span>
+                          {lang === "bn" ? "সর্বমোট বিল" : "Total Payable"}
+                        </span>
                         <span>৳{grandTotal}</span>
                       </div>
                     </div>
@@ -2679,7 +2977,11 @@ export default function HomeStore() {
                       className="w-full bg-neutral-950 hover:bg-neutral-800 disabled:opacity-50 text-white font-semibold py-3.5 rounded-2xl transition shadow-md cursor-pointer"
                     >
                       {submittingOrder
-                        ? "Placing Order..."
+                        ? lang === "bn"
+                          ? "অর্ডার প্রসেস হচ্ছে..."
+                          : "Placing Order..."
+                        : lang === "bn"
+                        ? `অর্ডার কনফার্ম করুন (৳${grandTotal})`
                         : `Confirm Order (৳${grandTotal})`}
                     </button>
                   </form>
