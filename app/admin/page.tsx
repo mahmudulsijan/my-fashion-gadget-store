@@ -79,6 +79,15 @@ interface CustomerReviewItem {
   photo?: string;
 }
 
+interface CustomerProfileSummary {
+  phone: string;
+  name: string;
+  address: string;
+  orderCount: number;
+  totalSpent: number;
+  orders: OrderItem[];
+}
+
 interface DeliverySettings {
   insideMymensinghCharge: number;
   outsideMymensinghCharge: number;
@@ -121,6 +130,16 @@ const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = {
   bkashNumber: "01700-000000",
   nagadNumber: "01700-000000",
 };
+
+async function safeParseJson(res: Response) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { success: false, message: text };
+  }
+}
 
 function deriveMainCategory(subCat?: string): "fashion" | "gadget" {
   const val = (subCat || "").trim().toLowerCase();
@@ -269,6 +288,9 @@ export default function AdminPage() {
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
+  const [selectedCustomerPhone, setSelectedCustomerPhone] = useState<
+    string | null
+  >(null);
 
   // Auto-stock deduction guard state (persisted in localStorage)
   const [autoDeductStock, setAutoDeductStock] = useState(true);
@@ -355,11 +377,14 @@ export default function AdminPage() {
       const [prodRes, ordRes, subRes] = await Promise.all([
         fetch("/api/products", { cache: "no-store" }),
         fetch("/api/orders", { cache: "no-store" }),
-        fetch("/api/subscribers", { cache: "no-store" }),
+        fetch(`/api/subscribers?t=${Date.now()}`, { cache: "no-store" }),
       ]);
-      const prodData = await prodRes.json();
-      const ordData = await ordRes.json();
-      const subData = await subRes.json();
+
+      const [prodData, ordData, subData] = await Promise.all([
+        safeParseJson(prodRes),
+        safeParseJson(ordRes),
+        safeParseJson(subRes),
+      ]);
 
       if (prodData.success) setProducts(prodData.products || []);
       if (ordData.success) setOrders(ordData.orders || []);
@@ -418,7 +443,7 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (data.success) {
         sessionStorage.setItem("admin_authed", "true");
         setIsAuthenticated(true);
@@ -522,7 +547,7 @@ export default function AdminPage() {
           stock: Number(stock) || 10,
         }),
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (data.success) {
         setName("");
         setPrice("");
@@ -605,7 +630,7 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.ok && data.success) {
         setProducts((prev) =>
           prev.map((item) =>
@@ -639,7 +664,7 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stock: nextStock }),
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.ok && data.success) {
         setProducts((prev) =>
           prev.map((item) =>
@@ -662,7 +687,7 @@ export default function AdminPage() {
     setDeletingProductId(id);
     try {
       const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (data.success) {
         setProducts((prev) => prev.filter((item) => item._id !== id));
         showToast("প্রোডাক্ট ডিলিট করা হয়েছে");
@@ -703,7 +728,7 @@ export default function AdminPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ stock: nextStock }),
         });
-        const data = await res.json();
+        const data = await safeParseJson(res);
         if (res.ok && data.success) {
           updatedProducts[matchedIdx] = { ...prod, stock: nextStock };
           deductedAny = true;
@@ -739,7 +764,7 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (data.success) {
         setOrders((prev) =>
           prev.map((o) => (o._id === orderId ? { ...o, status } : o))
@@ -771,7 +796,7 @@ export default function AdminPage() {
     setDeletingOrderId(orderId);
     try {
       const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.ok && data.success) {
         setOrders((prev) => prev.filter((o) => o._id !== orderId));
         if (selectedOrder?._id === orderId) setSelectedOrder(null);
@@ -790,15 +815,19 @@ export default function AdminPage() {
   const handleDeleteSubscriber = async (id: string) => {
     setDeletingSubscriberId(id);
     try {
-      const res = await fetch(`/api/subscribers?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
+      const res = await fetch(
+        `/api/subscribers?id=${encodeURIComponent(id)}&t=${Date.now()}`,
+        {
+          method: "DELETE",
+          cache: "no-store",
+        }
+      );
+      const data = await safeParseJson(res);
       if (res.ok && data.success) {
         setSubscribers((prev) => prev.filter((item) => item._id !== id));
         showToast("সাবস্ক্রাইবার ডিলিট করা হয়েছে");
       } else {
-        showToast(data.message || "ডিলিট করা যায়নি");
+        showToast(data.message || "সাবস্ক্রাইবার ডিলিট করা যায়নি");
       }
     } catch (err) {
       console.error("Delete subscriber failed:", err);
@@ -940,25 +969,17 @@ export default function AdminPage() {
     );
   }, [reviews, globalSearch]);
 
-  const customersList = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        phone: string;
-        name: string;
-        address: string;
-        orderCount: number;
-        totalSpent: number;
-      }
-    >();
+  const customersList = useMemo<CustomerProfileSummary[]>(() => {
+    const map = new Map<string, CustomerProfileSummary>();
 
     for (const ord of orders) {
-      const key = ord.phone.trim();
+      const key = (ord.phone || ord.customerName || "unknown").trim();
       const existing = map.get(key);
       const amt = ord.status === "Cancelled" ? 0 : Number(ord.totalAmount) || 0;
       if (existing) {
         existing.orderCount += 1;
         existing.totalSpent += amt;
+        existing.orders.push(ord);
         if (!existing.address && ord.address) existing.address = ord.address;
       } else {
         map.set(key, {
@@ -967,6 +988,7 @@ export default function AdminPage() {
           address: ord.address,
           orderCount: 1,
           totalSpent: amt,
+          orders: [ord],
         });
       }
     }
@@ -980,6 +1002,13 @@ export default function AdminPage() {
       );
     });
   }, [orders, effectiveOrderQuery]);
+
+  const selectedCustomer = useMemo(() => {
+    if (!selectedCustomerPhone) return null;
+    return (
+      customersList.find((c) => c.phone === selectedCustomerPhone) || null
+    );
+  }, [customersList, selectedCustomerPhone]);
 
   const stats = useMemo(() => {
     const activeOrders = orders.filter((o) => o.status !== "Cancelled");
@@ -1143,6 +1172,13 @@ export default function AdminPage() {
     },
   ];
 
+  const handleSelectSection = (sec: AdminSection) => {
+    setActiveSection(sec);
+    if (sec === "subscribers" || sec === "orders" || sec === "customers") {
+      fetchDashboardData();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f4f6f9] text-slate-900 flex flex-col">
       {feedbackMsg && (
@@ -1171,7 +1207,7 @@ export default function AdminPage() {
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() => setActiveSection(item.key)}
+                    onClick={() => handleSelectSection(item.key)}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer ${
                       isActive
                         ? "bg-indigo-600 text-white shadow-xs"
@@ -1253,7 +1289,7 @@ export default function AdminPage() {
                         key={item.key}
                         type="button"
                         onClick={() => {
-                          setActiveSection(item.key);
+                          handleSelectSection(item.key);
                           setMobileSidebarOpen(false);
                         }}
                         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer ${
@@ -1535,7 +1571,7 @@ export default function AdminPage() {
                     </h2>
                     <button
                       type="button"
-                      onClick={() => setActiveSection("orders")}
+                      onClick={() => handleSelectSection("orders")}
                       className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
                     >
                       Manage All Orders →
@@ -2139,10 +2175,15 @@ export default function AdminPage() {
             {/* CUSTOMERS SECTION */}
             {activeSection === "customers" && (
               <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Customers ({customersList.length})
-                  </h2>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      Customers ({customersList.length})
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      যেকোনো কাস্টমারের উপর ক্লিক করলে তার সব অর্ডার ও প্রোডাক্টের বিস্তারিত দেখা যাবে।
+                    </p>
+                  </div>
                 </div>
 
                 {customersList.length === 0 ? (
@@ -2161,11 +2202,18 @@ export default function AdminPage() {
                           <th className="py-2.5 px-3 font-semibold text-right">
                             Total Spent
                           </th>
+                          <th className="py-2.5 px-3 font-semibold text-right">
+                            Details
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {customersList.map((cust) => (
-                          <tr key={cust.phone} className="hover:bg-slate-50">
+                          <tr
+                            key={cust.phone}
+                            onClick={() => setSelectedCustomerPhone(cust.phone)}
+                            className="hover:bg-indigo-50/50 transition cursor-pointer"
+                          >
                             <td className="py-3 px-3 font-semibold text-slate-900">
                               {cust.name}
                             </td>
@@ -2175,11 +2223,24 @@ export default function AdminPage() {
                             <td className="py-3 px-3 text-slate-600 max-w-xs truncate">
                               {cust.address}
                             </td>
-                            <td className="py-3 px-3 font-bold text-slate-800">
+                            <td className="py-3 px-3 font-bold text-indigo-700">
                               {cust.orderCount}
                             </td>
                             <td className="py-3 px-3 font-extrabold text-slate-900 text-right">
                               ৳{cust.totalSpent.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedCustomerPhone(cust.phone);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                View Orders
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -2503,6 +2564,125 @@ export default function AdminPage() {
           </footer>
         </div>
       </div>
+
+      {/* Customer Full Order History Modal */}
+      {selectedCustomer && (
+        <div
+          onClick={() => setSelectedCustomerPhone(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 overflow-y-auto"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-auto max-h-[88vh] overflow-y-auto"
+          >
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3.5 gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">
+                  Customer Order History
+                </p>
+                <h3 className="text-lg font-bold text-slate-900">
+                  {selectedCustomer.name} •{" "}
+                  <span className="font-mono text-slate-700 text-base">
+                    {selectedCustomer.phone}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  {selectedCustomer.address}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCustomerPhone(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-xs sm:text-sm">
+              <div>
+                <span className="text-slate-500 block text-xs">Total Orders</span>
+                <span className="font-extrabold text-slate-900 text-base">
+                  {selectedCustomer.orderCount}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-500 block text-xs">Total Spent</span>
+                <span className="font-extrabold text-emerald-700 text-base">
+                  ৳{selectedCustomer.totalSpent.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {selectedCustomer.orders.map((ord, idx) => {
+                const pay = extractPaymentInfo(ord.address);
+                return (
+                  <div
+                    key={ord._id || idx}
+                    className="border border-slate-200 rounded-2xl p-4 space-y-2.5 bg-white"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-mono font-bold text-slate-700">
+                          #{ord._id}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadgeStyle(
+                            ord.status || "Pending"
+                          )}`}
+                        >
+                          {ord.status || "Pending"}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
+                          {pay.method}
+                          {pay.trxId ? ` • TrxID: ${pay.trxId}` : ""}
+                        </span>
+                      </div>
+
+                      <span className="text-sm font-extrabold text-slate-900">
+                        ৳{Number(ord.totalAmount).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-slate-100">
+                      {ord.items?.map((line, lIdx) => (
+                        <div
+                          key={`${line.name}-${lIdx}`}
+                          className="py-2 flex items-center justify-between gap-3 text-xs sm:text-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900 truncate">
+                              {line.name}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {line.size ? `Size: ${line.size} • ` : ""}
+                              Qty: {line.quantity} × ৳{line.price}
+                            </p>
+                          </div>
+                          <p className="font-bold text-slate-900 shrink-0">
+                            ৳{(line.price * line.quantity).toLocaleString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSelectedCustomerPhone(null)}
+                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Order Details Modal */}
       {selectedOrder && (
