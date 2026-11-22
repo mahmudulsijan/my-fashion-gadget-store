@@ -7,32 +7,37 @@ const SITE_URL =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "FG Trend Tech | Elevated Style & Everyday Tech",
-    template: "%s | FG Trend Tech",
+    default: "ZAVERO — Explore Beyond Trends",
+    template: "%s | ZAVERO",
   },
   description:
-    "Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories with Cash on Delivery from Mymensingh.",
+    "ZAVERO — Explore Beyond Trends. Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories across Bangladesh.",
+  icons: {
+    icon: "/images/zavero-logo.png",
+    shortcut: "/images/zavero-logo.png",
+    apple: "/images/zavero-logo.png",
+  },
   openGraph: {
     type: "website",
-    siteName: "FG Trend Tech",
-    title: "FG Trend Tech | Elevated Style & Everyday Tech",
+    siteName: "ZAVERO",
+    title: "ZAVERO — Explore Beyond Trends",
     description:
-      "Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories with Cash on Delivery from Mymensingh.",
+      "ZAVERO — Explore Beyond Trends. Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories across Bangladesh.",
     url: SITE_URL,
     images: [
       {
         url: "/hero-banner.jpg",
         width: 1200,
         height: 630,
-        alt: "FG Trend Tech Storefront Banner",
+        alt: "ZAVERO — Explore Beyond Trends Storefront Banner",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "FG Trend Tech | Elevated Style & Everyday Tech",
+    title: "ZAVERO — Explore Beyond Trends",
     description:
-      "Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories with Cash on Delivery from Mymensingh.",
+      "ZAVERO — Explore Beyond Trends. Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories across Bangladesh.",
     images: ["/hero-banner.jpg"],
   },
 };

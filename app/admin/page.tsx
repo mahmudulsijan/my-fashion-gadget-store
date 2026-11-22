@@ -28,6 +28,9 @@ import {
   ShieldCheck,
   Mail,
   Star,
+  Palette,
+  Images,
+  Link2,
 } from "lucide-react";
 
 interface ProductItem {
@@ -38,8 +41,10 @@ interface ProductItem {
   price: number;
   oldPrice?: number;
   image: string;
+  images?: string[];
   badge?: string;
   sizes?: string[];
+  colors?: string[];
   specs?: string;
   description?: string;
   stock?: number;
@@ -51,6 +56,7 @@ interface OrderProductLine {
   price: number;
   quantity: number;
   size?: string;
+  color?: string;
   image?: string;
 }
 
@@ -113,6 +119,14 @@ const STORE_SUBCATEGORIES = [
   "Gadgets",
   "Beauty Products",
   "Mobile Accessories",
+] as const;
+
+const QUICK_COLOR_PRESETS = [
+  "Black",
+  "White",
+  "Midnight Blue",
+  "Silver",
+  "Gold",
 ] as const;
 
 const ORDER_STATUSES = [
@@ -196,6 +210,51 @@ function getDefaultSizesForSubCategory(subCat?: string): string[] {
   return isFootwearSubCategory(subCat)
     ? ["40", "41", "42", "43"]
     : ["M", "L", "XL"];
+}
+
+function parseCommaList(rawText: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const part of rawText.split(",")) {
+    const cleaned = part.trim();
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(cleaned);
+    }
+  }
+  return result;
+}
+
+function appendPresetToText(currentText: string, preset: string): string {
+  const list = parseCommaList(currentText);
+  const exists = list.some(
+    (item) => item.toLowerCase() === preset.toLowerCase()
+  );
+  if (exists) return list.join(", ");
+  return [...list, preset].join(", ");
+}
+
+function collectProductImages(prod: {
+  image?: string;
+  images?: string[];
+}): string[] {
+  const list: string[] = [];
+  if (Array.isArray(prod.images)) {
+    for (const img of prod.images) {
+      if (typeof img === "string" && img.trim() && !list.includes(img.trim())) {
+        list.push(img.trim());
+      }
+    }
+  }
+  if (typeof prod.image === "string" && prod.image.trim()) {
+    const main = prod.image.trim();
+    if (!list.includes(main)) {
+      list.unshift(main);
+    }
+  }
+  return list;
 }
 
 function getStatusBadgeStyle(status: string) {
@@ -301,17 +360,18 @@ export default function AdminPage() {
   const [productCatFilter, setProductCatFilter] = useState<string>("all");
   const [stockUpdatingId, setStockUpdatingId] = useState<string | null>(null);
 
-  // Add Product Form State
+  // Add Product Form State (Multiple Images Support)
   const [name, setName] = useState("");
   const [subCategory, setSubCategory] = useState<string>("Men's Fashion");
   const category = useMemo(() => deriveMainCategory(subCategory), [subCategory]);
   const [price, setPrice] = useState("");
   const [oldPrice, setOldPrice] = useState("");
-  const [image, setImage] = useState("");
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [productImages, setProductImages] = useState<string[]>([]);
+  const [imageUrlInput, setImageUrlInput] = useState("");
   const [processingImage, setProcessingImage] = useState(false);
   const [badge, setBadge] = useState("New Arrival");
   const [sizesText, setSizesText] = useState("M, L, XL");
+  const [colorsText, setColorsText] = useState("");
   const [specs, setSpecs] = useState("");
   const [description, setDescription] = useState("");
   const [stock, setStock] = useState("10");
@@ -320,7 +380,7 @@ export default function AdminPage() {
     null
   );
 
-  // Edit Product Modal State
+  // Edit Product Modal State (Multiple Images Support)
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(
     null
   );
@@ -335,8 +395,10 @@ export default function AdminPage() {
   const [editStock, setEditStock] = useState("10");
   const [editBadge, setEditBadge] = useState("");
   const [editSizesText, setEditSizesText] = useState("");
+  const [editColorsText, setEditColorsText] = useState("");
   const [editSpecs, setEditSpecs] = useState("");
-  const [editImage, setEditImage] = useState("");
+  const [editImagesList, setEditImagesList] = useState<string[]>([]);
+  const [editImageUrlInput, setEditImageUrlInput] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -476,28 +538,46 @@ export default function AdminPage() {
     }
   };
 
-  const handleImageFileChange = async (
+  const handleMultipleFilesChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
     target: "add" | "edit" = "add"
   ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    if (!file.type.startsWith("image/")) {
-      showToast("দয়া করে একটি ছবি ফাইল সিলেক্ট করুন");
+    const validFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (validFiles.length === 0) {
+      showToast("দয়া করে বৈধ ছবি ফাইল সিলেক্ট করুন");
       return;
     }
 
     setProcessingImage(true);
     try {
-      const compressedDataUrl = await compressImageToDataUrl(file, 900, 0.78);
-      if (target === "add") {
-        setImage(compressedDataUrl);
-        setUploadedFileName(file.name);
-      } else {
-        setEditImage(compressedDataUrl);
+      const compressedList: string[] = [];
+      for (const file of validFiles) {
+        const dataUrl = await compressImageToDataUrl(file, 900, 0.78);
+        compressedList.push(dataUrl);
       }
-      showToast("ছবি রেডি হয়েছে");
+
+      if (target === "add") {
+        setProductImages((prev) => {
+          const merged = [...prev];
+          for (const url of compressedList) {
+            if (!merged.includes(url)) merged.push(url);
+          }
+          return merged;
+        });
+      } else {
+        setEditImagesList((prev) => {
+          const merged = [...prev];
+          for (const url of compressedList) {
+            if (!merged.includes(url)) merged.push(url);
+          }
+          return merged;
+        });
+      }
+
+      showToast(`${compressedList.length}টি ছবি যুক্ত হয়েছে`);
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "ছবি প্রসেস করতে সমস্যা হয়েছে";
@@ -505,29 +585,110 @@ export default function AdminPage() {
       showToast(msg);
     } finally {
       setProcessingImage(false);
+      if (target === "add" && fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      if (target === "edit" && editFileInputRef.current) {
+        editFileInputRef.current.value = "";
+      }
     }
   };
 
-  const handleClearImage = () => {
-    setImage("");
-    setUploadedFileName(null);
+  const handleAddImageUrl = (target: "add" | "edit") => {
+    const raw =
+      target === "add" ? imageUrlInput.trim() : editImageUrlInput.trim();
+    if (!raw) return;
+
+    const urls = raw
+      .split(/[\n,]+/)
+      .map((u) => u.trim())
+      .filter(Boolean);
+
+    if (urls.length === 0) return;
+
+    if (target === "add") {
+      setProductImages((prev) => {
+        const next = [...prev];
+        for (const u of urls) {
+          if (!next.includes(u)) next.push(u);
+        }
+        return next;
+      });
+      setImageUrlInput("");
+    } else {
+      setEditImagesList((prev) => {
+        const next = [...prev];
+        for (const u of urls) {
+          if (!next.includes(u)) next.push(u);
+        }
+        return next;
+      });
+      setEditImageUrlInput("");
+    }
+    showToast(`${urls.length}টি Image URL যুক্ত হয়েছে`);
+  };
+
+  const handleRemoveImageAt = (index: number, target: "add" | "edit") => {
+    if (target === "add") {
+      setProductImages((prev) => prev.filter((_, i) => i !== index));
+    } else {
+      setEditImagesList((prev) => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleMakePrimaryImage = (index: number, target: "add" | "edit") => {
+    if (index === 0) return;
+    if (target === "add") {
+      setProductImages((prev) => {
+        const copy = [...prev];
+        const [picked] = copy.splice(index, 1);
+        return [picked, ...copy];
+      });
+    } else {
+      setEditImagesList((prev) => {
+        const copy = [...prev];
+        const [picked] = copy.splice(index, 1);
+        return [picked, ...copy];
+      });
+    }
+    showToast("Main ছবি আপডেট করা হয়েছে");
+  };
+
+  const handleClearAllAddImages = () => {
+    setProductImages([]);
+    setImageUrlInput("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
+  const getFinalAddImages = (): string[] => {
+    const list = [...productImages];
+    const pendingUrls = imageUrlInput
+      .split(/[\n,]+/)
+      .map((u) => u.trim())
+      .filter(Boolean);
+    for (const u of pendingUrls) {
+      if (!list.includes(u)) list.push(u);
+    }
+    return list;
+  };
+
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !price || !image.trim()) return;
+    const finalImages = getFinalAddImages();
+    if (!name.trim() || !price || finalImages.length === 0) {
+      showToast("প্রোডাক্টের নাম, দাম এবং অন্তত ১টি ছবি দিন");
+      return;
+    }
+
     setCreatingProduct(true);
 
     const parsedSizes =
       category === "fashion" && isGarmentOrFootwearWithSizes(subCategory)
-        ? sizesText
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined;
+        ? parseCommaList(sizesText)
+        : [];
+    const parsedColors = parseCommaList(colorsText);
 
     try {
       const res = await fetch("/api/products", {
@@ -539,9 +700,11 @@ export default function AdminPage() {
           subCategory,
           price: Number(price),
           oldPrice: oldPrice ? Number(oldPrice) : undefined,
-          image: image.trim(),
+          image: finalImages[0],
+          images: finalImages,
           badge: badge.trim() || undefined,
-          sizes: parsedSizes && parsedSizes.length > 0 ? parsedSizes : undefined,
+          sizes: parsedSizes.length > 0 ? parsedSizes : undefined,
+          colors: parsedColors.length > 0 ? parsedColors : undefined,
           specs: category === "gadget" && specs.trim() ? specs.trim() : undefined,
           description: description.trim(),
           stock: Number(stock) || 10,
@@ -552,11 +715,14 @@ export default function AdminPage() {
         setName("");
         setPrice("");
         setOldPrice("");
-        handleClearImage();
+        setColorsText("");
+        handleClearAllAddImages();
         setSpecs("");
         setDescription("");
         setStock("10");
-        showToast(`"${subCategory}" ক্যাটাগরিতে প্রোডাক্ট যোগ করা হয়েছে`);
+        showToast(
+          `"${subCategory}" ক্যাটাগরিতে ${finalImages.length}টি ছবিসহ প্রোডাক্ট যোগ হয়েছে`
+        );
         fetchDashboardData();
       } else {
         showToast(data.message || "প্রোডাক্ট যোগ করা যায়নি");
@@ -588,24 +754,35 @@ export default function AdminPage() {
         ", "
       )
     );
+    setEditColorsText(
+      prod.colors && prod.colors.length > 0 ? prod.colors.join(", ") : ""
+    );
     setEditSpecs(prod.specs || "");
-    setEditImage(prod.image || "");
+    setEditImagesList(collectProductImages(prod));
+    setEditImageUrlInput("");
     setEditDescription(prod.description || "");
   };
 
   const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProduct || !editName.trim() || !editPrice || !editImage.trim())
+    const mergedEditImages = [...editImagesList];
+    const pendingEditUrls = editImageUrlInput
+      .split(/[\n,]+/)
+      .map((u) => u.trim())
+      .filter(Boolean);
+    for (const u of pendingEditUrls) {
+      if (!mergedEditImages.includes(u)) mergedEditImages.push(u);
+    }
+
+    if (!editingProduct || !editName.trim() || !editPrice || mergedEditImages.length === 0)
       return;
 
     setSavingEdit(true);
     const parsedSizes =
       editCategory === "fashion" && isGarmentOrFootwearWithSizes(editSubCategory)
-        ? editSizesText
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined;
+        ? parseCommaList(editSizesText)
+        : [];
+    const parsedColors = parseCommaList(editColorsText);
 
     const payload = {
       name: editName.trim(),
@@ -615,12 +792,14 @@ export default function AdminPage() {
       oldPrice: editOldPrice ? Number(editOldPrice) : undefined,
       stock: Math.max(0, Number(editStock) || 0),
       badge: editBadge.trim() || undefined,
-      sizes: parsedSizes && parsedSizes.length > 0 ? parsedSizes : [],
+      sizes: parsedSizes.length > 0 ? parsedSizes : [],
+      colors: parsedColors.length > 0 ? parsedColors : [],
       specs:
         editCategory === "gadget" && editSpecs.trim()
           ? editSpecs.trim()
           : undefined,
-      image: editImage.trim(),
+      image: mergedEditImages[0],
+      images: mergedEditImages,
       description: editDescription.trim(),
     };
 
@@ -640,7 +819,7 @@ export default function AdminPage() {
           )
         );
         setEditingProduct(null);
-        showToast("প্রোডাক্ট তথ্য আপডেট হয়েছে");
+        showToast("প্রোডাক্ট, ছবি ও কালার আপডেট হয়েছে");
       } else {
         showToast(data.message || "আপডেট করা যায়নি (API PATCH চেক করুন)");
       }
@@ -868,12 +1047,12 @@ export default function AdminPage() {
   const handleCopyOrderSummary = (ord: OrderItem) => {
     const pay = extractPaymentInfo(ord.address);
     const itemsText = ord.items
-      ?.map(
-        (i) =>
-          `- ${i.name}${i.size ? ` (${i.size})` : ""} ×${i.quantity} (৳${
-            i.price * i.quantity
-          })`
-      )
+      ?.map((i) => {
+        const meta = [i.size, i.color].filter(Boolean).join(", ");
+        return `- ${i.name}${meta ? ` (${meta})` : ""} ×${i.quantity} (৳${
+          i.price * i.quantity
+        })`;
+      })
       .join("\n");
     const summary = [
       `Order ID: ${ord._id}`,
@@ -949,7 +1128,10 @@ export default function AdminPage() {
       const matchesQuery =
         !effectiveProductQuery ||
         p.name.toLowerCase().includes(effectiveProductQuery) ||
-        normalizedSub.toLowerCase().includes(effectiveProductQuery);
+        normalizedSub.toLowerCase().includes(effectiveProductQuery) ||
+        (p.colors || []).some((c) =>
+          c.toLowerCase().includes(effectiveProductQuery)
+        );
       return matchesCat && matchesQuery;
     });
   }, [products, productCatFilter, effectiveProductQuery]);
@@ -1059,63 +1241,89 @@ export default function AdminPage() {
     return maxVal;
   }, [stats.recentSeries]);
 
+  const previewAddImages = getFinalAddImages();
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f4f6f9] p-4">
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0b0c] text-neutral-100 p-4 relative overflow-hidden">
+        <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[480px] h-[260px] rounded-full bg-amber-400/10 blur-3xl" />
+
         <form
           onSubmit={handleLogin}
-          className="bg-white p-6 sm:p-7 rounded-2xl shadow-sm border border-slate-200 w-full max-w-sm space-y-4"
+          className="relative z-10 bg-neutral-950/95 border border-neutral-800 p-6 sm:p-8 rounded-3xl shadow-2xl w-full max-w-md space-y-5"
         >
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">
-              FG Trend Tech • Mymensingh
-            </p>
-            <h1 className="text-xl font-bold text-slate-900 mt-0.5">
-              Admin Login
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              অ্যাডমিন প্যানেলে ঢুকতে পাসওয়ার্ড দিন।
-            </p>
-          </div>
-
-          <div className="relative">
-            <input
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter Admin Password"
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-slate-900 outline-none focus:border-slate-900"
-              required
+          <div className="flex items-center gap-3.5 border-b border-neutral-800/90 pb-4">
+            <img
+              src="/images/zavero-logo.png"
+              alt="ZAVERO"
+              className="w-12 h-12 rounded-2xl object-cover bg-neutral-900 border border-amber-400/30 shrink-0"
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              aria-label="Toggle password visibility"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 cursor-pointer"
-            >
-              {showPassword ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
-            </button>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-400">
+                ZAVERO • EXPLORE BEYOND TRENDS
+              </p>
+              <h1 className="text-xl font-black text-white tracking-tight mt-0.5">
+                Admin Control Panel
+              </h1>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                Mymensingh Storefront &amp; Order Management
+              </p>
+            </div>
           </div>
 
-          {authError && <p className="text-sm text-rose-600">{authError}</p>}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-neutral-300">
+              Admin Password
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter admin password"
+                className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-neutral-500 outline-none transition"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label="Toggle password visibility"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-amber-300 transition cursor-pointer"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {authError && (
+            <div className="bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs font-medium px-3.5 py-2.5 rounded-xl">
+              {authError}
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={authLoading}
-            className="w-full bg-slate-900 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition cursor-pointer"
+            className="w-full bg-amber-400 hover:bg-amber-300 disabled:bg-neutral-700 text-neutral-950 disabled:text-neutral-400 py-3 rounded-xl text-sm font-extrabold tracking-wide transition cursor-pointer shadow-lg shadow-amber-400/10"
           >
-            {authLoading ? "Checking..." : "Login"}
+            {authLoading ? "Verifying Access..." : "Unlock Admin Panel"}
           </button>
 
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <Link href="/" className="hover:text-slate-900">
-              ← Back to Store
+          <div className="pt-3 border-t border-neutral-800/90 flex items-center justify-between text-xs text-neutral-400">
+            <Link
+              href="/"
+              className="hover:text-amber-300 transition font-medium"
+            >
+              ← Back to Storefront
             </Link>
-            <Link href="/track-order" className="hover:text-slate-900">
+            <Link
+              href="/track-order"
+              className="hover:text-amber-300 transition font-medium"
+            >
               Track Order
             </Link>
           </div>
@@ -1460,7 +1668,6 @@ export default function AdminPage() {
             {activeSection === "overview" && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                  {/* Revenue Trend Bar/Flow Card */}
                   <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
@@ -1510,7 +1717,6 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  {/* Catalog Category Breakdown */}
                   <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between space-y-4">
                     <div>
                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -1563,7 +1769,6 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Recent Orders Preview */}
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
                   <div className="flex items-center justify-between">
                     <h2 className="text-base sm:text-lg font-bold text-slate-900">
@@ -1763,12 +1968,14 @@ export default function AdminPage() {
                             <p className="text-xs sm:text-sm text-slate-800">
                               <span className="font-semibold">Items:</span>{" "}
                               {order.items
-                                ?.map(
-                                  (i) =>
-                                    `${i.name}${i.size ? ` (${i.size})` : ""} ×${
-                                      i.quantity
-                                    }`
-                                )
+                                ?.map((i) => {
+                                  const meta = [i.size, i.color]
+                                    .filter(Boolean)
+                                    .join(", ");
+                                  return `${i.name}${
+                                    meta ? ` (${meta})` : ""
+                                  } ×${i.quantity}`;
+                                })
                                 .join(", ")}
                             </p>
 
@@ -1931,69 +2138,144 @@ export default function AdminPage() {
                     />
                   ) : null}
 
-                  {/* Image URL + Upload Own Photo */}
-                  <div className="space-y-2">
+                  {/* Colors Option */}
+                  <div className="space-y-1.5 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                      <Palette className="w-3.5 h-3.5 text-indigo-600" />
+                      Available Colors (comma separated)
+                    </label>
                     <input
                       type="text"
-                      placeholder="Image URL (e.g. /images/shoe.jpg or https://...) *"
-                      value={image.startsWith("data:") ? "" : image}
-                      onChange={(e) => {
-                        setUploadedFileName(null);
-                        setImage(e.target.value);
-                      }}
-                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
-                      required={!image}
+                      placeholder="e.g. Black, Silver, Midnight Blue"
+                      value={colorsText}
+                      onChange={(e) => setColorsText(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
                     />
-
-                    <div className="flex items-center justify-between gap-2">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleImageFileChange(e, "add")}
-                        className="hidden"
-                      />
-
-                      <button
-                        type="button"
-                        disabled={processingImage}
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 border border-dashed border-slate-400 hover:border-slate-900 bg-slate-50 hover:bg-slate-100 text-slate-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        {processingImage
-                          ? "Processing Photo..."
-                          : "Upload Your Own Photo"}
-                      </button>
-
-                      {image && (
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {QUICK_COLOR_PRESETS.map((preset) => (
                         <button
+                          key={preset}
                           type="button"
-                          onClick={handleClearImage}
-                          title="Clear image"
-                          className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+                          onClick={() =>
+                            setColorsText((prev) =>
+                              appendPresetToText(prev, preset)
+                            )
+                          }
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 hover:border-slate-400 text-slate-700 transition cursor-pointer"
                         >
-                          <X className="w-3.5 h-3.5" />
-                          Clear
+                          + {preset}
                         </button>
-                      )}
+                      ))}
                     </div>
                   </div>
 
-                  {image.trim() && (
-                    <div className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-200">
-                      <img
-                        src={image.trim()}
-                        alt="Preview"
-                        className="w-11 h-11 rounded-lg object-cover bg-slate-200 shrink-0"
-                      />
-                      <span className="text-xs text-slate-600 truncate">
-                        {uploadedFileName
-                          ? `Uploaded: ${uploadedFileName}`
-                          : "Image URL Preview"}
-                      </span>
+                  {/* Multiple Images Upload & URLs */}
+                  <div className="space-y-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                        <Images className="w-3.5 h-3.5 text-indigo-600" />
+                        Product Images ({previewAddImages.length}) *
+                      </label>
+                      {previewAddImages.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearAllAddImages}
+                          className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                        >
+                          Clear All
+                        </button>
+                      )}
                     </div>
-                  )}
+
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        placeholder="Add Image URL (/images/1.jpg or https://...)"
+                        value={imageUrlInput}
+                        onChange={(e) => setImageUrlInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddImageUrl("add");
+                          }
+                        }}
+                        className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:border-slate-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddImageUrl("add")}
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer shrink-0"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                        Add
+                      </button>
+                    </div>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => handleMultipleFilesChange(e, "add")}
+                      className="hidden"
+                    />
+
+                    <button
+                      type="button"
+                      disabled={processingImage}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-slate-400 hover:border-slate-900 bg-white hover:bg-slate-100 text-slate-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {processingImage
+                        ? "Processing Photos..."
+                        : "Upload Multiple Photos"}
+                    </button>
+
+                    {previewAddImages.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2 pt-1">
+                        {previewAddImages.map((imgSrc, idx) => (
+                          <div
+                            key={`${idx}-${imgSrc.slice(0, 24)}`}
+                            className="relative group rounded-xl overflow-hidden border border-slate-200 bg-white aspect-square"
+                          >
+                            <img
+                              src={imgSrc}
+                              alt={`Preview ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            {idx === 0 && (
+                              <span className="absolute bottom-1 left-1 bg-slate-950/85 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                                Main
+                              </span>
+                            )}
+                            <div className="absolute top-1 right-1 flex items-center gap-1">
+                              {idx > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleMakePrimaryImage(idx, "add")
+                                  }
+                                  title="Set as Main Image"
+                                  className="bg-white/90 hover:bg-white text-slate-900 text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-2xs cursor-pointer"
+                                >
+                                  1st
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveImageAt(idx, "add")}
+                                title="Remove image"
+                                className="w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-2xs cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
                   <textarea
                     placeholder="Description (optional)"
@@ -2025,7 +2307,7 @@ export default function AdminPage() {
                         <Search className="w-4 h-4 text-slate-400 mr-1.5" />
                         <input
                           type="text"
-                          placeholder="Search product..."
+                          placeholder="Search product or color..."
                           value={productSearch}
                           onChange={(e) => setProductSearch(e.target.value)}
                           className="bg-transparent text-xs outline-none w-36 sm:w-44"
@@ -2063,6 +2345,7 @@ export default function AdminPage() {
                           prod.subCategory,
                           prod.category
                         );
+                        const allProdImgs = collectProductImages(prod);
 
                         return (
                           <div
@@ -2070,11 +2353,18 @@ export default function AdminPage() {
                             className="border border-slate-200 rounded-2xl p-3.5 flex flex-col justify-between gap-3"
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <img
-                                src={prod.image}
-                                alt={prod.name}
-                                className="w-14 h-14 object-cover rounded-xl bg-slate-100 shrink-0"
-                              />
+                              <div className="relative shrink-0">
+                                <img
+                                  src={allProdImgs[0] || prod.image}
+                                  alt={prod.name}
+                                  className="w-14 h-14 object-cover rounded-xl bg-slate-100"
+                                />
+                                {allProdImgs.length > 1 && (
+                                  <span className="absolute -bottom-1 -right-1 bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                    +{allProdImgs.length - 1}
+                                  </span>
+                                )}
+                              </div>
                               <div className="min-w-0">
                                 <p className="font-semibold text-sm text-slate-900 truncate">
                                   {prod.name}
@@ -2102,9 +2392,19 @@ export default function AdminPage() {
                                   >
                                     Stock: {currentStock}
                                   </span>
+                                  {allProdImgs.length > 1 && (
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                                      {allProdImgs.length} Photos
+                                    </span>
+                                  )}
                                   {prod.sizes && prod.sizes.length > 0 && (
                                     <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
                                       Sizes: {prod.sizes.join(", ")}
+                                    </span>
+                                  )}
+                                  {prod.colors && prod.colors.length > 0 && (
+                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/70">
+                                      Colors: {prod.colors.join(", ")}
                                     </span>
                                   )}
                                 </div>
@@ -2657,6 +2957,7 @@ export default function AdminPage() {
                             </p>
                             <p className="text-xs text-slate-500">
                               {line.size ? `Size: ${line.size} • ` : ""}
+                              {line.color ? `Color: ${line.color} • ` : ""}
                               Qty: {line.quantity} × ৳{line.price}
                             </p>
                           </div>
@@ -2774,7 +3075,8 @@ export default function AdminPage() {
                         {item.name}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {item.size ? `Size: ${item.size} • ` : ""}Qty:{" "}
+                        {item.size ? `Size: ${item.size} • ` : ""}
+                        {item.color ? `Color: ${item.color} • ` : ""}Qty:{" "}
                         {item.quantity} × ৳{item.price}
                       </p>
                     </div>
@@ -2813,7 +3115,7 @@ export default function AdminPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 overflow-y-auto">
           <form
             onSubmit={handleSaveProductEdit}
-            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-3 my-auto"
+            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-3 my-auto max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-lg font-bold text-slate-900">
@@ -2912,21 +3214,74 @@ export default function AdminPage() {
               />
             ) : null}
 
-            <div className="space-y-2">
+            {/* Edit Colors Option */}
+            <div className="space-y-1.5 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                <Palette className="w-3.5 h-3.5 text-indigo-600" />
+                Colors (comma separated)
+              </label>
               <input
                 type="text"
-                placeholder="Image URL *"
-                value={editImage.startsWith("data:") ? "" : editImage}
-                onChange={(e) => setEditImage(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
-                required={!editImage}
+                placeholder="e.g. Black, Silver, Midnight Blue"
+                value={editColorsText}
+                onChange={(e) => setEditColorsText(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
               />
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {QUICK_COLOR_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() =>
+                      setEditColorsText((prev) =>
+                        appendPresetToText(prev, preset)
+                      )
+                    }
+                    className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 hover:border-slate-400 text-slate-700 transition cursor-pointer"
+                  >
+                    + {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Edit Multiple Images */}
+            <div className="space-y-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                <Images className="w-3.5 h-3.5 text-indigo-600" />
+                Product Images ({editImagesList.length}) *
+              </label>
+
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  placeholder="Add another Image URL..."
+                  value={editImageUrlInput}
+                  onChange={(e) => setEditImageUrlInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddImageUrl("edit");
+                    }
+                  }}
+                  className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:border-slate-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAddImageUrl("edit")}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer shrink-0"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                  Add
+                </button>
+              </div>
 
               <input
                 ref={editFileInputRef}
                 type="file"
                 accept="image/*"
-                onChange={(e) => handleImageFileChange(e, "edit")}
+                multiple
+                onChange={(e) => handleMultipleFilesChange(e, "edit")}
                 className="hidden"
               />
 
@@ -2934,25 +3289,54 @@ export default function AdminPage() {
                 type="button"
                 disabled={processingImage}
                 onClick={() => editFileInputRef.current?.click()}
-                className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-slate-400 hover:border-slate-900 bg-slate-50 text-slate-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
+                className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-slate-400 hover:border-slate-900 bg-white text-slate-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
               >
                 <Upload className="w-3.5 h-3.5" />
-                {processingImage ? "Processing Photo..." : "Replace Photo"}
+                {processingImage ? "Processing Photos..." : "Add More Photos"}
               </button>
-            </div>
 
-            {editImage.trim() && (
-              <div className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-200">
-                <img
-                  src={editImage.trim()}
-                  alt="Edit Preview"
-                  className="w-11 h-11 rounded-lg object-cover bg-slate-200 shrink-0"
-                />
-                <span className="text-xs text-slate-600 truncate">
-                  Current Image Preview
-                </span>
-              </div>
-            )}
+              {editImagesList.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 pt-1">
+                  {editImagesList.map((imgSrc, idx) => (
+                    <div
+                      key={`${idx}-${imgSrc.slice(0, 24)}`}
+                      className="relative rounded-xl overflow-hidden border border-slate-200 bg-white aspect-square"
+                    >
+                      <img
+                        src={imgSrc}
+                        alt={`Edit preview ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      {idx === 0 && (
+                        <span className="absolute bottom-1 left-1 bg-slate-950/85 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                          Main
+                        </span>
+                      )}
+                      <div className="absolute top-1 right-1 flex items-center gap-1">
+                        {idx > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleMakePrimaryImage(idx, "edit")}
+                            title="Set as Main Image"
+                            className="bg-white/90 hover:bg-white text-slate-900 text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-2xs cursor-pointer"
+                          >
+                            1st
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImageAt(idx, "edit")}
+                          title="Remove image"
+                          className="w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-2xs cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <textarea
               placeholder="Description (optional)"

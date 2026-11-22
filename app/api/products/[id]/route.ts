@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/app/lib/mongodb";
-import { Product } from "@/app/models/Product";
+import Product from "@/app/models/Product";
 
-function normalizeSizes(rawSizes: unknown): string[] {
-  if (Array.isArray(rawSizes)) {
-    return rawSizes
-      .flatMap((item) => String(item).split(","))
-      .map((s) => s.trim())
-      .filter(Boolean);
+function parseStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v || "").trim()).filter(Boolean);
   }
-  if (typeof rawSizes === "string") {
-    return rawSizes
+  if (typeof value === "string") {
+    return value
       .split(",")
-      .map((s) => s.trim())
+      .map((v) => v.trim())
       .filter(Boolean);
   }
   return [];
@@ -21,7 +18,7 @@ function normalizeSizes(rawSizes: unknown): string[] {
 
 export async function GET(
   _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
     await connectDB();
@@ -29,7 +26,7 @@ export async function GET(
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(
-        { success: false, message: "Invalid product ID" },
+        { success: false, message: "অবৈধ প্রোডাক্ট ID" },
         { status: 400 }
       );
     }
@@ -37,128 +34,134 @@ export async function GET(
     const product = await Product.findById(id).lean();
     if (!product) {
       return NextResponse.json(
-        { success: false, message: "Product not found" },
+        { success: false, message: "প্রোডাক্ট পাওয়া যায়নি" },
         { status: 404 }
       );
     }
 
     return NextResponse.json({ success: true, product });
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Failed to fetch product";
-    console.error("GET /api/products/[id] error:", err);
-    return NextResponse.json({ success: false, message }, { status: 500 });
-  }
-}
-
-async function updateProductHandler(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    await connectDB();
-    const { id } = await context.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { success: false, message: "Invalid product ID" },
-        { status: 400 }
-      );
-    }
-
-    const body = await req.json();
-    const allowedFields: Record<string, unknown> = {};
-
-    if (typeof body.name === "string") allowedFields.name = body.name.trim();
-    if (typeof body.category === "string")
-      allowedFields.category = body.category.trim();
-    if (typeof body.subCategory === "string")
-      allowedFields.subCategory = body.subCategory.trim();
-    if (typeof body.price === "number" && !Number.isNaN(body.price))
-      allowedFields.price = body.price;
-    if (typeof body.oldPrice === "number" && !Number.isNaN(body.oldPrice))
-      allowedFields.oldPrice = body.oldPrice;
-    if (typeof body.image === "string") allowedFields.image = body.image.trim();
-    if (typeof body.badge === "string") allowedFields.badge = body.badge.trim();
-    if (body.sizes !== undefined) allowedFields.sizes = normalizeSizes(body.sizes);
-    if (typeof body.specs === "string") allowedFields.specs = body.specs.trim();
-    if (typeof body.description === "string")
-      allowedFields.description = body.description.trim();
-    if (typeof body.stock === "number" && !Number.isNaN(body.stock)) {
-      allowedFields.stock = Math.max(0, body.stock);
-    }
-
-    const updatedProduct = await Product.findByIdAndUpdate(
-      id,
-      { $set: allowedFields },
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!updatedProduct) {
-      return NextResponse.json(
-        { success: false, message: "Product not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      product: updatedProduct,
-      message: "Product updated successfully",
-    });
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Failed to update product";
-    console.error("UPDATE /api/products/[id] error:", err);
-    return NextResponse.json({ success: false, message }, { status: 500 });
+  } catch (error) {
+    console.error("GET /api/products/[id] error:", error);
+    return NextResponse.json(
+      { success: false, message: "প্রোডাক্ট লোড করতে সমস্যা হয়েছে" },
+      { status: 500 }
+    );
   }
 }
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  return updateProductHandler(req, context);
-}
-
-export async function PUT(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  return updateProductHandler(req, context);
-}
-
-export async function DELETE(
-  _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
     await connectDB();
-    const { id } = await context.params;
+    const resolvedParams = await context.params;
+    const { id } = resolvedParams;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(
-        { success: false, message: "Invalid product ID" },
+        { success: false, message: "অবৈধ প্রোডাক্ট ID" },
         { status: 400 }
       );
     }
 
-    const deletedProduct = await Product.findByIdAndDelete(id).lean();
-    if (!deletedProduct) {
+    const body = await req.json();
+    const updateFields: Record<string, unknown> = {};
+
+    if (body.name !== undefined) updateFields.name = String(body.name).trim();
+    if (body.category !== undefined)
+      updateFields.category = String(body.category).trim();
+    if (body.subCategory !== undefined)
+      updateFields.subCategory = String(body.subCategory).trim();
+    if (body.price !== undefined) updateFields.price = Number(body.price);
+    if (body.oldPrice !== undefined) {
+      updateFields.oldPrice =
+        body.oldPrice === "" || body.oldPrice === null
+          ? undefined
+          : Number(body.oldPrice);
+    }
+    if (body.badge !== undefined)
+      updateFields.badge = String(body.badge).trim();
+    if (body.specs !== undefined)
+      updateFields.specs = String(body.specs).trim();
+    if (body.description !== undefined)
+      updateFields.description = String(body.description).trim();
+    if (body.stock !== undefined)
+      updateFields.stock = Math.max(0, Number(body.stock) || 0);
+
+    if (body.images !== undefined) {
+      const cleanedImages = parseStringList(body.images);
+      updateFields.images = cleanedImages;
+      if (cleanedImages.length > 0) {
+        updateFields.image = cleanedImages[0];
+      } else if (body.image !== undefined) {
+        updateFields.image = String(body.image).trim();
+      }
+    } else if (body.image !== undefined) {
+      updateFields.image = String(body.image).trim();
+    }
+
+    if (body.colors !== undefined) {
+      updateFields.colors = parseStringList(body.colors);
+    }
+
+    if (body.sizes !== undefined) {
+      updateFields.sizes = parseStringList(body.sizes);
+    }
+
+    const updated = await Product.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
+
+    if (!updated) {
       return NextResponse.json(
-        { success: false, message: "Product not found" },
+        { success: false, message: "প্রোডাক্ট পাওয়া যায়নি" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Product deleted successfully",
-    });
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Failed to delete product";
-    console.error("DELETE /api/products/[id] error:", err);
-    return NextResponse.json({ success: false, message }, { status: 500 });
+    return NextResponse.json({ success: true, product: updated });
+  } catch (error) {
+    console.error("PATCH /api/products/[id] error:", error);
+    return NextResponse.json(
+      { success: false, message: "প্রোডাক্ট আপডেট করতে সমস্যা হয়েছে" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> | { id: string } }
+) {
+  try {
+    await connectDB();
+    const resolvedParams = await context.params;
+    const { id } = resolvedParams;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { success: false, message: "অবৈধ প্রোডাক্ট ID" },
+        { status: 400 }
+      );
+    }
+
+    const deleted = await Product.findByIdAndDelete(id);
+    if (!deleted) {
+      return NextResponse.json(
+        { success: false, message: "প্রোডাক্ট পাওয়া যায়নি" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: "ডিলিট সফল হয়েছে" });
+  } catch (error) {
+    console.error("DELETE /api/products/[id] error:", error);
+    return NextResponse.json(
+      { success: false, message: "প্রোডাক্ট ডিলিট করতে সমস্যা হয়েছে" },
+      { status: 500 }
+    );
   }
 }
