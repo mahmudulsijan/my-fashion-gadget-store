@@ -21,7 +21,6 @@ import {
   ArrowUp,
   ArrowRight,
   MessageCircle,
-  Phone,
   Mail,
   MapPin,
   User,
@@ -160,7 +159,7 @@ const FEATURED_CATEGORIES = [
     subtitle: "Shirts, Panjabi & Streetwear",
     filterKey: "fashion" as const,
     subFilter: "Men's Fashion",
-    gradientClass: "from-stone-950 via-stone-900 to-amber-950/80",
+    gradientClass: "from-[#1E2B4D] via-[#15203B] to-[#0B0C10]",
     image: CATEGORY_IMAGES.mensFashion,
   },
   {
@@ -168,7 +167,7 @@ const FEATURED_CATEGORIES = [
     subtitle: "Co-ords, Kurtis & Modest Wear",
     filterKey: "fashion" as const,
     subFilter: "Women's Fashion",
-    gradientClass: "from-stone-950 via-rose-950/85 to-amber-950/70",
+    gradientClass: "from-[#22325A] via-[#182342] to-[#0B0C10]",
     image: CATEGORY_IMAGES.womensFashion,
   },
   {
@@ -176,7 +175,7 @@ const FEATURED_CATEGORIES = [
     subtitle: "Sneakers, Loafers & Boots",
     filterKey: "fashion" as const,
     subFilter: "Men's Footwear",
-    gradientClass: "from-neutral-950 via-neutral-900 to-amber-900/75",
+    gradientClass: "from-[#1E2B4D] via-[#111827] to-[#0B0C10]",
     image: CATEGORY_IMAGES.mensFootwear,
   },
   {
@@ -184,7 +183,7 @@ const FEATURED_CATEGORIES = [
     subtitle: "Heels, Flats & Casual Shoes",
     filterKey: "fashion" as const,
     subFilter: "Women's Footwear",
-    gradientClass: "from-stone-950 via-amber-950/75 to-neutral-900",
+    gradientClass: "from-[#1B2847] via-[#141D33] to-[#0B0C10]",
     image: CATEGORY_IMAGES.womensFootwear,
   },
   {
@@ -192,7 +191,7 @@ const FEATURED_CATEGORIES = [
     subtitle: "Smartwatches, Audio & Tech",
     filterKey: "gadget" as const,
     subFilter: "Gadgets",
-    gradientClass: "from-slate-950 via-slate-900 to-amber-950/70",
+    gradientClass: "from-[#172544] via-[#111827] to-[#0B0C10]",
     image: CATEGORY_IMAGES.gadgets,
   },
   {
@@ -200,7 +199,7 @@ const FEATURED_CATEGORIES = [
     subtitle: "Skincare, Serums & Care",
     filterKey: "fashion" as const,
     subFilter: "Beauty Products",
-    gradientClass: "from-neutral-950 via-zinc-900 to-amber-900/70",
+    gradientClass: "from-[#203057] via-[#151E36] to-[#0B0C10]",
     image: CATEGORY_IMAGES.beautyProducts,
   },
   {
@@ -208,7 +207,7 @@ const FEATURED_CATEGORIES = [
     subtitle: "Chargers, Powerbanks & Cases",
     filterKey: "gadget" as const,
     subFilter: "Mobile Accessories",
-    gradientClass: "from-stone-950 via-zinc-900 to-amber-950/75",
+    gradientClass: "from-[#1E2B4D] via-[#162038] to-[#0B0C10]",
     image: CATEGORY_IMAGES.mobileAccessories,
   },
 ];
@@ -382,7 +381,7 @@ export default function HomeStore() {
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>("home");
 
-  // Real Customer Reviews State
+  // Real Customer Reviews State (no fake hardcoded reviews)
   const [reviews, setReviews] = useState<SimpleReview[]>([]);
   const [reviewName, setReviewName] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
@@ -869,7 +868,6 @@ export default function HomeStore() {
     );
   };
 
-  // Step 1 of Register: Validate inputs & send 6-digit OTP code to regEmail
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
@@ -968,7 +966,6 @@ export default function HomeStore() {
     }
   };
 
-  // Step 2 of Register: Verify 6-digit OTP code & complete account creation
   const handleVerifyRegistrationOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
@@ -1458,16 +1455,16 @@ export default function HomeStore() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f7] text-neutral-900 pb-24 lg:pb-0 selection:bg-neutral-950 selection:text-amber-300">
+    <div className="min-h-screen bg-[#F4F6F9] text-[#111827] pb-24 lg:pb-0 selection:bg-[#0077E6] selection:text-white">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-neutral-950 text-amber-300 text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg border border-amber-500/30">
+        <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-[#1E2B4D] text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg border border-white/15">
           {toastMessage}
         </div>
       )}
 
       {/* A. Announcement Bar */}
-      <div className="bg-neutral-950 text-amber-200 text-xs py-2 px-4 text-center tracking-wide border-b border-amber-500/20">
+      <div className="bg-[#1E2B4D] text-white/95 text-xs py-2 px-3 sm:px-4 text-center tracking-wide border-b border-[#E3E6EB]/20">
         {lang === "bn"
           ? `${BRAND_NAME} (${BRAND_TAGLINE}) • সারা দেশে COD, bKash, Nagad ও Rocket • ময়মনসিংহের ভেতরে ৳${deliveryConfig.insideMymensingh} এবং বাইরে ৳${deliveryConfig.outsideMymensingh}`
           : `${BRAND_NAME} — ${BRAND_TAGLINE} • COD, bKash, Nagad & Rocket • Inside Mymensingh ৳${deliveryConfig.insideMymensingh} & Outside Mymensingh ৳${deliveryConfig.outsideMymensingh}`}
@@ -1478,16 +1475,16 @@ export default function HomeStore() {
           : ""}
       </div>
 
-      {/* B. Sticky Navigation Bar + Mega Menu */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-200 transition-all">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+      {/* B. Sticky Navigation Bar + Mega Menu (Mobile-First Clean Layout) */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E3E6EB] transition-all">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-4 h-16 flex items-center justify-between gap-1.5 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
               aria-label="Toggle Menu"
-              className="lg:hidden p-2 rounded-lg hover:bg-neutral-100 cursor-pointer shrink-0"
-            >
+              className="lg:hidden p-2 rounded-lg hover:bg-[#F4F6F9] text-[#111827] cursor-pointer shrink-0">
+            
               {mobileMenuOpen ? (
                 <X className="w-5 h-5" />
               ) : (
@@ -1502,21 +1499,21 @@ export default function HomeStore() {
                 setActiveBottomTab("home");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
-              className="flex items-center gap-2.5 shrink-0"
+              className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0"
             >
               <img
                 src="/images/zavero-logo.png"
                 alt={`${BRAND_NAME} — ${BRAND_TAGLINE}`}
-                className="h-9 sm:h-10 w-auto object-contain"
+                className="h-8 sm:h-10 w-auto object-contain shrink-0"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = "none";
                 }}
               />
               <div className="leading-none">
-                <span className="font-black text-base sm:text-xl tracking-tight text-neutral-950 block">
+                <span className="font-black text-sm sm:text-xl tracking-tight text-[#111827] block">
                   {BRAND_NAME}
                 </span>
-                <span className="text-[10px] font-semibold text-amber-700 tracking-wider hidden sm:block">
+                <span className="text-[10px] font-semibold text-[#1E2B4D] tracking-wider hidden sm:block">
                   {BRAND_TAGLINE}
                 </span>
               </div>
@@ -1525,9 +1522,9 @@ export default function HomeStore() {
             <button
               type="button"
               onClick={() => setIsLocationModalOpen(true)}
-              className="hidden md:inline-flex items-center gap-1.5 bg-neutral-100 hover:bg-neutral-200/80 text-neutral-700 px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer shrink-0"
+              className="hidden md:inline-flex items-center gap-1.5 bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] border border-[#E3E6EB] px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer shrink-0"
             >
-              <MapPin className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <MapPin className="w-3.5 h-3.5 text-[#0077E6] shrink-0" />
               <span className="truncate max-w-[120px]">
                 {lang === "bn"
                   ? `ডেলিভারি: ${deliveryLocation}`
@@ -1536,14 +1533,14 @@ export default function HomeStore() {
             </button>
           </div>
 
-          <nav className="hidden xl:flex items-center gap-5 text-sm font-medium text-neutral-700">
+          <nav className="hidden xl:flex items-center gap-5 text-sm font-medium text-[#4B5563]">
             <a
               href="#"
               onClick={(e) => {
                 e.preventDefault();
                 jumpToCatalog();
               }}
-              className="hover:text-neutral-950 transition"
+              className="hover:text-[#0077E6] transition"
             >
               {lang === "bn" ? "হোম" : "Home"}
             </a>
@@ -1552,14 +1549,14 @@ export default function HomeStore() {
               <button
                 type="button"
                 onClick={() => setMegaMenuOpen((v) => !v)}
-                className="inline-flex items-center gap-1 hover:text-neutral-950 transition cursor-pointer"
+                className="inline-flex items-center gap-1 hover:text-[#0077E6] transition cursor-pointer"
               >
                 <span>{lang === "bn" ? "ক্যাটাগরি" : "Mega Menu"}</span>
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
 
               {megaMenuOpen && (
-                <div className="fixed inset-x-0 top-16 bg-neutral-950 text-white border-b border-amber-500/30 shadow-2xl z-40">
+                <div className="fixed inset-x-0 top-16 bg-[#1E2B4D] text-white border-b border-[#E3E6EB]/20 shadow-2xl z-40">
                   <div className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-4 gap-5">
                     {FEATURED_CATEGORIES.map((cat) => (
                       <button
@@ -1571,12 +1568,12 @@ export default function HomeStore() {
                             sub: cat.subFilter,
                           })
                         }
-                        className="text-left p-3 rounded-2xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-400/50 transition cursor-pointer space-y-1"
+                        className="text-left p-3 rounded-2xl bg-[#111827]/70 hover:bg-[#0077E6]/20 border border-white/10 hover:border-[#0077E6] transition cursor-pointer space-y-1"
                       >
-                        <p className="text-xs font-extrabold text-amber-300">
+                        <p className="text-xs font-extrabold text-white">
                           {catLabelText(cat.title)}
                         </p>
-                        <p className="text-[11px] text-neutral-400">
+                        <p className="text-[11px] text-white/75">
                           {cat.subtitle}
                         </p>
                       </button>
@@ -1589,47 +1586,47 @@ export default function HomeStore() {
             <button
               type="button"
               onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
-              className="hover:text-neutral-950 transition cursor-pointer"
+              className="hover:text-[#0077E6] transition cursor-pointer"
             >
               {lang === "bn" ? "সব প্রোডাক্ট" : "All Products"}
             </button>
             <button
               type="button"
               onClick={() => jumpToCatalog({ sub: "Men's Fashion" })}
-              className="hover:text-neutral-950 transition cursor-pointer"
+              className="hover:text-[#0077E6] transition cursor-pointer"
             >
               {lang === "bn" ? "মেনস ফ্যাশন" : "Men's Fashion"}
             </button>
             <button
               type="button"
               onClick={() => jumpToCatalog({ sub: "Women's Fashion" })}
-              className="hover:text-neutral-950 transition cursor-pointer"
+              className="hover:text-[#0077E6] transition cursor-pointer"
             >
               {lang === "bn" ? "উইমেনস ফ্যাশন" : "Women's Fashion"}
             </button>
             <button
               type="button"
               onClick={() => jumpToCatalog({ sub: "Gadgets" })}
-              className="hover:text-neutral-950 transition cursor-pointer"
+              className="hover:text-[#0077E6] transition cursor-pointer"
             >
               {lang === "bn" ? "গ্যাজেটস" : "Gadgets"}
             </button>
             <Link
               href="/track-order"
-              className="hover:text-neutral-950 transition font-semibold text-neutral-950"
+              className="hover:text-[#0077E6] transition font-semibold text-[#111827]"
             >
               {lang === "bn" ? "অর্ডার ট্র্যাক" : "Track Order"}
             </Link>
           </nav>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setSearchOverlayOpen(true)}
               aria-label="Open Search Overlay"
-              className="h-9 sm:h-10 px-3 rounded-full bg-neutral-100 hover:bg-neutral-200/80 text-neutral-700 flex items-center gap-1.5 text-xs font-medium transition cursor-pointer"
+              className="w-8 h-8 sm:w-auto sm:h-10 sm:px-3 rounded-full bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] border border-[#E3E6EB] flex items-center justify-center gap-1.5 text-xs font-medium transition cursor-pointer shrink-0"
             >
-              <Search className="w-4 h-4 text-neutral-600 shrink-0" />
+              <Search className="w-4 h-4 text-[#1E2B4D] shrink-0" />
               <span className="hidden md:inline">
                 {lang === "bn" ? "সার্চ" : "Search"}
               </span>
@@ -1639,9 +1636,9 @@ export default function HomeStore() {
               type="button"
               onClick={toggleLanguage}
               title="Switch Language (English / বাংলা)"
-              className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-full border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-900 flex items-center gap-1.5 text-xs font-bold transition cursor-pointer"
+              className="h-8 sm:h-10 px-2 sm:px-3 rounded-full border border-[#E3E6EB] bg-white hover:bg-[#F4F6F9] text-[#111827] flex items-center gap-1 text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0"
             >
-              <Globe className="w-3.5 h-3.5 text-neutral-700 shrink-0" />
+              <Globe className="w-3.5 h-3.5 text-[#1E2B4D] shrink-0" />
               <span>{lang === "en" ? "বাংলা" : "EN"}</span>
             </button>
 
@@ -1649,13 +1646,13 @@ export default function HomeStore() {
               type="button"
               onClick={openAccountModal}
               title={customerUser ? customerUser.name : "Login / Register"}
-              className={`h-9 sm:h-10 px-2.5 sm:px-3 rounded-full border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+              className={`h-8 sm:h-10 px-2 sm:px-3 rounded-full border flex items-center gap-1 text-xs font-semibold transition cursor-pointer shrink-0 ${
                 customerUser
                   ? "bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100"
-                  : "bg-neutral-950 border-neutral-950 text-amber-300 hover:bg-neutral-800"
+                  : "bg-[#1E2B4D] border-[#1E2B4D] text-white hover:bg-[#151F38]"
               }`}
             >
-              <User className="w-4 h-4 shrink-0" />
+              <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               <span className="hidden sm:inline max-w-[85px] truncate">
                 {customerUser
                   ? customerUser.name.split(" ")[0]
@@ -1669,10 +1666,10 @@ export default function HomeStore() {
               type="button"
               onClick={() => jumpToCatalog({ wishlistOnly: !showWishlistOnly })}
               title="Wishlist"
-              className={`relative p-2 sm:p-2.5 rounded-full border transition cursor-pointer ${
+              className={`hidden sm:flex relative p-2.5 rounded-full border transition cursor-pointer shrink-0 ${
                 showWishlistOnly
                   ? "bg-rose-50 border-rose-200 text-rose-600"
-                  : "bg-white border-neutral-200 text-neutral-800 hover:bg-neutral-100"
+                  : "bg-white border-[#E3E6EB] text-[#111827] hover:bg-[#F4F6F9]"
               }`}
             >
               <Heart
@@ -1693,12 +1690,12 @@ export default function HomeStore() {
                 setIsCartOpen(true);
                 setActiveBottomTab("cart");
               }}
-              className="relative flex items-center gap-1.5 sm:gap-2 bg-neutral-950 hover:bg-neutral-800 text-amber-300 px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition cursor-pointer"
+              className="relative flex items-center gap-1 sm:gap-2 bg-[#0077E6] hover:bg-[#0062BE] text-white px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-semibold transition cursor-pointer shadow-xs shrink-0"
             >
-              <ShoppingBag className="w-4 h-4" />
+              <ShoppingBag className="w-4 h-4 shrink-0" />
               <span>{lang === "bn" ? "কার্ট" : "Cart"}</span>
               {totalCartCount > 0 && (
-                <span className="bg-amber-400 text-neutral-950 text-[11px] font-extrabold px-2 py-0.5 rounded-full">
+                <span className="bg-[#FFB020] text-[#111827] text-[10px] sm:text-[11px] font-extrabold px-1.5 sm:px-2 py-0.5 rounded-full">
                   {totalCartCount}
                 </span>
               )}
@@ -1708,17 +1705,17 @@ export default function HomeStore() {
 
         {/* Mobile Dropdown Menu */}
         {mobileMenuOpen && (
-          <div className="lg:hidden bg-white border-t border-neutral-200 px-4 py-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
+          <div className="lg:hidden bg-white border-t border-[#E3E6EB] px-4 py-4 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={() => {
                   setMobileMenuOpen(false);
                   setIsLocationModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 bg-neutral-100 text-neutral-800 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer"
+                className="inline-flex items-center gap-1.5 bg-[#F4F6F9] text-[#111827] border border-[#E3E6EB] px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer"
               >
-                <MapPin className="w-3.5 h-3.5 text-amber-700" />
+                <MapPin className="w-3.5 h-3.5 text-[#0077E6]" />
                 <span>
                   {lang === "bn"
                     ? `ডেলিভারি: ${deliveryLocation}`
@@ -1732,7 +1729,7 @@ export default function HomeStore() {
                   setMobileMenuOpen(false);
                   openAccountModal();
                 }}
-                className="inline-flex items-center gap-1.5 bg-neutral-950 text-amber-300 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer"
+                className="inline-flex items-center gap-1.5 bg-[#1E2B4D] text-white px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer"
               >
                 <User className="w-3.5 h-3.5" />
                 <span>
@@ -1745,13 +1742,13 @@ export default function HomeStore() {
               </button>
             </div>
 
-            <div className="flex flex-col gap-1.5 text-sm font-medium text-neutral-700">
+            <div className="flex flex-col gap-1.5 text-sm font-medium text-[#111827]">
               {STORE_CATEGORIES.map((catName) => (
                 <button
                   key={catName}
                   type="button"
                   onClick={() => jumpToCatalog({ sub: catName })}
-                  className="text-left py-1.5 cursor-pointer hover:text-neutral-950"
+                  className="text-left py-1.5 cursor-pointer hover:text-[#0077E6]"
                 >
                   {catLabelText(catName)}
                 </button>
@@ -1759,14 +1756,14 @@ export default function HomeStore() {
               <Link
                 href="/track-order"
                 onClick={() => setMobileMenuOpen(false)}
-                className="py-1.5 font-semibold text-neutral-950 block"
+                className="py-1.5 font-semibold text-[#0077E6] block"
               >
                 {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track Order"}
               </Link>
               <Link
                 href="/policies"
                 onClick={() => setMobileMenuOpen(false)}
-                className="py-1.5 block"
+                className="py-1.5 block text-[#4B5563]"
               >
                 {lang === "bn"
                   ? "রিটার্ন, এক্সচেঞ্জ ও ডেলিভারি পলিসি"
@@ -1779,11 +1776,11 @@ export default function HomeStore() {
 
       {/* Modern Search Overlay */}
       {searchOverlayOpen && (
-        <div className="fixed inset-0 z-50 bg-neutral-950/85 backdrop-blur-md p-4 sm:p-8 flex flex-col items-center">
-          <div className="max-w-2xl w-full bg-white rounded-3xl p-5 sm:p-6 shadow-2xl border border-amber-400/30 space-y-4">
-            <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
+        <div className="fixed inset-0 z-50 bg-[#0B0C10]/85 backdrop-blur-md p-4 sm:p-8 flex flex-col items-center">
+          <div className="max-w-2xl w-full bg-white rounded-3xl p-5 sm:p-6 shadow-2xl border border-[#E3E6EB] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E3E6EB] pb-3">
               <div className="flex items-center gap-2.5 flex-1">
-                <Search className="w-5 h-5 text-amber-700" />
+                <Search className="w-5 h-5 text-[#0077E6]" />
                 <input
                   type="text"
                   autoFocus
@@ -1794,49 +1791,49 @@ export default function HomeStore() {
                       ? "ফ্যাশন, জুতা, বিউটি বা গ্যাজেট খুঁজুন..."
                       : "Search fashion, footwear, beauty, gadgets..."
                   }
-                  className="w-full text-sm sm:text-base outline-none text-neutral-950"
+                  className="w-full text-sm sm:text-base outline-none text-[#111827]"
                 />
               </div>
               <button
                 type="button"
                 onClick={() => setSearchOverlayOpen(false)}
-                className="p-2 rounded-full hover:bg-neutral-100 cursor-pointer"
+                className="p-2 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {searchQuery.trim() && (
-              <div className="max-h-72 overflow-y-auto divide-y divide-neutral-100">
+              <div className="max-h-72 overflow-y-auto divide-y divide-[#E3E6EB]">
                 {filteredProducts.slice(0, 6).map((item) => (
                   <Link
                     key={`sr-${item.id}`}
                     href={`/products/${item.id}`}
                     onClick={() => setSearchOverlayOpen(false)}
-                    className="py-2.5 flex items-center justify-between gap-3 hover:bg-neutral-50 px-2 rounded-xl"
+                    className="py-2.5 flex items-center justify-between gap-3 hover:bg-[#F4F6F9] px-2 rounded-xl"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <img
                         src={item.image}
                         alt={item.name}
-                        className="w-11 h-11 rounded-lg object-cover bg-neutral-100"
+                        className="w-11 h-11 rounded-lg object-cover bg-[#F4F6F9]"
                       />
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-neutral-900 truncate">
+                        <p className="text-sm font-bold text-[#111827] truncate">
                           {item.name}
                         </p>
-                        <p className="text-xs text-neutral-500">
+                        <p className="text-xs text-[#4B5563]">
                           {catLabelText(item.subCategory)}
                         </p>
                       </div>
                     </div>
-                    <span className="text-sm font-extrabold text-neutral-950 shrink-0">
+                    <span className="text-sm font-extrabold text-[#111827] shrink-0">
                       ৳{item.price}
                     </span>
                   </Link>
                 ))}
                 {filteredProducts.length === 0 && (
-                  <p className="py-6 text-center text-xs text-neutral-500">
+                  <p className="py-6 text-center text-xs text-[#4B5563]">
                     {lang === "bn"
                       ? "কোনো প্রোডাক্ট পাওয়া যায়নি।"
                       : "No matching products found."}
@@ -1852,7 +1849,7 @@ export default function HomeStore() {
                   setSearchOverlayOpen(false);
                   jumpToCatalog();
                 }}
-                className="bg-neutral-950 text-amber-300 text-xs font-bold px-4 py-2 rounded-xl cursor-pointer"
+                className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-bold px-4 py-2 rounded-xl cursor-pointer"
               >
                 {lang === "bn" ? "ক্যাটালগে দেখুন" : "View in Catalog"}
               </button>
@@ -1862,16 +1859,16 @@ export default function HomeStore() {
       )}
 
       {/* C. Hero Section */}
-      <section className="max-w-7xl mx-auto px-4 pt-5 pb-8">
-        <div className="bg-[#121212] text-white rounded-3xl overflow-hidden border border-neutral-800 shadow-lg">
-          <div className="grid lg:grid-cols-12 gap-7 p-6 sm:p-10 items-center">
-            <div className="lg:col-span-5 space-y-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-amber-400 font-bold">
+      <section className="max-w-7xl mx-auto px-3 sm:px-4 pt-4 sm:pt-5 pb-8">
+        <div className="bg-gradient-to-br from-[#1E2B4D] via-[#15203B] to-[#0B0C10] text-white rounded-3xl overflow-hidden border border-[#E3E6EB]/20 shadow-lg">
+          <div className="grid lg:grid-cols-12 gap-6 sm:gap-7 p-5 sm:p-10 items-center">
+            <div className="lg:col-span-5 space-y-4 sm:space-y-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-[#FFB020] font-bold">
                 {lang === "bn"
                   ? `${BRAND_NAME} • ${BRAND_TAGLINE}`
                   : `${BRAND_NAME} • ${BRAND_TAGLINE}`}
               </p>
-              <h1 className="text-3xl sm:text-5xl font-bold leading-[1.12] tracking-tight">
+              <h1 className="text-2xl sm:text-5xl font-bold leading-[1.15] tracking-tight">
                 {lang === "bn" ? (
                   <>
                     ট্রেন্ডের বাইরে গিয়ে
@@ -1886,7 +1883,7 @@ export default function HomeStore() {
                   </>
                 )}
               </h1>
-              <p className="text-sm text-neutral-300 max-w-md leading-relaxed">
+              <p className="text-xs sm:text-sm text-white/80 max-w-md leading-relaxed">
                 {lang === "bn"
                   ? "মেনস ও উইমেনস ফ্যাশন, ফুটওয়্যার, বিউটি প্রোডাক্টস, গ্যাজেটস এবং মোবাইল অ্যাক্সেসরিজ অর্ডার করুন COD, bKash, Nagad বা Rocket-এ।"
                   : "Discover curated Fashion, Footwear, Beauty Products, Gadgets, and Mobile Accessories with COD, bKash, Nagad & Rocket across Bangladesh."}
@@ -1896,7 +1893,7 @@ export default function HomeStore() {
                 <button
                   type="button"
                   onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
-                  className="bg-amber-400 text-neutral-950 hover:bg-amber-300 text-sm sm:text-base font-bold px-7 py-3.5 rounded-xl transition cursor-pointer shadow-sm"
+                  className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm sm:text-base font-bold px-6 sm:px-7 py-3 sm:py-3.5 rounded-xl transition cursor-pointer shadow-sm"
                 >
                   {lang === "bn" ? "এখনই কিনুন (Shop Now)" : "Shop Now"}
                 </button>
@@ -1904,7 +1901,7 @@ export default function HomeStore() {
             </div>
 
             <div className="lg:col-span-7">
-              <div className="aspect-[16/10] w-full rounded-2xl overflow-hidden border border-neutral-700/80 bg-neutral-900 shadow-md">
+              <div className="aspect-[16/10] w-full rounded-2xl overflow-hidden border border-white/15 bg-[#111827] shadow-md">
                 <img
                   src="/hero-banner.jpg"
                   alt="ZAVERO — Explore Beyond Trends Showcase"
@@ -1917,24 +1914,24 @@ export default function HomeStore() {
       </section>
 
       {/* Flash Sale Banner */}
-      <section className="max-w-7xl mx-auto px-4 pb-10">
-        <div className="rounded-2xl bg-gradient-to-r from-neutral-950 via-stone-900 to-amber-950 text-white p-4 sm:p-5 border border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-10">
+        <div className="rounded-2xl bg-gradient-to-r from-[#1E2B4D] via-[#17223D] to-[#0B0C10] text-white p-4 sm:p-5 border border-[#E3E6EB]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start sm:items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-400 text-neutral-950 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-[#FFB020] text-[#111827] flex items-center justify-center shrink-0">
               <Flame className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400 text-neutral-950">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#FFB020] text-[#111827]">
                   {lang === "bn" ? "ফ্ল্যাশ সেল" : "Flash Sale"}
                 </span>
-                <span className="text-xs text-neutral-300">
+                <span className="text-xs text-white/80">
                   {lang === "bn"
                     ? `${flashSaleCount}টি ডিসকাউন্টেড প্রোডাক্ট রয়েছে`
                     : `${flashSaleCount} discounted items available`}
                 </span>
               </div>
-              <h2 className="text-base sm:text-lg font-bold mt-0.5">
+              <h2 className="text-sm sm:text-lg font-bold mt-0.5">
                 {lang === "bn"
                   ? "বিশেষ ছাড়ে ফ্যাশন, ফুটওয়্যার, বিউটি, গ্যাজেটস ও মোবাইল অ্যাক্সেসরিজ অফার"
                   : "Special Discounts on Fashion, Footwear, Beauty, Gadgets & Mobile Accessories"}
@@ -1956,8 +1953,8 @@ export default function HomeStore() {
             }}
             className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer shrink-0 ${
               flashSaleOnly
-                ? "bg-amber-400 text-neutral-950"
-                : "bg-white text-neutral-950 hover:bg-neutral-200"
+                ? "bg-[#FFB020] text-[#111827]"
+                : "bg-[#0077E6] text-white hover:bg-[#0062BE]"
             }`}
           >
             {flashSaleOnly
@@ -1972,26 +1969,29 @@ export default function HomeStore() {
       </section>
 
       {/* D. Attractive Category Cards */}
-      <section id="categories-section" className="max-w-7xl mx-auto px-4 pb-12">
+      <section
+        id="categories-section"
+        className="max-w-7xl mx-auto px-3 sm:px-4 pb-12"
+      >
         <div className="flex items-center justify-between mb-5">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#0077E6]">
               {BRAND_NAME} Collections
             </p>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111827]">
               {lang === "bn" ? "ক্যাটাগরি অনুযায়ী কিনুন" : "Shop by Category"}
             </h2>
           </div>
           <button
             type="button"
             onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
-            className="text-xs sm:text-sm font-semibold text-neutral-700 hover:text-neutral-950 cursor-pointer"
+            className="text-xs sm:text-sm font-semibold text-[#1E2B4D] hover:text-[#0077E6] cursor-pointer"
           >
             {lang === "bn" ? "সব দেখুন →" : "View All →"}
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {FEATURED_CATEGORIES.map((catItem) => {
             const count = products.filter(
               (p) =>
@@ -2012,30 +2012,30 @@ export default function HomeStore() {
                 }
                 className={`group text-left rounded-2xl bg-gradient-to-br ${catItem.gradientClass} text-white overflow-hidden border transition-all duration-200 cursor-pointer ${
                   isSelected
-                    ? "border-amber-400 ring-2 ring-amber-400/60"
-                    : "border-neutral-800 hover:border-amber-400/60 hover:-translate-y-0.5"
+                    ? "border-[#0077E6] ring-2 ring-[#0077E6]/50"
+                    : "border-[#E3E6EB]/20 hover:border-[#0077E6] hover:-translate-y-0.5"
                 }`}
               >
-                <div className="relative h-32 w-full bg-neutral-900 overflow-hidden">
+                <div className="relative h-28 sm:h-32 w-full bg-[#111827] overflow-hidden">
                   <img
                     src={catItem.image}
                     alt={catItem.title}
                     className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition duration-300"
                   />
-                  <span className="absolute top-2.5 right-2.5 bg-neutral-950/85 text-amber-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-amber-400/20">
+                  <span className="absolute top-2.5 right-2.5 bg-[#1E2B4D]/90 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-white/15">
                     {count} {lang === "bn" ? "আইটেম" : "Items"}
                   </span>
                 </div>
-                <div className="p-3.5 flex items-center justify-between gap-2">
+                <div className="p-3 sm:p-3.5 flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-extrabold text-white truncate">
+                    <p className="text-xs sm:text-sm font-extrabold text-white truncate">
                       {catLabelText(catItem.title)}
                     </p>
-                    <p className="text-[11px] text-neutral-300 truncate mt-0.5">
+                    <p className="text-[11px] text-white/75 truncate mt-0.5">
                       {catItem.subtitle}
                     </p>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-amber-400 shrink-0 group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight className="w-4 h-4 text-[#FFB020] shrink-0 group-hover:translate-x-1 transition-transform" />
                 </div>
               </button>
             );
@@ -2044,11 +2044,14 @@ export default function HomeStore() {
       </section>
 
       {/* E & G. Enhanced Product Cards + Catalog Controls */}
-      <section id="catalog-section" className="max-w-7xl mx-auto px-4 pb-14">
-        <div className="bg-white rounded-3xl border border-neutral-200 p-4 sm:p-6 mb-7 space-y-4">
+      <section
+        id="catalog-section"
+        className="max-w-7xl mx-auto px-3 sm:px-4 pb-14"
+      >
+        <div className="bg-white rounded-3xl border border-[#E3E6EB] p-4 sm:p-6 mb-7 space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950 mr-2">
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111827] mr-2">
                 {showWishlistOnly
                   ? lang === "bn"
                     ? "সেভ করা উইশলিস্ট"
@@ -2077,8 +2080,8 @@ export default function HomeStore() {
                   !flashSaleOnly &&
                   selectedSubCategory === "all" &&
                   selectedCategory === "all"
-                    ? "bg-neutral-950 text-amber-300"
-                    : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                    ? "bg-[#0077E6] text-white"
+                    : "bg-[#F4F6F9] text-[#4B5563] hover:bg-[#E3E6EB]"
                 }`}
               >
                 {lang === "bn" ? "সব" : "ALL"}
@@ -2098,8 +2101,8 @@ export default function HomeStore() {
                     !showWishlistOnly &&
                     !flashSaleOnly &&
                     selectedSubCategory === catLabel
-                      ? "bg-neutral-950 text-amber-300"
-                      : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                      ? "bg-[#0077E6] text-white"
+                      : "bg-[#F4F6F9] text-[#4B5563] hover:bg-[#E3E6EB]"
                   }`}
                 >
                   {catLabelText(catLabel)}
@@ -2112,7 +2115,7 @@ export default function HomeStore() {
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
                 aria-label="Sort products"
-                className="bg-neutral-100 border border-neutral-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-neutral-800 outline-none cursor-pointer"
+                className="bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-[#111827] outline-none cursor-pointer"
               >
                 <option value="featured">
                   {lang === "bn" ? "সাজান: ফিচার্ড" : "Sort: Featured"}
@@ -2128,15 +2131,15 @@ export default function HomeStore() {
                 </option>
               </select>
 
-              <div className="flex items-center bg-neutral-100 p-1 rounded-xl border border-neutral-200">
+              <div className="flex items-center bg-[#F4F6F9] p-1 rounded-xl border border-[#E3E6EB]">
                 <button
                   type="button"
                   onClick={() => setViewMode("grid")}
                   aria-label="Grid view"
                   className={`p-1.5 rounded-lg cursor-pointer ${
                     viewMode === "grid"
-                      ? "bg-white text-neutral-950 shadow-2xs"
-                      : "text-neutral-500"
+                      ? "bg-white text-[#0077E6] shadow-2xs"
+                      : "text-[#4B5563]"
                   }`}
                 >
                   <LayoutGrid className="w-4 h-4" />
@@ -2147,8 +2150,8 @@ export default function HomeStore() {
                   aria-label="List view"
                   className={`p-1.5 rounded-lg cursor-pointer ${
                     viewMode === "list"
-                      ? "bg-white text-neutral-950 shadow-2xs"
-                      : "text-neutral-500"
+                      ? "bg-white text-[#0077E6] shadow-2xs"
+                      : "text-[#4B5563]"
                   }`}
                 >
                   <List className="w-4 h-4" />
@@ -2164,18 +2167,18 @@ export default function HomeStore() {
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
-                className="bg-white rounded-3xl border border-neutral-200 p-3 space-y-3 animate-pulse"
+                className="bg-white rounded-3xl border border-[#E3E6EB] p-3 space-y-3 animate-pulse"
               >
-                <div className="aspect-square rounded-2xl bg-neutral-200/80" />
-                <div className="h-4 w-24 bg-neutral-200 rounded" />
-                <div className="h-5 w-3/4 bg-neutral-200 rounded" />
-                <div className="h-10 w-full bg-neutral-200 rounded-xl" />
+                <div className="aspect-square rounded-2xl bg-[#E3E6EB]" />
+                <div className="h-4 w-24 bg-[#E3E6EB] rounded" />
+                <div className="h-5 w-3/4 bg-[#E3E6EB] rounded" />
+                <div className="h-10 w-full bg-[#E3E6EB] rounded-xl" />
               </div>
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="bg-white rounded-3xl p-10 text-center border border-neutral-200 space-y-3">
-            <p className="text-sm text-neutral-700 font-semibold">
+          <div className="bg-white rounded-3xl p-10 text-center border border-[#E3E6EB] space-y-3">
+            <p className="text-sm text-[#111827] font-semibold">
               {products.length === 0
                 ? lang === "bn"
                   ? "বর্তমানে স্টোরে কোনো প্রোডাক্ট তালিকাভুক্ত নেই।"
@@ -2191,7 +2194,7 @@ export default function HomeStore() {
                   setSearchQuery("");
                   jumpToCatalog();
                 }}
-                className="bg-neutral-950 text-amber-300 text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
+                className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
               >
                 {lang === "bn" ? "সব প্রোডাক্ট দেখুন" : "Show All Products"}
               </button>
@@ -2201,7 +2204,7 @@ export default function HomeStore() {
           <div
             className={
               viewMode === "grid"
-                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
+                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6"
                 : "space-y-4"
             }
           >
@@ -2231,15 +2234,15 @@ export default function HomeStore() {
                   onMouseLeave={() => setHoveredProductId(null)}
                   className={
                     viewMode === "grid"
-                      ? "group flex flex-col justify-between bg-white rounded-3xl border border-neutral-200/80 p-3 shadow-2xs hover:shadow-md transition"
-                      : "group flex flex-col sm:flex-row items-center gap-5 bg-white rounded-3xl border border-neutral-200/80 p-4 shadow-2xs hover:shadow-md transition"
+                      ? "group flex flex-col justify-between bg-white rounded-3xl border border-[#E3E6EB] p-3 shadow-2xs hover:shadow-md transition"
+                      : "group flex flex-col sm:flex-row items-center gap-5 bg-white rounded-3xl border border-[#E3E6EB] p-4 shadow-2xs hover:shadow-md transition"
                   }
                 >
                   <div
                     className={
                       viewMode === "grid"
-                        ? "relative aspect-square rounded-2xl bg-[#eceef0] overflow-hidden w-full"
-                        : "relative w-full sm:w-44 aspect-square rounded-2xl bg-[#eceef0] overflow-hidden shrink-0"
+                        ? "relative aspect-square rounded-2xl bg-[#F4F6F9] overflow-hidden w-full"
+                        : "relative w-full sm:w-44 aspect-square rounded-2xl bg-[#F4F6F9] overflow-hidden shrink-0"
                     }
                   >
                     <Link
@@ -2255,12 +2258,12 @@ export default function HomeStore() {
 
                     <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
                       {product.badge && (
-                        <span className="bg-neutral-950/85 text-amber-300 text-[11px] font-semibold px-2.5 py-1 rounded-full">
+                        <span className="bg-[#1E2B4D]/90 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full">
                           {product.badge}
                         </span>
                       )}
                       {discountPct && (
-                        <span className="bg-emerald-600 text-white text-[11px] font-bold px-2 py-1 rounded-full">
+                        <span className="bg-[#0077E6] text-white text-[11px] font-bold px-2 py-1 rounded-full">
                           -{discountPct}%
                         </span>
                       )}
@@ -2268,7 +2271,7 @@ export default function HomeStore() {
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                           isOutOfStock
                             ? "bg-rose-600 text-white"
-                            : "bg-emerald-100 text-emerald-800"
+                            : "bg-white/90 text-[#1E2B4D] border border-[#E3E6EB]"
                         }`}
                       >
                         {isOutOfStock
@@ -2286,13 +2289,13 @@ export default function HomeStore() {
                         type="button"
                         onClick={() => toggleWishlist(product)}
                         aria-label="Wishlist"
-                        className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center shadow-2xs hover:bg-white transition cursor-pointer"
+                        className="w-9 h-9 rounded-full bg-white/95 border border-[#E3E6EB] flex items-center justify-center shadow-2xs hover:bg-white transition cursor-pointer"
                       >
                         <Heart
                           className={`w-4 h-4 ${
                             isLiked
                               ? "fill-rose-500 text-rose-500"
-                              : "text-neutral-700"
+                              : "text-[#4B5563]"
                           }`}
                         />
                       </button>
@@ -2301,9 +2304,9 @@ export default function HomeStore() {
                         type="button"
                         onClick={() => setQuickViewProduct(product)}
                         aria-label="Quick View"
-                        className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center shadow-2xs hover:bg-white transition cursor-pointer"
+                        className="w-9 h-9 rounded-full bg-white/95 border border-[#E3E6EB] flex items-center justify-center shadow-2xs hover:bg-white transition cursor-pointer"
                       >
-                        <Eye className="w-4 h-4 text-neutral-700" />
+                        <Eye className="w-4 h-4 text-[#4B5563]" />
                       </button>
                     </div>
                   </div>
@@ -2311,12 +2314,12 @@ export default function HomeStore() {
                   <div className="flex-1 flex flex-col justify-between w-full pt-3 sm:pt-0 px-1 sm:px-2">
                     <div>
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#4B5563]">
                           {catLabelText(product.subCategory)}
                         </span>
                         {productReviews.length > 0 && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-neutral-700">
-                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#111827]">
+                            <Star className="w-3.5 h-3.5 fill-[#FFB020] text-[#FFB020]" />
                             {(
                               productReviews.reduce(
                                 (acc, r) => acc + r.rating,
@@ -2330,17 +2333,17 @@ export default function HomeStore() {
 
                       <Link
                         href={`/products/${product.id}`}
-                        className="font-bold text-base sm:text-lg text-neutral-950 hover:text-amber-800 mt-0.5 leading-snug block"
+                        className="font-bold text-base sm:text-lg text-[#111827] hover:text-[#0077E6] mt-0.5 leading-snug block"
                       >
                         {product.name}
                       </Link>
 
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-base font-extrabold text-neutral-950">
+                        <span className="text-base font-extrabold text-[#111827]">
                           ৳{product.price}
                         </span>
                         {product.oldPrice && product.oldPrice > product.price && (
-                          <span className="text-xs text-neutral-400 line-through">
+                          <span className="text-xs text-[#4B5563]/70 line-through">
                             ৳{product.oldPrice}
                           </span>
                         )}
@@ -2350,7 +2353,7 @@ export default function HomeStore() {
                         product.sizes &&
                         product.sizes.length > 0 && (
                           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                            <span className="text-xs text-neutral-500 mr-1">
+                            <span className="text-xs text-[#4B5563] mr-1">
                               {lang === "bn" ? "সাইজ:" : "Size:"}
                             </span>
                             {product.sizes.map((size) => (
@@ -2366,8 +2369,8 @@ export default function HomeStore() {
                                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                                   (selectedSizes[product.id] ||
                                     product.sizes?.[0]) === size
-                                    ? "bg-neutral-950 text-amber-300 border-neutral-950"
-                                    : "bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400"
+                                    ? "bg-[#1E2B4D] text-white border-[#1E2B4D]"
+                                    : "bg-white text-[#4B5563] border-[#E3E6EB] hover:border-[#0077E6]"
                                 }`}
                               >
                                 {size}
@@ -2378,7 +2381,7 @@ export default function HomeStore() {
 
                       {product.colors && product.colors.length > 0 && (
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <span className="text-xs text-neutral-500 mr-1">
+                          <span className="text-xs text-[#4B5563] mr-1">
                             {lang === "bn" ? "কালার:" : "Color:"}
                           </span>
                           {product.colors.map((col) => (
@@ -2394,8 +2397,8 @@ export default function HomeStore() {
                               className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border transition cursor-pointer ${
                                 (selectedColors[product.id] ||
                                   product.colors?.[0]) === col
-                                  ? "bg-amber-100 text-neutral-950 border-amber-500"
-                                  : "bg-neutral-50 text-neutral-600 border-neutral-200"
+                                  ? "bg-[#FFB020]/25 text-[#111827] border-[#FFB020]"
+                                  : "bg-[#F4F6F9] text-[#4B5563] border-[#E3E6EB]"
                               }`}
                             >
                               {col}
@@ -2405,7 +2408,7 @@ export default function HomeStore() {
                       )}
 
                       {product.specs && (
-                        <p className="mt-2 text-xs text-neutral-600 bg-neutral-100 px-3 py-1.5 rounded-lg font-medium truncate">
+                        <p className="mt-2 text-xs text-[#4B5563] bg-[#F4F6F9] px-3 py-1.5 rounded-lg font-medium truncate">
                           {product.specs}
                         </p>
                       )}
@@ -2416,7 +2419,7 @@ export default function HomeStore() {
                         type="button"
                         disabled={isOutOfStock}
                         onClick={() => addToCart(product)}
-                        className="flex-1 bg-neutral-950 hover:bg-neutral-800 disabled:bg-neutral-300 text-amber-300 disabled:text-neutral-500 text-xs sm:text-sm font-semibold py-2.5 px-4 rounded-xl transition cursor-pointer disabled:cursor-not-allowed"
+                        className="flex-1 bg-[#0077E6] hover:bg-[#0062BE] disabled:bg-[#E3E6EB] text-white disabled:text-[#4B5563] text-xs sm:text-sm font-semibold py-2.5 px-4 rounded-xl transition cursor-pointer disabled:cursor-not-allowed"
                       >
                         {isOutOfStock
                           ? lang === "bn"
@@ -2428,7 +2431,7 @@ export default function HomeStore() {
                       </button>
                       <Link
                         href={`/products/${product.id}`}
-                        className="border border-neutral-200 hover:border-neutral-400 text-neutral-800 text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center"
+                        className="border border-[#E3E6EB] hover:border-[#0077E6] text-[#111827] text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center"
                       >
                         {lang === "bn" ? "বিস্তারিত" : "Details"}
                       </Link>
@@ -2442,12 +2445,12 @@ export default function HomeStore() {
 
         {/* Related Products Strip */}
         {relatedProducts.length > 0 && (
-          <div className="mt-10 bg-white rounded-3xl border border-neutral-200 p-5 sm:p-6 space-y-4">
+          <div className="mt-10 bg-white rounded-3xl border border-[#E3E6EB] p-5 sm:p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base sm:text-lg font-bold text-neutral-950">
+              <h3 className="text-base sm:text-lg font-bold text-[#111827]">
                 {lang === "bn" ? "রিলেটেড প্রোডাক্টস" : "Related Products"}
               </h3>
-              <span className="text-xs text-neutral-500">
+              <span className="text-xs text-[#4B5563]">
                 {lang === "bn" ? "আপনার জন্য বাছাইকৃত" : "Curated picks"}
               </span>
             </div>
@@ -2456,18 +2459,18 @@ export default function HomeStore() {
                 <Link
                   key={`rel-${rel.id}`}
                   href={`/products/${rel.id}`}
-                  className="flex items-center gap-3 p-2.5 rounded-2xl border border-neutral-200 hover:border-amber-400 bg-neutral-50/60 transition"
+                  className="flex items-center gap-3 p-2.5 rounded-2xl border border-[#E3E6EB] hover:border-[#0077E6] bg-[#F4F6F9]/60 transition"
                 >
                   <img
                     src={rel.image}
                     alt={rel.name}
-                    className="w-14 h-14 rounded-xl object-cover bg-neutral-200 shrink-0"
+                    className="w-14 h-14 rounded-xl object-cover bg-[#E3E6EB] shrink-0"
                   />
                   <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-bold text-neutral-900 truncate">
+                    <p className="text-xs sm:text-sm font-bold text-[#111827] truncate">
                       {rel.name}
                     </p>
-                    <p className="text-xs font-extrabold text-amber-800 mt-0.5">
+                    <p className="text-xs font-extrabold text-[#0077E6] mt-0.5">
                       ৳{rel.price}
                     </p>
                   </div>
@@ -2479,10 +2482,10 @@ export default function HomeStore() {
       </section>
 
       {/* F. Promotional Banner */}
-      <section className="max-w-7xl mx-auto px-4 pb-12">
-        <div className="bg-neutral-900 text-white rounded-3xl p-6 sm:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-12">
+        <div className="bg-[#1E2B4D] text-white rounded-3xl p-6 sm:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-[#E3E6EB]/20">
           <div className="space-y-2 max-w-xl">
-            <span className="text-xs uppercase tracking-widest text-amber-400 font-bold">
+            <span className="text-xs uppercase tracking-widest text-[#FFB020] font-bold">
               {lang === "bn"
                 ? `${BRAND_NAME} • ${BRAND_TAGLINE}`
                 : `${BRAND_NAME} • ${BRAND_TAGLINE}`}
@@ -2492,7 +2495,7 @@ export default function HomeStore() {
                 ? "আপনার স্টাইল, ফুটওয়্যার, বিউটি ও স্মার্ট টেক আপগ্রেড করুন"
                 : "Upgrade Your Style, Footwear, Beauty & Tech"}
             </h3>
-            <p className="text-sm text-neutral-300">
+            <p className="text-sm text-white/80">
               {lang === "bn"
                 ? "পার্সেল হাতে পেয়ে চেক করে মূল্য পরিশোধ করার সুবিধাসহ দ্রুত হোম ডেলিভারি।"
                 : "Fast doorstep delivery across Bangladesh with COD, bKash, Nagad & Rocket."}
@@ -2501,7 +2504,7 @@ export default function HomeStore() {
           <button
             type="button"
             onClick={() => jumpToCatalog({ sort: "discount" })}
-            className="bg-amber-400 text-neutral-950 hover:bg-amber-300 text-sm font-semibold px-6 py-3 rounded-xl shrink-0 transition cursor-pointer"
+            className="bg-[#0077E6] text-white hover:bg-[#0062BE] text-sm font-semibold px-6 py-3 rounded-xl shrink-0 transition cursor-pointer"
           >
             {lang === "bn" ? "অফার দেখুন" : "Explore Deals"}
           </button>
@@ -2509,20 +2512,20 @@ export default function HomeStore() {
       </section>
 
       {/* H. Why Choose Us */}
-      <section className="max-w-7xl mx-auto px-4 pb-12">
-        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950 mb-5">
+      <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-12">
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111827] mb-5">
           {lang === "bn" ? `কেন ${BRAND_NAME} বেছে নেবেন` : `Why Choose ${BRAND_NAME}`}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-neutral-200 flex items-start gap-3.5">
-            <ShieldCheck className="w-6 h-6 text-neutral-900 shrink-0 mt-0.5" />
+          <div className="bg-white p-5 rounded-2xl border border-[#E3E6EB] flex items-start gap-3.5">
+            <ShieldCheck className="w-6 h-6 text-[#0077E6] shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-bold text-sm text-neutral-950">
+              <h4 className="font-bold text-sm text-[#111827]">
                 {lang === "bn"
                   ? "১০০% অরিজিনাল ও যাচাইকৃত পণ্য"
                   : "100% Authentic Products"}
               </h4>
-              <p className="text-xs text-neutral-500 mt-1">
+              <p className="text-xs text-[#4B5563] mt-1">
                 {lang === "bn"
                   ? "মান যাচাইকৃত ফ্যাশন, ফুটওয়্যার, বিউটি, গ্যাজেট ও মোবাইল অ্যাক্সেসরিজ।"
                   : "Verified Men's & Women's Fashion, Footwear, Beauty, Gadgets & Mobile Accessories."}
@@ -2530,15 +2533,15 @@ export default function HomeStore() {
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-neutral-200 flex items-start gap-3.5">
-            <Truck className="w-6 h-6 text-neutral-900 shrink-0 mt-0.5" />
+          <div className="bg-white p-5 rounded-2xl border border-[#E3E6EB] flex items-start gap-3.5">
+            <Truck className="w-6 h-6 text-[#0077E6] shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-bold text-sm text-neutral-950">
+              <h4 className="font-bold text-sm text-[#111827]">
                 {lang === "bn"
                   ? "সারা দেশে ক্যাশ অন ডেলিভারি"
                   : "Nationwide Cash on Delivery"}
               </h4>
-              <p className="text-xs text-neutral-500 mt-1">
+              <p className="text-xs text-[#4B5563] mt-1">
                 {lang === "bn"
                   ? "ময়মনসিংহ থেকে সারা বাংলাদেশে নির্ভরযোগ্য কুরিয়ার ডেলিভারি সুবিধা।"
                   : "Reliable courier dispatch from Mymensingh to every district in Bangladesh."}
@@ -2546,15 +2549,15 @@ export default function HomeStore() {
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-neutral-200 flex items-start gap-3.5">
-            <Sparkles className="w-6 h-6 text-neutral-900 shrink-0 mt-0.5" />
+          <div className="bg-white p-5 rounded-2xl border border-[#E3E6EB] flex items-start gap-3.5">
+            <Sparkles className="w-6 h-6 text-[#0077E6] shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-bold text-sm text-neutral-950">
+              <h4 className="font-bold text-sm text-[#111827]">
                 {lang === "bn"
                   ? "ওপেন পার্সেল চেক ও এক্সচেঞ্জ"
                   : "Open Parcel Check & Easy Exchange"}
               </h4>
-              <p className="text-xs text-neutral-500 mt-1">
+              <p className="text-xs text-[#4B5563] mt-1">
                 {lang === "bn"
                   ? "ডেলিভারি রাইডারের সামনে পার্সেল দেখে বুঝে নেওয়ার সুবিধা।"
                   : "Quick doorstep delivery with parcel inspection and easy size exchange."}
@@ -2565,13 +2568,13 @@ export default function HomeStore() {
       </section>
 
       {/* Real Customer Reviews */}
-      <section className="max-w-7xl mx-auto px-4 pb-12">
-        <div className="bg-white rounded-3xl border border-neutral-200 p-6 sm:p-8 space-y-6">
+      <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-12">
+        <div className="bg-white rounded-3xl border border-[#E3E6EB] p-5 sm:p-8 space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-neutral-950">
+            <h2 className="text-xl font-bold text-[#111827]">
               {lang === "bn" ? "কাস্টমার রিভিউ" : "Customer Reviews"}
             </h2>
-            <span className="text-xs text-neutral-500">
+            <span className="text-xs text-[#4B5563]">
               {reviews.length}{" "}
               {lang === "bn"
                 ? "টি রিভিউ"
@@ -2589,13 +2592,13 @@ export default function HomeStore() {
                 placeholder={lang === "bn" ? "আপনার নাম *" : "Your name *"}
                 value={reviewName}
                 onChange={(e) => setReviewName(e.target.value)}
-                className="sm:col-span-3 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-neutral-950"
+                className="sm:col-span-3 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-[#0077E6]"
               />
               <select
                 value={reviewRating}
                 onChange={(e) => setReviewRating(Number(e.target.value))}
                 aria-label="Rating"
-                className="sm:col-span-2 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs sm:text-sm outline-none cursor-pointer"
+                className="sm:col-span-2 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs sm:text-sm outline-none cursor-pointer"
               >
                 <option value={5}>5 ★</option>
                 <option value={4}>4 ★</option>
@@ -2613,19 +2616,19 @@ export default function HomeStore() {
                 }
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
-                className="sm:col-span-5 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-neutral-950"
+                className="sm:col-span-5 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-[#0077E6]"
               />
               <button
                 type="submit"
-                className="sm:col-span-2 bg-neutral-950 hover:bg-neutral-800 text-amber-300 text-xs sm:text-sm font-semibold py-2 px-4 rounded-xl transition cursor-pointer"
+                className="sm:col-span-2 bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs sm:text-sm font-semibold py-2 px-4 rounded-xl transition cursor-pointer"
               >
                 {lang === "bn" ? "রিভিউ দিন" : "Post"}
               </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <label className="inline-flex items-center gap-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold px-3.5 py-2 rounded-xl cursor-pointer transition">
-                <Sparkles className="w-3.5 h-3.5" />
+              <label className="inline-flex items-center gap-2 bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] border border-[#E3E6EB] text-xs font-semibold px-3.5 py-2 rounded-xl cursor-pointer transition">
+                <Sparkles className="w-3.5 h-3.5 text-[#0077E6]" />
                 <span>
                   {lang === "bn"
                     ? "প্রোডাক্টের ছবি তুলুন / যোগ করুন"
@@ -2641,13 +2644,13 @@ export default function HomeStore() {
               </label>
 
               {reviewPhoto && (
-                <div className="flex items-center gap-2 bg-neutral-50 border border-neutral-200 rounded-xl p-1.5 pr-2.5">
+                <div className="flex items-center gap-2 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-1.5 pr-2.5">
                   <img
                     src={reviewPhoto}
                     alt="Preview"
                     className="w-10 h-10 rounded-lg object-cover"
                   />
-                  <span className="text-xs text-neutral-600">
+                  <span className="text-xs text-[#4B5563]">
                     {lang === "bn" ? "ছবি যুক্ত হয়েছে" : "Photo attached"}
                   </span>
                   <button
@@ -2663,7 +2666,7 @@ export default function HomeStore() {
           </form>
 
           {reviews.length === 0 ? (
-            <p className="text-xs sm:text-sm text-neutral-500 py-4">
+            <p className="text-xs sm:text-sm text-[#4B5563] py-4">
               {lang === "bn"
                 ? "এখনো কোনো রিভিউ দেওয়া হয়নি। পণ্য রিসিভ করার পর প্রথম রিভিউ ও ছবি দিন।"
                 : "No reviews yet. Be the first to post a review with a photo of your received product."}
@@ -2673,23 +2676,26 @@ export default function HomeStore() {
               {reviews.map((rev) => (
                 <div
                   key={rev.id}
-                  className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80 space-y-2.5"
+                  className="p-4 rounded-2xl bg-[#F4F6F9] border border-[#E3E6EB] space-y-2.5"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-neutral-900">
+                    <span className="text-xs font-bold text-[#111827]">
                       {rev.name}
                     </span>
-                    <span className="flex items-center gap-0.5 text-amber-500">
+                    <span className="flex items-center gap-0.5 text-[#FFB020]">
                       {Array.from({ length: rev.rating }).map((_, i) => (
-                        <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
+                        <Star
+                          key={i}
+                          className="w-3.5 h-3.5 fill-[#FFB020] text-[#FFB020]"
+                        />
                       ))}
                     </span>
                   </div>
-                  <p className="text-xs text-neutral-600 leading-relaxed">
+                  <p className="text-xs text-[#4B5563] leading-relaxed">
                     {rev.comment}
                   </p>
                   {rev.photo && (
-                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-neutral-200 border border-neutral-200">
+                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-[#E3E6EB] border border-[#E3E6EB]">
                       <img
                         src={rev.photo}
                         alt={`${rev.name} product review`}
@@ -2705,15 +2711,15 @@ export default function HomeStore() {
       </section>
 
       {/* J. Newsletter Subscription */}
-      <section className="max-w-7xl mx-auto px-4 pb-14">
-        <div className="bg-white rounded-3xl border border-neutral-200 p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-14">
+        <div className="bg-white rounded-3xl border border-[#E3E6EB] p-5 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1 max-w-md">
-            <h3 className="text-lg sm:text-xl font-bold text-neutral-950">
+            <h3 className="text-lg sm:text-xl font-bold text-[#111827]">
               {lang === "bn"
                 ? `নতুন কালেকশন ও অফারের আপডেট পান (${BRAND_NAME})`
                 : `Stay Updated with ${BRAND_NAME}`}
             </h3>
-            <p className="text-xs sm:text-sm text-neutral-500">
+            <p className="text-xs sm:text-sm text-[#4B5563]">
               {lang === "bn"
                 ? "নতুন ফ্যাশন, ফুটওয়্যার, বিউটি ও গ্যাজেট অফারের খবর সবার আগে পেতে ইমেইল দিন।"
                 : "Get notified about new fashion, footwear, beauty, gadgets, and mobile accessories offers."}
@@ -2734,11 +2740,11 @@ export default function HomeStore() {
                   ? "আপনার ইমেইল লিখুন"
                   : "Enter your email address"
               }
-              className="bg-neutral-50 border border-neutral-300 rounded-xl px-4 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950 sm:w-64"
+              className="bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-4 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6] sm:w-64"
             />
             <button
               type="submit"
-              className="bg-neutral-950 hover:bg-neutral-800 text-amber-300 text-sm font-semibold px-5 py-2.5 rounded-xl transition cursor-pointer"
+              className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition cursor-pointer"
             >
               {lang === "bn" ? "সাবস্ক্রাইব" : "Subscribe"}
             </button>
@@ -2754,9 +2760,9 @@ export default function HomeStore() {
       {/* K. Professional Footer */}
       <footer
         id="footer-section"
-        className="bg-neutral-950 text-neutral-300 pt-12 pb-8 border-t border-amber-500/20"
+        className="bg-[#1E2B4D] text-white/85 pt-12 pb-8 border-t border-[#E3E6EB]/20"
       >
-        <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 pb-10 border-b border-neutral-800">
+        <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 pb-10 border-b border-white/10">
           <div className="space-y-3">
             <div className="flex items-center gap-2.5">
               <img
@@ -2771,12 +2777,12 @@ export default function HomeStore() {
                 <h3 className="text-white font-black text-lg tracking-tight leading-none">
                   {BRAND_NAME}
                 </h3>
-                <span className="text-[11px] text-amber-400">
+                <span className="text-[11px] text-[#FFB020]">
                   {BRAND_TAGLINE}
                 </span>
               </div>
             </div>
-            <p className="text-xs text-neutral-400 leading-relaxed">
+            <p className="text-xs text-white/70 leading-relaxed">
               {lang === "bn"
                 ? `${BRAND_NAME} (${BRAND_TAGLINE})—মেনস ও উইমেনস ফ্যাশন, ফুটওয়্যার, গ্যাজেটস, বিউটি প্রোডাক্টস এবং মোবাইল অ্যাক্সেসরিজের অনলাইন স্টোর।`
                 : `${BRAND_NAME} — ${BRAND_TAGLINE}. Serving Men's Fashion, Women's Fashion, Men's Footwear, Women's Footwear, Gadgets, Beauty Products, and Mobile Accessories.`}
@@ -2787,7 +2793,7 @@ export default function HomeStore() {
             <h4 className="text-white font-bold text-sm">
               {lang === "bn" ? "ক্যাটাগরি" : "Categories"}
             </h4>
-            <ul className="space-y-2 text-neutral-400">
+            <ul className="space-y-2 text-white/75">
               {STORE_CATEGORIES.map((catName) => (
                 <li key={catName}>
                   <button
@@ -2806,7 +2812,7 @@ export default function HomeStore() {
             <h4 className="text-white font-bold text-sm">
               {lang === "bn" ? "পলিসি ও সাপোর্ট" : "Policies & Support"}
             </h4>
-            <ul className="space-y-2 text-neutral-400">
+            <ul className="space-y-2 text-white/75">
               <li>
                 {lang === "bn"
                   ? `ময়মনসিংহের ভেতরে ৳${deliveryConfig.insideMymensingh} / বাইরে ৳${deliveryConfig.outsideMymensingh}`
@@ -2844,29 +2850,26 @@ export default function HomeStore() {
             <h4 className="text-white font-bold text-sm">
               {lang === "bn" ? "যোগাযোগ" : "Contact"}
             </h4>
-            <ul className="space-y-2 text-neutral-400">
+            <ul className="space-y-2 text-white/75">
               <li className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                <MapPin className="w-3.5 h-3.5 shrink-0 text-[#FFB020]" />
                 <span>Mymensingh, Bangladesh</span>
               </li>
               <li className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
                 <a
                   href={WHATSAPP_WA_LINK}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="WhatsApp"
-                  className="hover:text-emerald-300 inline-flex items-center gap-1.5"
+                  aria-label="WhatsApp Support"
+                  className="hover:text-white inline-flex items-center gap-1.5 text-emerald-300"
                 >
                   <MessageCircle className="w-4 h-4 text-emerald-400" />
+                  <span>WhatsApp Chat</span>
                 </a>
               </li>
               <li className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                <a
-                  href={`mailto:${SUPPORT_EMAIL}`}
-                  className="hover:text-amber-300"
-                >
+                <Mail className="w-3.5 h-3.5 shrink-0 text-[#FFB020]" />
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-white">
                   {SUPPORT_EMAIL}
                 </a>
               </li>
@@ -2874,7 +2877,7 @@ export default function HomeStore() {
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-500">
+        <div className="max-w-7xl mx-auto px-4 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-white/60">
           <p>
             © 2026 {BRAND_NAME} — {BRAND_TAGLINE}. All rights reserved.
           </p>
@@ -2882,14 +2885,14 @@ export default function HomeStore() {
         </div>
       </footer>
 
-      {/* Floating WhatsApp Icon Only & Scroll-to-Top */}
-      <div className="fixed bottom-24 lg:bottom-6 right-4 sm:right-5 z-40 flex flex-col gap-2.5">
+     {/* Floating WhatsApp Icon Only (No Phone Number Exposed) & Scroll-to-Top */}
+      <div className="fixed bottom-24 right-4 sm:right-6 z-40 flex flex-col gap-2.5">
         {showScrollTop && (
           <button
             type="button"
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             aria-label="Scroll to top"
-            className="w-10 h-10 rounded-full bg-white text-neutral-900 border border-neutral-200 shadow-md flex items-center justify-center hover:bg-neutral-100 cursor-pointer"
+            className="w-10 h-10 rounded-full bg-white text-[#111827] border border-[#E3E6EB] shadow-md flex items-center justify-center hover:bg-[#F4F6F9] cursor-pointer"
           >
             <ArrowUp className="w-4 h-4" />
           </button>
@@ -2905,9 +2908,9 @@ export default function HomeStore() {
         </a>
       </div>
 
-      {/* Mobile Floating Bottom Navigation Bar */}
-      <nav className="lg:hidden fixed bottom-3 inset-x-3 z-40 bg-white/95 backdrop-blur-md border border-neutral-200/90 rounded-full shadow-xl px-2 py-1.5">
-        <div className="grid grid-cols-5 items-center text-[11px] font-semibold">
+      {/* Floating Bottom Navigation Bar (Visible on Mobile, Tablet & Desktop) */}
+      <nav className="fixed bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-xl z-40 bg-white/95 backdrop-blur-md border border-[#E3E6EB] rounded-full shadow-xl px-2 sm:px-3 py-1.5">
+        <div className="grid grid-cols-5 items-center text-[11px] sm:text-xs font-semibold">
           <button
             type="button"
             onClick={() => {
@@ -2919,8 +2922,8 @@ export default function HomeStore() {
             <span
               className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "home"
-                  ? "bg-neutral-950 text-amber-300 shadow-xs"
-                  : "text-neutral-600"
+                  ? "bg-[#0077E6] text-white shadow-xs"
+                  : "text-[#4B5563] hover:text-[#111827]"
               }`}
             >
               <Home className="w-4 h-4" />
@@ -2928,8 +2931,8 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "home"
-                  ? "text-neutral-950 font-bold"
-                  : "text-neutral-600"
+                  ? "text-[#0077E6] font-bold"
+                  : "text-[#4B5563]"
               }`}
             >
               {lang === "bn" ? "হোম" : "Home"}
@@ -2947,8 +2950,8 @@ export default function HomeStore() {
             <span
               className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "categories"
-                  ? "bg-neutral-950 text-amber-300 shadow-xs"
-                  : "text-neutral-600"
+                  ? "bg-[#0077E6] text-white shadow-xs"
+                  : "text-[#4B5563] hover:text-[#111827]"
               }`}
             >
               <LayoutGrid className="w-4 h-4" />
@@ -2956,8 +2959,8 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "categories"
-                  ? "text-neutral-950 font-bold"
-                  : "text-neutral-600"
+                  ? "text-[#0077E6] font-bold"
+                  : "text-[#4B5563]"
               }`}
             >
               {lang === "bn" ? "ক্যাটাগরি" : "Categories"}
@@ -2975,13 +2978,13 @@ export default function HomeStore() {
             <span
               className={`relative w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "cart"
-                  ? "bg-neutral-950 text-amber-300 shadow-xs"
-                  : "text-neutral-600"
+                  ? "bg-[#0077E6] text-white shadow-xs"
+                  : "text-[#4B5563] hover:text-[#111827]"
               }`}
             >
               <ShoppingBag className="w-4 h-4" />
               {totalCartCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-amber-400 text-neutral-950 text-[9px] font-extrabold min-w-[15px] h-[15px] px-1 rounded-full flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 bg-[#FFB020] text-[#111827] text-[9px] font-extrabold min-w-[15px] h-[15px] px-1 rounded-full flex items-center justify-center">
                   {totalCartCount}
                 </span>
               )}
@@ -2989,8 +2992,8 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "cart"
-                  ? "text-neutral-950 font-bold"
-                  : "text-neutral-600"
+                  ? "text-[#0077E6] font-bold"
+                  : "text-[#4B5563]"
               }`}
             >
               {lang === "bn" ? "কার্ট" : "Cart"}
@@ -3005,8 +3008,8 @@ export default function HomeStore() {
             <span
               className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "orders"
-                  ? "bg-neutral-950 text-amber-300 shadow-xs"
-                  : "text-neutral-600"
+                  ? "bg-[#0077E6] text-white shadow-xs"
+                  : "text-[#4B5563] hover:text-[#111827]"
               }`}
             >
               <Package className="w-4 h-4" />
@@ -3014,11 +3017,11 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "orders"
-                  ? "text-neutral-950 font-bold"
-                  : "text-neutral-600"
+                  ? "text-[#0077E6] font-bold"
+                  : "text-[#4B5563]"
               }`}
             >
-              {lang === "bn" ? "অর্ডার" : "Orders"}
+              {lang === "bn" ? "অর্ডার" : "Track Order"}
             </span>
           </Link>
 
@@ -3030,8 +3033,8 @@ export default function HomeStore() {
             <span
               className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "account"
-                  ? "bg-neutral-950 text-amber-300 shadow-xs"
-                  : "text-neutral-600"
+                  ? "bg-[#0077E6] text-white shadow-xs"
+                  : "text-[#4B5563] hover:text-[#111827]"
               }`}
             >
               <User className="w-4 h-4" />
@@ -3039,8 +3042,8 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "account"
-                  ? "text-neutral-950 font-bold"
-                  : "text-neutral-600"
+                  ? "text-[#0077E6] font-bold"
+                  : "text-[#4B5563]"
               }`}
             >
               {customerUser
@@ -3057,12 +3060,12 @@ export default function HomeStore() {
 
       {/* Delivery Location Modal */}
       {isLocationModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-neutral-200 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-[#E3E6EB] space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-amber-700" />
-                <h3 className="text-base font-bold text-neutral-950">
+                <MapPin className="w-4 h-4 text-[#0077E6]" />
+                <h3 className="text-base font-bold text-[#111827]">
                   {lang === "bn"
                     ? "ডেলিভারি এলাকা নির্বাচন করুন"
                     : "Select Delivery Location"}
@@ -3071,7 +3074,7 @@ export default function HomeStore() {
               <button
                 type="button"
                 onClick={() => setIsLocationModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 cursor-pointer"
+                className="p-1.5 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3087,14 +3090,14 @@ export default function HomeStore() {
                     onClick={() => handleSelectLocation(loc)}
                     className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
                       active
-                        ? "bg-neutral-950 text-amber-300 border-neutral-950"
-                        : "bg-neutral-50 text-neutral-800 border-neutral-200 hover:border-neutral-400"
+                        ? "bg-[#0077E6] text-white border-[#0077E6]"
+                        : "bg-[#F4F6F9] text-[#111827] border-[#E3E6EB] hover:border-[#0077E6]"
                     }`}
                   >
                     <p className="text-xs font-bold">{loc.label}</p>
                     <p
                       className={`text-[11px] mt-0.5 ${
-                        active ? "text-amber-200/80" : "text-neutral-500"
+                        active ? "text-white/85" : "text-[#4B5563]"
                       }`}
                     >
                       {loc.zone === "mymensingh"
@@ -3109,15 +3112,15 @@ export default function HomeStore() {
         </div>
       )}
 
-      {/* Black & Gold Login / Register (with Email OTP) / Forgot Password Modal */}
+      {/* Login / Register (with Email OTP) / Forgot Password Modal */}
       {isAccountModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-neutral-950 text-white rounded-3xl max-w-5xl w-full overflow-hidden shadow-2xl border border-amber-500/30 my-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/75 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-[#1E2B4D] text-white rounded-3xl max-w-5xl w-full overflow-hidden shadow-2xl border border-[#E3E6EB]/20 my-auto">
             {customerUser ? (
               <div className="p-6 sm:p-8 max-w-md mx-auto space-y-5">
-                <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
                   <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-[#FFB020]">
                       {BRAND_NAME} • {BRAND_TAGLINE}
                     </p>
                     <h3 className="text-xl font-bold text-white">
@@ -3130,27 +3133,27 @@ export default function HomeStore() {
                       setIsAccountModalOpen(false);
                       setActiveBottomTab("home");
                     }}
-                    className="p-2 rounded-full bg-neutral-900 hover:bg-neutral-800 cursor-pointer"
+                    className="p-2 rounded-full bg-white/10 hover:bg-white/20 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-1.5">
-                  <p className="text-base font-bold text-amber-300">
+                <div className="bg-[#111827]/70 border border-white/10 rounded-2xl p-4 space-y-1.5">
+                  <p className="text-base font-bold text-white">
                     {customerUser.name}
                   </p>
                   {customerUser.email && (
-                    <p className="text-xs text-neutral-300">
+                    <p className="text-xs text-white/80">
                       {customerUser.email}
                     </p>
                   )}
                   {customerUser.phone && (
-                    <p className="text-xs text-neutral-300 font-mono">
+                    <p className="text-xs text-white/80 font-mono">
                       {customerUser.phone}
                     </p>
                   )}
-                  <p className="text-xs text-neutral-400">
+                  <p className="text-xs text-white/60">
                     District: {customerUser.district}
                   </p>
                 </div>
@@ -3159,7 +3162,7 @@ export default function HomeStore() {
                   <Link
                     href="/track-order"
                     onClick={() => setIsAccountModalOpen(false)}
-                    className="bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-extrabold py-3 px-4 rounded-xl text-center transition"
+                    className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-extrabold py-3 px-4 rounded-xl text-center transition"
                   >
                     {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track My Orders"}
                   </Link>
@@ -3179,7 +3182,7 @@ export default function HomeStore() {
                     setIsAccountModalOpen(false);
                     setActiveBottomTab("home");
                   }}
-                  className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 text-xs font-semibold py-2.5 rounded-xl cursor-pointer"
+                  className="w-full bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-semibold py-2.5 rounded-xl cursor-pointer"
                 >
                   {lang === "bn"
                     ? "লগইন ছাড়াই শপিং চালিয়ে যান (Guest Shopping)"
@@ -3189,9 +3192,9 @@ export default function HomeStore() {
             ) : (
               <div className="grid lg:grid-cols-12">
                 {/* Left Auth Form Column */}
-                <div className="lg:col-span-6 p-6 sm:p-8 space-y-4 border-b lg:border-b-0 lg:border-r border-amber-500/20">
+                <div className="lg:col-span-6 p-6 sm:p-8 space-y-4 border-b lg:border-b-0 lg:border-r border-white/10">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2.5">
                       <img
                         src="/images/zavero-logo.png"
                         alt={BRAND_NAME}
@@ -3205,7 +3208,7 @@ export default function HomeStore() {
                         <span className="text-sm font-black tracking-wide text-white block leading-none">
                           {BRAND_NAME}
                         </span>
-                        <span className="text-[10px] text-amber-400">
+                        <span className="text-[10px] text-[#FFB020] font-medium">
                           {BRAND_TAGLINE}
                         </span>
                       </div>
@@ -3217,14 +3220,15 @@ export default function HomeStore() {
                         setIsAccountModalOpen(false);
                         setActiveBottomTab("home");
                       }}
-                      className="p-2 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-300 cursor-pointer"
+                      aria-label="Close modal"
+                      className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
 
                   {/* Mode Switcher Tabs (Login & Register only) */}
-                  <div className="grid grid-cols-2 gap-1.5 bg-neutral-900 p-1 rounded-xl border border-neutral-800 text-xs font-bold">
+                  <div className="grid grid-cols-2 gap-1.5 bg-[#111827]/75 p-1 rounded-xl border border-white/10 text-xs font-bold">
                     <button
                       type="button"
                       onClick={() => {
@@ -3233,11 +3237,11 @@ export default function HomeStore() {
                       }}
                       className={`py-2 rounded-lg cursor-pointer transition ${
                         authMode === "login"
-                          ? "bg-amber-400 text-neutral-950"
-                          : "text-neutral-300 hover:text-white"
+                          ? "bg-[#0077E6] text-white shadow-xs"
+                          : "text-white/75 hover:text-white"
                       }`}
                     >
-                      Login
+                      {lang === "bn" ? "লগইন" : "Login"}
                     </button>
                     <button
                       type="button"
@@ -3249,48 +3253,66 @@ export default function HomeStore() {
                       }}
                       className={`py-2 rounded-lg cursor-pointer transition ${
                         authMode === "register"
-                          ? "bg-amber-400 text-neutral-950"
-                          : "text-neutral-300 hover:text-white"
+                          ? "bg-[#0077E6] text-white shadow-xs"
+                          : "text-white/75 hover:text-white"
                       }`}
                     >
-                      Register
+                      {lang === "bn" ? "রেজিস্টার" : "Register"}
                     </button>
                   </div>
 
                   {authMode === "login" && (
                     <form onSubmit={handleStandardLogin} className="space-y-3">
-                      <span className="inline-block bg-amber-400/15 text-amber-300 border border-amber-400/30 text-[11px] font-bold px-3 py-0.5 rounded-full">
-                        Welcome Back!
+                      <span className="inline-flex items-center gap-1.5 bg-[#0077E6]/20 text-[#FFB020] border border-[#0077E6]/40 text-[11px] font-bold px-3 py-0.5 rounded-full">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        {lang === "bn" ? "নিরাপদ কাস্টমার পোর্টাল" : "Verified Customer Access"}
                       </span>
                       <h3 className="text-2xl font-black text-white leading-tight">
-                        Login to Your{" "}
-                        <span className="text-amber-400">{BRAND_NAME}</span>{" "}
-                        Account
+                        {lang === "bn" ? (
+                          <>
+                            আপনার <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
+                            অ্যাকাউন্টে লগইন করুন
+                          </>
+                        ) : (
+                          <>
+                            Login to Your{" "}
+                            <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
+                            Account
+                          </>
+                        )}
                       </h3>
 
                       <input
                         type="text"
                         required
-                        placeholder="Enter your email or mobile number *"
+                        placeholder={
+                          lang === "bn"
+                            ? "আপনার ইমেইল বা মোবাইল নম্বর দিন *"
+                            : "Enter your email or mobile number *"
+                        }
                         value={loginIdentifier}
                         onChange={(e) => setLoginIdentifier(e.target.value)}
-                        className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none"
+                        className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/45 outline-none"
                       />
 
                       <div className="relative">
                         <input
                           type={showPassword ? "text" : "password"}
                           required
-                          placeholder="Enter your password *"
+                          placeholder={
+                            lang === "bn"
+                              ? "আপনার পাসওয়ার্ড দিন *"
+                              : "Enter your password *"
+                          }
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
-                          className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-white outline-none"
+                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-white/45 outline-none"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword((s) => !s)}
                           aria-label="Toggle password"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-amber-300 cursor-pointer"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white cursor-pointer"
                         >
                           {showPassword ? (
                             <EyeOff className="w-4 h-4" />
@@ -3301,14 +3323,14 @@ export default function HomeStore() {
                       </div>
 
                       <div className="flex items-center justify-between text-xs">
-                        <label className="inline-flex items-center gap-2 text-neutral-300 cursor-pointer">
+                        <label className="inline-flex items-center gap-2 text-white/80 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={rememberMe}
                             onChange={(e) => setRememberMe(e.target.checked)}
-                            className="accent-amber-400 rounded"
+                            className="accent-[#0077E6] rounded"
                           />
-                          <span>Remember Me</span>
+                          <span>{lang === "bn" ? "মনে রাখুন" : "Remember Me"}</span>
                         </label>
 
                         <button
@@ -3318,35 +3340,39 @@ export default function HomeStore() {
                             setForgotIdentifier(loginIdentifier);
                             setLoginError("");
                           }}
-                          className="text-amber-400 hover:underline font-semibold cursor-pointer"
+                          className="text-[#FFB020] hover:underline font-semibold cursor-pointer"
                         >
-                          Forgot Password?
+                          {lang === "bn"
+                            ? "পাসওয়ার্ড ভুলে গেছেন?"
+                            : "Forgot Password?"}
                         </button>
                       </div>
 
                       {loginError && (
-                        <p className="text-xs text-rose-400 font-medium">
+                        <p className="text-xs text-rose-300 font-medium">
                           {loginError}
                         </p>
                       )}
 
                       <button
                         type="submit"
-                        className="w-full bg-gradient-to-r from-amber-500 to-amber-300 hover:from-amber-400 hover:to-amber-200 text-neutral-950 font-extrabold py-3 rounded-xl text-sm transition cursor-pointer"
+                        className="w-full bg-[#0077E6] hover:bg-[#0062BE] text-white font-extrabold py-3 rounded-xl text-sm transition cursor-pointer shadow-sm"
                       >
-                        Login →
+                        {lang === "bn" ? "লগইন করুন →" : "Login →"}
                       </button>
 
-                      <div className="text-center text-[11px] text-neutral-500">
-                        OR
+                      <div className="text-center text-[11px] text-white/50">
+                        {lang === "bn" ? "অথবা" : "OR"}
                       </div>
 
                       <button
                         type="button"
                         onClick={() => handleGoogleAuth(false)}
-                        className="w-full bg-neutral-900 hover:bg-neutral-800 border border-amber-400/40 text-white font-semibold py-2.5 rounded-xl text-xs sm:text-sm transition cursor-pointer"
+                        className="w-full bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold py-2.5 rounded-xl text-xs sm:text-sm transition cursor-pointer"
                       >
-                        Continue with Google
+                        {lang === "bn"
+                          ? "Google দিয়ে চালিয়ে যান"
+                          : "Continue with Google"}
                       </button>
 
                       <div className="flex items-center justify-between pt-1 text-xs">
@@ -3358,9 +3384,11 @@ export default function HomeStore() {
                             setRegOtpNotice("");
                             setLoginError("");
                           }}
-                          className="text-amber-300 hover:underline font-semibold cursor-pointer"
+                          className="text-[#FFB020] hover:underline font-semibold cursor-pointer"
                         >
-                          Create Account →
+                          {lang === "bn"
+                            ? "নতুন অ্যাকাউন্ট খুলুন →"
+                            : "Create Account →"}
                         </button>
                         <button
                           type="button"
@@ -3368,11 +3396,19 @@ export default function HomeStore() {
                             setIsAccountModalOpen(false);
                             setActiveBottomTab("home");
                           }}
-                          className="text-neutral-400 hover:text-white cursor-pointer"
+                          className="text-white/75 hover:text-white cursor-pointer"
                         >
-                          Guest Shopping →
+                          {lang === "bn"
+                            ? "গেস্ট হিসেবে কিনুন →"
+                            : "Guest Shopping →"}
                         </button>
                       </div>
+
+                      <p className="text-[11px] text-white/55 pt-1 leading-relaxed">
+                        {lang === "bn"
+                          ? "আপনার অর্ডার আপডেট ও ডেলিভারি সুবিধার জন্য তথ্য নিরাপদে সংরক্ষিত থাকে।"
+                          : "Your account details are used securely for order updates, tracking, and saved delivery preferences."}
+                      </p>
                     </form>
                   )}
 
@@ -3383,9 +3419,18 @@ export default function HomeStore() {
                         className="space-y-2.5"
                       >
                         <h3 className="text-xl font-black text-white">
-                          Create Your{" "}
-                          <span className="text-amber-400">{BRAND_NAME}</span>{" "}
-                          Account
+                          {lang === "bn" ? (
+                            <>
+                              নতুন <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
+                              অ্যাকাউন্ট তৈরি করুন
+                            </>
+                          ) : (
+                            <>
+                              Create Your{" "}
+                              <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
+                              Account
+                            </>
+                          )}
                         </h3>
 
                         <input
@@ -3394,7 +3439,7 @@ export default function HomeStore() {
                           placeholder="Full Name *"
                           value={regName}
                           onChange={(e) => setRegName(e.target.value)}
-                          className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
+                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
                         />
 
                         <input
@@ -3403,7 +3448,7 @@ export default function HomeStore() {
                           placeholder="Email Address *"
                           value={regEmail}
                           onChange={(e) => setRegEmail(e.target.value)}
-                          className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
+                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
                         />
 
                         <input
@@ -3412,7 +3457,7 @@ export default function HomeStore() {
                           placeholder="Mobile Number (017XXXXXXXX) *"
                           value={regPhone}
                           onChange={(e) => setRegPhone(e.target.value)}
-                          className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
+                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
                         />
 
                         <div className="grid sm:grid-cols-2 gap-2">
@@ -3422,7 +3467,7 @@ export default function HomeStore() {
                             placeholder="Password *"
                             value={regPassword}
                             onChange={(e) => setRegPassword(e.target.value)}
-                            className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
+                            className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
                           />
                           <input
                             type="password"
@@ -3432,22 +3477,22 @@ export default function HomeStore() {
                             onChange={(e) =>
                               setRegConfirmPassword(e.target.value)
                             }
-                            className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
+                            className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
                           />
                         </div>
 
-                        <label className="inline-flex items-center gap-2 text-xs text-neutral-300 cursor-pointer pt-0.5">
+                        <label className="inline-flex items-center gap-2 text-xs text-white/80 cursor-pointer pt-0.5">
                           <input
                             type="checkbox"
                             checked={agreeTerms}
                             onChange={(e) => setAgreeTerms(e.target.checked)}
-                            className="accent-amber-400 rounded"
+                            className="accent-[#0077E6] rounded"
                           />
                           <span>Agree to Terms & Conditions</span>
                         </label>
 
                         {loginError && (
-                          <p className="text-xs text-rose-400 font-medium">
+                          <p className="text-xs text-rose-300 font-medium">
                             {loginError}
                           </p>
                         )}
@@ -3455,7 +3500,7 @@ export default function HomeStore() {
                         <button
                           type="submit"
                           disabled={regLoading}
-                          className="w-full bg-gradient-to-r from-amber-500 to-amber-300 hover:from-amber-400 hover:to-amber-200 disabled:opacity-50 text-neutral-950 font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
+                          className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:opacity-50 text-white font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
                         >
                           {regLoading
                             ? "Sending Code to Email..."
@@ -3465,7 +3510,7 @@ export default function HomeStore() {
                         <button
                           type="button"
                           onClick={() => handleGoogleAuth(true)}
-                          className="w-full bg-neutral-900 hover:bg-neutral-800 border border-amber-400/40 text-white font-semibold py-2.5 rounded-xl text-xs sm:text-sm transition cursor-pointer"
+                          className="w-full bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold py-2.5 rounded-xl text-xs sm:text-sm transition cursor-pointer"
                         >
                           Sign Up with Google
                         </button>
@@ -3480,7 +3525,7 @@ export default function HomeStore() {
                         </h3>
 
                         {regOtpNotice && (
-                          <p className="text-xs text-emerald-400 bg-emerald-950/50 border border-emerald-500/30 rounded-xl p-2.5">
+                          <p className="text-xs text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 rounded-xl p-2.5">
                             {regOtpNotice}
                           </p>
                         )}
@@ -3495,11 +3540,11 @@ export default function HomeStore() {
                           onChange={(e) =>
                             setRegOtpCode(e.target.value.replace(/\D/g, ""))
                           }
-                          className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 text-center text-base tracking-widest text-white font-mono outline-none"
+                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 text-center text-base tracking-widest text-white font-mono outline-none"
                         />
 
                         {loginError && (
-                          <p className="text-xs text-rose-400 font-medium">
+                          <p className="text-xs text-rose-300 font-medium">
                             {loginError}
                           </p>
                         )}
@@ -3507,7 +3552,7 @@ export default function HomeStore() {
                         <button
                           type="submit"
                           disabled={regLoading}
-                          className="w-full bg-gradient-to-r from-amber-500 to-amber-300 disabled:opacity-50 text-neutral-950 font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
+                          className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:opacity-50 text-white font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
                         >
                           {regLoading
                             ? "Verifying..."
@@ -3522,7 +3567,7 @@ export default function HomeStore() {
                               setRegOtpCode("");
                               setLoginError("");
                             }}
-                            className="text-neutral-400 hover:text-white cursor-pointer"
+                            className="text-white/70 hover:text-white cursor-pointer"
                           >
                             ← Edit Details
                           </button>
@@ -3531,7 +3576,7 @@ export default function HomeStore() {
                             type="button"
                             disabled={regLoading}
                             onClick={handleRegisterSubmit}
-                            className="text-amber-300 hover:underline font-semibold cursor-pointer"
+                            className="text-[#FFB020] hover:underline font-semibold cursor-pointer"
                           >
                             Resend Code
                           </button>
@@ -3541,7 +3586,7 @@ export default function HomeStore() {
 
                   {authMode === "forgot" && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-amber-400">
+                      <div className="flex items-center gap-2 text-[#FFB020]">
                         <KeyRound className="w-4 h-4" />
                         <h3 className="text-lg font-black text-white">
                           Forgot Password
@@ -3557,24 +3602,24 @@ export default function HomeStore() {
                           placeholder="Enter Email or Mobile Number *"
                           value={forgotIdentifier}
                           onChange={(e) => setForgotIdentifier(e.target.value)}
-                          className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white outline-none"
+                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white outline-none"
                         />
                         <button
                           type="submit"
-                          className="w-full bg-gradient-to-r from-amber-500 to-amber-300 text-neutral-950 font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
+                          className="w-full bg-[#0077E6] hover:bg-[#0062BE] text-white font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
                         >
                           Send Reset Link
                         </button>
                       </form>
                       {forgotNotice && (
-                        <p className="text-xs text-emerald-400">
+                        <p className="text-xs text-emerald-300">
                           {forgotNotice}
                         </p>
                       )}
                       <button
                         type="button"
                         onClick={() => setAuthMode("login")}
-                        className="text-xs text-amber-300 hover:underline cursor-pointer"
+                        className="text-xs text-[#FFB020] hover:underline cursor-pointer"
                       >
                         ← Back to Login
                       </button>
@@ -3582,44 +3627,74 @@ export default function HomeStore() {
                   )}
                 </div>
 
-                {/* Right Custom Banner Image Column */}
-                <div className="lg:col-span-6 relative min-h-[260px] lg:min-h-full bg-neutral-900 flex flex-col justify-between p-6 overflow-hidden">
+                {/* Right Trusted Brand Showcase Column (No Change Banner Button) */}
+                <div className="lg:col-span-6 relative min-h-[280px] lg:min-h-full bg-[#111827] flex flex-col justify-between p-6 sm:p-8 overflow-hidden">
                   <img
                     src={authBannerImage}
-                    alt={`${BRAND_NAME} Login Showcase Banner`}
-                    className="absolute inset-0 w-full h-full object-cover opacity-75"
+                    alt={`${BRAND_NAME} Showcase`}
+                    className="absolute inset-0 w-full h-full object-cover opacity-55"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).src =
                         "/hero-banner.jpg";
                     }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/50" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0B0C10]/95 via-[#0B0C10]/65 to-[#1E2B4D]/80" />
 
                   <div className="relative z-10 flex items-center justify-between gap-2">
-                    <span className="text-xs font-extrabold uppercase tracking-widest text-amber-300 bg-black/60 px-3 py-1 rounded-full border border-amber-400/30">
+                    <span className="text-xs font-extrabold uppercase tracking-widest text-white bg-[#1E2B4D]/90 px-3 py-1 rounded-full border border-white/15">
                       {BRAND_NAME} • {BRAND_TAGLINE}
                     </span>
-
-                    <label className="inline-flex items-center gap-1.5 bg-neutral-950/85 hover:bg-neutral-900 text-amber-300 border border-amber-400/40 text-[11px] font-bold px-3 py-1.5 rounded-full cursor-pointer transition">
-                      <Sparkles className="w-3 h-3" />
-                      <span>Change Banner</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleAuthBannerUpload}
-                        className="hidden"
-                      />
-                    </label>
                   </div>
 
-                  <div className="relative z-10 space-y-2 pt-16">
-                    <p className="text-lg sm:text-xl font-black text-white">
-                      Discover Fashion & Gadgets Like Never Before
-                    </p>
-                    <p className="text-xs text-amber-200/90">
-                      Fast Delivery Across Bangladesh • Secure Payment • Easy
-                      Return
-                    </p>
+                  <div className="relative z-10 space-y-4 pt-12">
+                    <div className="space-y-1.5">
+                      <p className="text-xl sm:text-2xl font-black text-white leading-snug">
+                        {lang === "bn"
+                          ? "নিশ্চিন্তে কেনাকাটা করুন বিশ্বস্ত কালেকশনের সাথে"
+                          : "Shop Confidently with Curated Style & Tech"}
+                      </p>
+                      <p className="text-xs sm:text-sm text-white/80">
+                        {lang === "bn"
+                          ? "অর্ডার ট্র্যাকিং, সেভড ঠিকানা এবং দ্রুত ডেলিভারি সুবিধা এক জায়গায়।"
+                          : "Track live orders, manage saved delivery details, and check out faster across Bangladesh."}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                      <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl p-3">
+                        <ShieldCheck className="w-4 h-4 text-[#FFB020] mb-1.5" />
+                        <p className="text-xs font-bold text-white">
+                          {lang === "bn" ? "১০০% অরিজিনাল" : "100% Authentic"}
+                        </p>
+                        <p className="text-[11px] text-white/70 mt-0.5">
+                          {lang === "bn"
+                            ? "যাচাইকৃত কোয়ালিটি"
+                            : "Quality checked"}
+                        </p>
+                      </div>
+
+                      <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl p-3">
+                        <Truck className="w-4 h-4 text-[#FFB020] mb-1.5" />
+                        <p className="text-xs font-bold text-white">
+                          {lang === "bn" ? "COD ও ওয়ালেট" : "COD & Wallets"}
+                        </p>
+                        <p className="text-[11px] text-white/70 mt-0.5">
+                          bKash, Nagad, Rocket
+                        </p>
+                      </div>
+
+                      <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl p-3">
+                        <Package className="w-4 h-4 text-[#FFB020] mb-1.5" />
+                        <p className="text-xs font-bold text-white">
+                          {lang === "bn" ? "লাইভ ট্র্যাকিং" : "Live Tracking"}
+                        </p>
+                        <p className="text-[11px] text-white/70 mt-0.5">
+                          {lang === "bn"
+                            ? "রিয়েল-টাইম আপডেট"
+                            : "Real-time status"}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3630,10 +3705,10 @@ export default function HomeStore() {
 
       {/* Quick View Modal + Related Products */}
       {quickViewProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-neutral-200 my-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-[#E3E6EB] my-auto">
             <div className="grid sm:grid-cols-2">
-              <div className="aspect-square bg-neutral-100">
+              <div className="aspect-square bg-[#F4F6F9]">
                 <img
                   src={quickViewProduct.image}
                   alt={quickViewProduct.name}
@@ -3643,35 +3718,35 @@ export default function HomeStore() {
               <div className="p-6 flex flex-col justify-between space-y-4">
                 <div>
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#4B5563]">
                       {catLabelText(quickViewProduct.subCategory)}
                     </span>
                     <button
                       type="button"
                       onClick={() => setQuickViewProduct(null)}
-                      className="p-1 rounded-full hover:bg-neutral-100 cursor-pointer"
+                      className="p-1 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
 
-                  <h3 className="text-lg font-bold text-neutral-950 mt-1">
+                  <h3 className="text-lg font-bold text-[#111827] mt-1">
                     {quickViewProduct.name}
                   </h3>
 
                   <div className="flex items-center gap-2 mt-1.5">
-                    <span className="text-lg font-extrabold text-neutral-950">
+                    <span className="text-lg font-extrabold text-[#111827]">
                       ৳{quickViewProduct.price}
                     </span>
                     {quickViewProduct.oldPrice && (
-                      <span className="text-xs text-neutral-400 line-through">
+                      <span className="text-xs text-[#4B5563]/70 line-through">
                         ৳{quickViewProduct.oldPrice}
                       </span>
                     )}
                   </div>
 
                   {quickViewProduct.description && (
-                    <p className="text-xs text-neutral-600 mt-3 leading-relaxed">
+                    <p className="text-xs text-[#4B5563] mt-3 leading-relaxed">
                       {quickViewProduct.description}
                     </p>
                   )}
@@ -3680,7 +3755,7 @@ export default function HomeStore() {
                     quickViewProduct.sizes &&
                     quickViewProduct.sizes.length > 0 && (
                       <div className="mt-4">
-                        <span className="text-xs text-neutral-500 block mb-1.5">
+                        <span className="text-xs text-[#4B5563] block mb-1.5">
                           {lang === "bn" ? "সাইজ নির্বাচন করুন:" : "Select Size:"}
                         </span>
                         <div className="flex flex-wrap gap-2">
@@ -3697,8 +3772,8 @@ export default function HomeStore() {
                               className={`px-3 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
                                 (selectedSizes[quickViewProduct.id] ||
                                   quickViewProduct.sizes?.[0]) === sz
-                                  ? "bg-neutral-950 text-amber-300 border-neutral-950"
-                                  : "bg-white text-neutral-700 border-neutral-200"
+                                  ? "bg-[#1E2B4D] text-white border-[#1E2B4D]"
+                                  : "bg-white text-[#4B5563] border-[#E3E6EB]"
                               }`}
                             >
                               {sz}
@@ -3711,7 +3786,7 @@ export default function HomeStore() {
                   {quickViewProduct.colors &&
                     quickViewProduct.colors.length > 0 && (
                       <div className="mt-3">
-                        <span className="text-xs text-neutral-500 block mb-1.5">
+                        <span className="text-xs text-[#4B5563] block mb-1.5">
                           {lang === "bn"
                             ? "কালার নির্বাচন করুন:"
                             : "Select Color:"}
@@ -3730,8 +3805,8 @@ export default function HomeStore() {
                               className={`px-2.5 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
                                 (selectedColors[quickViewProduct.id] ||
                                   quickViewProduct.colors?.[0]) === col
-                                  ? "bg-amber-100 text-neutral-950 border-amber-500"
-                                  : "bg-white text-neutral-700 border-neutral-200"
+                                  ? "bg-[#FFB020]/25 text-[#111827] border-[#FFB020]"
+                                  : "bg-white text-[#4B5563] border-[#E3E6EB]"
                               }`}
                             >
                               {col}
@@ -3749,7 +3824,7 @@ export default function HomeStore() {
                     setQuickViewProduct(null);
                     addToCart(target, true);
                   }}
-                  className="w-full bg-neutral-950 hover:bg-neutral-800 text-amber-300 text-sm font-semibold py-3 rounded-xl transition cursor-pointer"
+                  className="w-full bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-semibold py-3 rounded-xl transition cursor-pointer"
                 >
                   {lang === "bn"
                     ? `কার্টে যোগ করুন — ৳${quickViewProduct.price}`
@@ -3759,8 +3834,8 @@ export default function HomeStore() {
             </div>
 
             {relatedProducts.length > 0 && (
-              <div className="p-5 bg-neutral-50 border-t border-neutral-200 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">
+              <div className="p-5 bg-[#F4F6F9] border-t border-[#E3E6EB] space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
                   {lang === "bn" ? "রিলেটেড প্রোডাক্টস" : "Related Products"}
                 </p>
                 <div className="grid grid-cols-3 gap-3">
@@ -3769,19 +3844,19 @@ export default function HomeStore() {
                       key={rel.id}
                       type="button"
                       onClick={() => setQuickViewProduct(rel)}
-                      className="text-left bg-white p-2 rounded-2xl border border-neutral-200 hover:border-neutral-400 transition cursor-pointer"
+                      className="text-left bg-white p-2 rounded-2xl border border-[#E3E6EB] hover:border-[#0077E6] transition cursor-pointer"
                     >
-                      <div className="aspect-square rounded-xl overflow-hidden bg-neutral-100 mb-1.5">
+                      <div className="aspect-square rounded-xl overflow-hidden bg-[#F4F6F9] mb-1.5">
                         <img
                           src={rel.image}
                           alt={rel.name}
                           className="w-full h-full object-cover"
                         />
                       </div>
-                      <p className="text-xs font-semibold text-neutral-900 truncate">
+                      <p className="text-xs font-semibold text-[#111827] truncate">
                         {rel.name}
                       </p>
-                      <p className="text-xs font-extrabold text-neutral-800">
+                      <p className="text-xs font-extrabold text-[#0077E6]">
                         ৳{rel.price}
                       </p>
                     </button>
@@ -3795,11 +3870,11 @@ export default function HomeStore() {
 
       {/* Mobile-First Cart & Checkout Drawer */}
       {isCartOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs">
-          <div className="bg-[#fafafa] w-full max-w-md h-full flex flex-col justify-between overflow-y-auto p-5 sm:p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex justify-end bg-[#0B0C10]/55 backdrop-blur-xs">
+          <div className="bg-[#F4F6F9] w-full max-w-md h-full flex flex-col justify-between overflow-y-auto p-5 sm:p-6 shadow-2xl">
             <div>
-              <div className="flex items-center justify-between pb-4 border-b border-neutral-200">
-                <h2 className="text-lg font-bold text-neutral-950">
+              <div className="flex items-center justify-between pb-4 border-b border-[#E3E6EB]">
+                <h2 className="text-lg font-bold text-[#111827]">
                   {orderSuccess
                     ? lang === "bn"
                       ? "অর্ডার নিশ্চিত হয়েছে"
@@ -3814,27 +3889,27 @@ export default function HomeStore() {
                     setIsCartOpen(false);
                     setActiveBottomTab("home");
                   }}
-                  className="p-2 rounded-full bg-white border border-neutral-200 hover:bg-neutral-100 cursor-pointer"
+                  className="p-2 rounded-full bg-white border border-[#E3E6EB] hover:bg-[#F4F6F9] cursor-pointer"
                 >
-                  <X className="w-4 h-4 text-neutral-800" />
+                  <X className="w-4 h-4 text-[#111827]" />
                 </button>
               </div>
 
               {orderSuccess ? (
-                <div className="my-8 text-center bg-white border border-neutral-200 p-6 rounded-3xl shadow-2xs space-y-3">
-                  <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                <div className="my-8 text-center bg-white border border-[#E3E6EB] p-6 rounded-3xl shadow-2xs space-y-3">
+                  <div className="w-14 h-14 rounded-full bg-[#0077E6]/10 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-8 h-8 text-[#0077E6]" />
                   </div>
-                  <h3 className="text-xl font-bold text-neutral-950">
+                  <h3 className="text-xl font-bold text-[#111827]">
                     {lang === "bn" ? "অর্ডার কনফার্ম হয়েছে!" : "Order Confirmed!"}
                   </h3>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-[#4B5563]">
                     {lang === "bn" ? "অর্ডার আইডি:" : "Order Reference:"}{" "}
-                    <span className="font-mono font-semibold text-neutral-800">
+                    <span className="font-mono font-semibold text-[#111827]">
                       {confirmedOrderId}
                     </span>
                   </p>
-                  <p className="text-sm text-neutral-600 leading-relaxed">
+                  <p className="text-sm text-[#4B5563] leading-relaxed">
                     {lang === "bn"
                       ? `${BRAND_NAME}-এ আপনার অর্ডারটি গৃহীত হয়েছে। ডেলিভারি নিশ্চিত করতে আমাদের টিম শীঘ্রই যোগাযোগ করবে।`
                       : `Your ${BRAND_NAME} order has been received. Our team will contact you shortly to confirm delivery.`}
@@ -3846,13 +3921,13 @@ export default function HomeStore() {
                       setIsCartOpen(false);
                       setActiveBottomTab("home");
                     }}
-                    className="mt-3 w-full bg-neutral-950 hover:bg-neutral-800 text-amber-300 text-sm font-semibold py-3 rounded-2xl transition cursor-pointer"
+                    className="mt-3 w-full bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-semibold py-3 rounded-2xl transition cursor-pointer"
                   >
                     {lang === "bn" ? "শপিং চালিয়ে যান" : "Continue Shopping"}
                   </button>
                 </div>
               ) : cart.length === 0 ? (
-                <div className="text-center text-neutral-500 my-16 text-sm space-y-3">
+                <div className="text-center text-[#4B5563] my-16 text-sm space-y-3">
                   <p>
                     {lang === "bn"
                       ? "আপনার শপিং কার্ট বর্তমানে খালি।"
@@ -3864,24 +3939,24 @@ export default function HomeStore() {
                       setIsCartOpen(false);
                       setActiveBottomTab("home");
                     }}
-                    className="bg-neutral-950 text-white text-xs font-semibold px-4 py-2.5 rounded-xl cursor-pointer"
+                    className="bg-[#0077E6] text-white text-xs font-semibold px-4 py-2.5 rounded-xl cursor-pointer"
                   >
                     {lang === "bn" ? "প্রোডাক্ট দেখুন" : "Browse Products"}
                   </button>
                 </div>
               ) : (
                 <>
-                  <div className="bg-white rounded-2xl border border-neutral-200/80 divide-y divide-neutral-100 my-4 px-4">
+                  <div className="bg-white rounded-2xl border border-[#E3E6EB] divide-y divide-[#E3E6EB] my-4 px-4">
                     {cart.map((item, idx) => (
                       <div
                         key={`${item.product.id}-${item.selectedOption}-${item.selectedColor}`}
                         className="py-3.5 flex items-center justify-between gap-3"
                       >
                         <div className="min-w-0">
-                          <h4 className="font-semibold text-sm text-neutral-900 truncate">
+                          <h4 className="font-semibold text-sm text-[#111827] truncate">
                             {item.product.name}
                           </h4>
-                          <span className="text-xs text-neutral-500 block">
+                          <span className="text-xs text-[#4B5563] block">
                             {item.selectedOption
                               ? `${lang === "bn" ? "সাইজ:" : "Size:"} ${
                                   item.selectedOption
@@ -3891,7 +3966,7 @@ export default function HomeStore() {
                               ? `• ${item.selectedColor}`
                               : ""}
                           </span>
-                          <p className="text-sm font-bold text-neutral-950 mt-0.5">
+                          <p className="text-sm font-bold text-[#111827] mt-0.5">
                             ৳{item.product.price * item.quantity}
                           </p>
                         </div>
@@ -3900,7 +3975,7 @@ export default function HomeStore() {
                           <button
                             type="button"
                             onClick={() => updateQty(idx, -1)}
-                            className="w-7 h-7 rounded-full bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center cursor-pointer"
+                            className="w-7 h-7 rounded-full bg-[#F4F6F9] hover:bg-[#E3E6EB] flex items-center justify-center cursor-pointer"
                           >
                             <Minus className="w-3.5 h-3.5" />
                           </button>
@@ -3910,7 +3985,7 @@ export default function HomeStore() {
                           <button
                             type="button"
                             onClick={() => updateQty(idx, 1)}
-                            className="w-7 h-7 rounded-full bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center cursor-pointer"
+                            className="w-7 h-7 rounded-full bg-[#F4F6F9] hover:bg-[#E3E6EB] flex items-center justify-center cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
                           </button>
@@ -3927,8 +4002,8 @@ export default function HomeStore() {
                   </div>
 
                   <form onSubmit={handlePlaceOrder} className="space-y-3">
-                    <div className="bg-white rounded-2xl border border-neutral-200/80 p-4 space-y-3">
-                      <h3 className="font-bold text-sm text-neutral-900">
+                    <div className="bg-white rounded-2xl border border-[#E3E6EB] p-4 space-y-3">
+                      <h3 className="font-bold text-sm text-[#111827]">
                         {lang === "bn" ? "ডেলিভারি তথ্য" : "Delivery Details"}
                       </h3>
 
@@ -3938,7 +4013,7 @@ export default function HomeStore() {
                         placeholder={lang === "bn" ? "পুরো নাম *" : "Full Name *"}
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
-                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                       />
 
                       <input
@@ -3951,7 +4026,7 @@ export default function HomeStore() {
                         }
                         value={customerPhone}
                         onChange={(e) => setCustomerPhone(e.target.value)}
-                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                       />
 
                       <input
@@ -3964,7 +4039,7 @@ export default function HomeStore() {
                         }
                         value={customerDistrict}
                         onChange={(e) => setCustomerDistrict(e.target.value)}
-                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                       />
 
                       <textarea
@@ -3977,7 +4052,7 @@ export default function HomeStore() {
                         }
                         value={customerAddress}
                         onChange={(e) => setCustomerAddress(e.target.value)}
-                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                       />
 
                       <input
@@ -3989,7 +4064,7 @@ export default function HomeStore() {
                         }
                         value={orderNotes}
                         onChange={(e) => setOrderNotes(e.target.value)}
-                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-950"
+                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                       />
 
                       <div className="grid grid-cols-2 gap-2 pt-1">
@@ -3998,8 +4073,8 @@ export default function HomeStore() {
                           onClick={() => setDeliveryZone("mymensingh")}
                           className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
                             deliveryZone === "mymensingh"
-                              ? "bg-neutral-950 border-neutral-950 text-white"
-                              : "bg-white border-neutral-200 text-neutral-700"
+                              ? "bg-[#1E2B4D] border-[#1E2B4D] text-white"
+                              : "bg-white border-[#E3E6EB] text-[#4B5563]"
                           }`}
                         >
                           {lang === "bn"
@@ -4011,8 +4086,8 @@ export default function HomeStore() {
                           onClick={() => setDeliveryZone("outside")}
                           className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
                             deliveryZone === "outside"
-                              ? "bg-neutral-950 border-neutral-950 text-white"
-                              : "bg-white border-neutral-200 text-neutral-700"
+                              ? "bg-[#1E2B4D] border-[#1E2B4D] text-white"
+                              : "bg-white border-[#E3E6EB] text-[#4B5563]"
                           }`}
                         >
                           {lang === "bn"
@@ -4022,7 +4097,7 @@ export default function HomeStore() {
                       </div>
 
                       <div className="pt-1">
-                        <span className="text-xs font-semibold text-neutral-600 block mb-1.5">
+                        <span className="text-xs font-semibold text-[#4B5563] block mb-1.5">
                           {lang === "bn" ? "পেমেন্ট মেথড:" : "Payment Method:"}
                         </span>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -4040,8 +4115,8 @@ export default function HomeStore() {
                               onClick={() => setPaymentMethod(method)}
                               className={`py-2 px-2 rounded-xl text-[11px] font-bold border transition cursor-pointer ${
                                 paymentMethod === method
-                                  ? "bg-neutral-950 border-neutral-950 text-amber-300"
-                                  : "bg-white border-neutral-200 text-neutral-700"
+                                  ? "bg-[#0077E6] border-[#0077E6] text-white"
+                                  : "bg-white border-[#E3E6EB] text-[#4B5563]"
                               }`}
                             >
                               {method === "Cash on Delivery" ? "COD" : method}
@@ -4051,8 +4126,8 @@ export default function HomeStore() {
                       </div>
 
                       {isMobileWalletPayment && (
-                        <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-300 space-y-2 text-xs">
-                          <p className="font-semibold text-neutral-950">
+                        <div className="p-3 rounded-2xl bg-[#FFB020]/15 border border-[#FFB020]/50 space-y-2 text-xs">
+                          <p className="font-semibold text-[#111827]">
                             {paymentMethod} Send Money Number:{" "}
                             <span className="font-mono font-bold">
                               {activeWalletNumber}
@@ -4064,7 +4139,7 @@ export default function HomeStore() {
                             placeholder={`${paymentMethod} Sender Number (017XXXXXXXX) *`}
                             value={senderNumber}
                             onChange={(e) => setSenderNumber(e.target.value)}
-                            className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs text-neutral-900 outline-none"
+                            className="w-full bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs text-[#111827] outline-none"
                           />
                           <input
                             type="text"
@@ -4072,26 +4147,26 @@ export default function HomeStore() {
                             placeholder="Transaction ID (TrxID) *"
                             value={trxId}
                             onChange={(e) => setTrxId(e.target.value)}
-                            className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs text-neutral-900 outline-none"
+                            className="w-full bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs text-[#111827] outline-none"
                           />
                         </div>
                       )}
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-neutral-200/80 p-4 space-y-2 text-sm">
-                      <div className="flex justify-between text-neutral-500">
+                    <div className="bg-white rounded-2xl border border-[#E3E6EB] p-4 space-y-2 text-sm">
+                      <div className="flex justify-between text-[#4B5563]">
                         <span>{lang === "bn" ? "সাবটোটাল" : "Subtotal"}</span>
-                        <span className="font-semibold text-neutral-900">
+                        <span className="font-semibold text-[#111827]">
                           ৳{subtotal}
                         </span>
                       </div>
-                      <div className="flex justify-between text-neutral-500">
+                      <div className="flex justify-between text-[#4B5563]">
                         <span>
                           {lang === "bn"
                             ? "ডেলিভারি চার্জ"
                             : "Delivery Charge"}
                         </span>
-                        <span className="font-semibold text-neutral-900">
+                        <span className="font-semibold text-[#111827]">
                           {deliveryCharge === 0
                             ? lang === "bn"
                               ? "ফ্রি (৳0)"
@@ -4099,7 +4174,7 @@ export default function HomeStore() {
                             : `৳${deliveryCharge}`}
                         </span>
                       </div>
-                      <div className="flex justify-between font-bold text-base text-neutral-950 pt-2 border-t border-neutral-100">
+                      <div className="flex justify-between font-bold text-base text-[#111827] pt-2 border-t border-[#E3E6EB]">
                         <span>
                           {lang === "bn" ? "সর্বমোট বিল" : "Total Payable"}
                         </span>
@@ -4116,7 +4191,7 @@ export default function HomeStore() {
                     <button
                       type="submit"
                       disabled={submittingOrder}
-                      className="w-full bg-neutral-950 hover:bg-neutral-800 disabled:opacity-50 text-amber-300 font-semibold py-3.5 rounded-2xl transition shadow-md cursor-pointer"
+                      className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:opacity-50 text-white font-semibold py-3.5 rounded-2xl transition shadow-md cursor-pointer"
                     >
                       {submittingOrder
                         ? lang === "bn"
