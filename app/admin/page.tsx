@@ -21,6 +21,8 @@ import {
   EyeOff,
   LayoutDashboard,
   Users,
+  UserCheck,
+  BarChart3,
   Settings,
   Menu,
   TrendingUp,
@@ -79,10 +81,23 @@ interface SubscriberItem {
 
 interface CustomerReviewItem {
   id: string;
+  productId?: string;
   name: string;
   rating: number;
   comment: string;
   photo?: string;
+}
+
+interface LoggedInUserRecord {
+  id: string;
+  name: string;
+  email: string;
+  provider: string;
+  district?: string;
+  address?: string;
+  verified?: boolean;
+  lastActiveAt?: string;
+  isLocalOnly?: boolean;
 }
 
 interface CustomerProfileSummary {
@@ -100,16 +115,28 @@ interface DeliverySettings {
   freeDeliveryThreshold: number;
   bkashNumber: string;
   nagadNumber: string;
+  rocketNumber: string;
 }
 
 type AdminSection =
   | "overview"
+  | "sales"
   | "orders"
   | "products"
   | "customers"
+  | "users"
   | "subscribers"
   | "reviews"
   | "settings";
+
+type SalesPeriodTab = "daily" | "monthly" | "yearly";
+
+const BRAND_NAME = "ZAVERO";
+const BRAND_TAGLINE = "Explore Beyond Trends";
+const SUPPORT_EMAIL = "zavero.trends.bd@gmail.com";
+const REVIEWS_STORAGE_KEY = "zavero_simple_reviews";
+const REGISTERED_ACCOUNTS_KEY = "zavero_registered_accounts";
+const CUSTOMER_PROFILE_KEY = "zavero_customer_profile";
 
 const STORE_SUBCATEGORIES = [
   "Men's Fashion",
@@ -141,8 +168,9 @@ const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = {
   insideMymensinghCharge: 70,
   outsideMymensinghCharge: 130,
   freeDeliveryThreshold: 0,
-  bkashNumber: "01700-000000",
-  nagadNumber: "01700-000000",
+  bkashNumber: "01782141520",
+  nagadNumber: "01782141520",
+  rocketNumber: "015339196489",
 };
 
 async function safeParseJson(res: Response) {
@@ -155,13 +183,38 @@ async function safeParseJson(res: Response) {
   }
 }
 
+function parseOrderDate(raw?: string): Date {
+  if (!raw) return new Date(0);
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? new Date(0) : d;
+}
+
+function isSameLocalDay(d: Date, ref: Date): boolean {
+  return (
+    d.getFullYear() === ref.getFullYear() &&
+    d.getMonth() === ref.getMonth() &&
+    d.getDate() === ref.getDate()
+  );
+}
+
+function isSameLocalMonth(d: Date, ref: Date): boolean {
+  return (
+    d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth()
+  );
+}
+
+function isSameLocalYear(d: Date, ref: Date): boolean {
+  return d.getFullYear() === ref.getFullYear();
+}
+
 function deriveMainCategory(subCat?: string): "fashion" | "gadget" {
   const val = (subCat || "").trim().toLowerCase();
   if (
     val === "gadgets" ||
     val === "mobile accessories" ||
     val.includes("gadget") ||
-    val.includes("mobile")
+    val.includes("mobile") ||
+    val.includes("tech")
   ) {
     return "gadget";
   }
@@ -277,6 +330,7 @@ function extractPaymentInfo(addressText?: string) {
   let method = "Cash on Delivery";
   if (/bkash/i.test(raw)) method = "bKash";
   else if (/nagad/i.test(raw)) method = "Nagad";
+  else if (/rocket/i.test(raw)) method = "Rocket";
 
   const trxMatch = raw.match(
     /(?:trx(?:id)?|transaction(?:\s*id)?)\s*[:#-]?\s*([a-zA-Z0-9_-]{4,24})/i
@@ -284,6 +338,10 @@ function extractPaymentInfo(addressText?: string) {
   const trxId = trxMatch ? trxMatch[1] : null;
 
   return { method, trxId };
+}
+
+function isWalletMethod(method: string) {
+  return method === "bKash" || method === "Nagad" || method === "Rocket";
 }
 
 async function compressImageToDataUrl(
@@ -326,13 +384,16 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
+  const [currentDate, setCurrentDate] = useState<Date | null>(null);
   const [activeSection, setActiveSection] = useState<AdminSection>("overview");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [salesPeriodTab, setSalesPeriodTab] = useState<SalesPeriodTab>("daily");
 
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [subscribers, setSubscribers] = useState<SubscriberItem[]>([]);
   const [reviews, setReviews] = useState<CustomerReviewItem[]>([]);
+  const [loggedInUsers, setLoggedInUsers] = useState<LoggedInUserRecord[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -419,18 +480,119 @@ export default function AdminPage() {
 
   const loadLocalReviews = () => {
     try {
-      const savedReviews = localStorage.getItem("fg_simple_reviews");
+      const savedReviews =
+        localStorage.getItem(REVIEWS_STORAGE_KEY) ||
+        localStorage.getItem("fg_simple_reviews");
       if (savedReviews) {
         const parsed = JSON.parse(savedReviews);
         if (Array.isArray(parsed)) {
           setReviews(parsed);
+          return;
         }
-      } else {
-        setReviews([]);
       }
+      setReviews([]);
     } catch {
       setReviews([]);
     }
+  };
+
+  const loadLoggedInUsers = async () => {
+    const mergedMap = new Map<string, LoggedInUserRecord>();
+
+    try {
+      const rawRegistered = localStorage.getItem(REGISTERED_ACCOUNTS_KEY);
+      if (rawRegistered) {
+        const parsedReg = JSON.parse(rawRegistered);
+        if (Array.isArray(parsedReg)) {
+          parsedReg.forEach((acc: Record<string, unknown>, idx: number) => {
+            const email = String(acc?.email || "").trim().toLowerCase();
+            if (!email) return;
+            mergedMap.set(email, {
+              id: `reg-${email}-${idx}`,
+              name: String(acc?.name || email.split("@")[0]),
+              email,
+              provider: String(acc?.provider || "email"),
+              district: acc?.district ? String(acc.district) : undefined,
+              address: acc?.address ? String(acc.address) : undefined,
+              verified: Boolean(acc?.verified ?? true),
+              lastActiveAt: acc?.lastActiveAt
+                ? String(acc.lastActiveAt)
+                : acc?.createdAt
+                ? String(acc.createdAt)
+                : undefined,
+              isLocalOnly: true,
+            });
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to read registered accounts:", err);
+    }
+
+    try {
+      const rawCurrent = localStorage.getItem(CUSTOMER_PROFILE_KEY);
+      if (rawCurrent) {
+        const parsedCur = JSON.parse(rawCurrent);
+        const email = String(parsedCur?.email || "").trim().toLowerCase();
+        if (email) {
+          const prev = mergedMap.get(email);
+          mergedMap.set(email, {
+            id: prev?.id || `cur-${email}`,
+            name: String(parsedCur?.name || prev?.name || email.split("@")[0]),
+            email,
+            provider: String(parsedCur?.provider || prev?.provider || "email"),
+            district: parsedCur?.district
+              ? String(parsedCur.district)
+              : prev?.district,
+            address: parsedCur?.address
+              ? String(parsedCur.address)
+              : prev?.address,
+            verified: Boolean(parsedCur?.verified ?? prev?.verified ?? true),
+            lastActiveAt:
+              parsedCur?.loggedInAt ||
+              parsedCur?.updatedAt ||
+              prev?.lastActiveAt,
+            isLocalOnly: true,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to read active customer profile:", err);
+    }
+
+    try {
+      const res = await fetch("/api/users", { cache: "no-store" });
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        const apiUsers = Array.isArray(data?.users)
+          ? data.users
+          : Array.isArray(data?.data)
+          ? data.data
+          : [];
+        apiUsers.forEach((u: Record<string, unknown>, idx: number) => {
+          const email = String(u?.email || "").trim().toLowerCase();
+          if (!email) return;
+          const prev = mergedMap.get(email);
+          mergedMap.set(email, {
+            id: String(u?._id || u?.id || prev?.id || `api-user-${idx}`),
+            name: String(u?.name || prev?.name || email.split("@")[0]),
+            email,
+            provider: String(u?.provider || prev?.provider || "email"),
+            district: u?.district ? String(u.district) : prev?.district,
+            address: u?.address ? String(u.address) : prev?.address,
+            verified: Boolean(u?.verified ?? prev?.verified ?? true),
+            lastActiveAt: String(
+              u?.lastLoginAt || u?.updatedAt || u?.createdAt || prev?.lastActiveAt || ""
+            ),
+            isLocalOnly: false,
+          });
+        });
+      }
+    } catch {
+      // /api/users না থাকলে লোকাল ইউজার তথ্যই ব্যবহৃত হবে
+    }
+
+    setLoggedInUsers(Array.from(mergedMap.values()));
   };
 
   const fetchDashboardData = async () => {
@@ -454,6 +616,7 @@ export default function AdminPage() {
         setSubscribers(subData.subscribers);
       }
       loadLocalReviews();
+      await loadLoggedInUsers();
     } catch (err) {
       console.error("Failed to load admin data:", err);
       showToast("ডাটা লোড করতে সমস্যা হয়েছে");
@@ -463,6 +626,8 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
+    setCurrentDate(new Date());
+
     try {
       const savedDeducted = localStorage.getItem("fg_admin_deducted_orders");
       if (savedDeducted) {
@@ -479,11 +644,19 @@ export default function AdminPage() {
             parsed.outsideMymensinghCharge ?? parsed.outsideDhakaCharge ?? 130
           ),
           freeDeliveryThreshold: Number(parsed.freeDeliveryThreshold ?? 0),
-          bkashNumber: String(parsed.bkashNumber || "01700-000000"),
-          nagadNumber: String(parsed.nagadNumber || "01700-000000"),
+          bkashNumber: String(
+            parsed.bkashNumber || DEFAULT_DELIVERY_SETTINGS.bkashNumber
+          ),
+          nagadNumber: String(
+            parsed.nagadNumber || DEFAULT_DELIVERY_SETTINGS.nagadNumber
+          ),
+          rocketNumber: String(
+            parsed.rocketNumber || DEFAULT_DELIVERY_SETTINGS.rocketNumber
+          ),
         });
       }
       loadLocalReviews();
+      loadLoggedInUsers();
     } catch (err) {
       console.error("Failed to load admin settings:", err);
     }
@@ -705,7 +878,8 @@ export default function AdminPage() {
           badge: badge.trim() || undefined,
           sizes: parsedSizes.length > 0 ? parsedSizes : undefined,
           colors: parsedColors.length > 0 ? parsedColors : undefined,
-          specs: category === "gadget" && specs.trim() ? specs.trim() : undefined,
+          specs:
+            category === "gadget" && specs.trim() ? specs.trim() : undefined,
           description: description.trim(),
           stock: Number(stock) || 10,
         }),
@@ -774,7 +948,12 @@ export default function AdminPage() {
       if (!mergedEditImages.includes(u)) mergedEditImages.push(u);
     }
 
-    if (!editingProduct || !editName.trim() || !editPrice || mergedEditImages.length === 0)
+    if (
+      !editingProduct ||
+      !editName.trim() ||
+      !editPrice ||
+      mergedEditImages.length === 0
+    )
       return;
 
     setSavingEdit(true);
@@ -1016,11 +1195,47 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteLocalUser = async (user: LoggedInUserRecord) => {
+    try {
+      if (!user.isLocalOnly && user.id) {
+        await fetch(`/api/users?id=${encodeURIComponent(user.id)}`, {
+          method: "DELETE",
+        });
+      }
+      const rawRegistered = localStorage.getItem(REGISTERED_ACCOUNTS_KEY);
+      if (rawRegistered) {
+        const parsed = JSON.parse(rawRegistered);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter(
+            (acc: Record<string, unknown>) =>
+              String(acc?.email || "").toLowerCase() !== user.email.toLowerCase()
+          );
+          localStorage.setItem(
+            REGISTERED_ACCOUNTS_KEY,
+            JSON.stringify(filtered)
+          );
+        }
+      }
+      const rawCurrent = localStorage.getItem(CUSTOMER_PROFILE_KEY);
+      if (rawCurrent) {
+        const cur = JSON.parse(rawCurrent);
+        if (String(cur?.email || "").toLowerCase() === user.email.toLowerCase()) {
+          localStorage.removeItem(CUSTOMER_PROFILE_KEY);
+        }
+      }
+      setLoggedInUsers((prev) => prev.filter((u) => u.email !== user.email));
+      showToast(`${user.email} ইউজার তথ্য মুছে ফেলা হয়েছে`);
+    } catch {
+      showToast("ইউজার তথ্য মুছতে সমস্যা হয়েছে");
+    }
+  };
+
   const handleDeleteReview = (id: string) => {
     const updated = reviews.filter((r) => r.id !== id);
     setReviews(updated);
     try {
-      localStorage.setItem("fg_simple_reviews", JSON.stringify(updated));
+      localStorage.setItem(REVIEWS_STORAGE_KEY, JSON.stringify(updated));
+      localStorage.removeItem("fg_simple_reviews");
       showToast("রিভিউ মুছে ফেলা হয়েছে");
     } catch {
       showToast("রিভিউ মুছতে সমস্যা হয়েছে");
@@ -1055,6 +1270,7 @@ export default function AdminPage() {
       })
       .join("\n");
     const summary = [
+      `Store: ${BRAND_NAME}`,
       `Order ID: ${ord._id}`,
       `Status: ${ord.status || "Pending"}`,
       `Payment: ${pay.method}${pay.trxId ? ` (TrxID: ${pay.trxId})` : ""}`,
@@ -1082,8 +1298,15 @@ export default function AdminPage() {
         0,
         Number(deliverySettings.freeDeliveryThreshold) || 0
       ),
-      bkashNumber: deliverySettings.bkashNumber.trim() || "01700-000000",
-      nagadNumber: deliverySettings.nagadNumber.trim() || "01700-000000",
+      bkashNumber:
+        deliverySettings.bkashNumber.trim() ||
+        DEFAULT_DELIVERY_SETTINGS.bkashNumber,
+      nagadNumber:
+        deliverySettings.nagadNumber.trim() ||
+        DEFAULT_DELIVERY_SETTINGS.nagadNumber,
+      rocketNumber:
+        deliverySettings.rocketNumber.trim() ||
+        DEFAULT_DELIVERY_SETTINGS.rocketNumber,
     };
     setDeliverySettings(cleaned);
     try {
@@ -1091,7 +1314,7 @@ export default function AdminPage() {
         "fg_admin_delivery_settings",
         JSON.stringify(cleaned)
       );
-      showToast("Mymensingh ডেলিভারি ও পেমেন্ট সেটিংস সেভ হয়েছে");
+      showToast("ডেলিভারি ও মোবাইল ওয়ালেট সেটিংস সেভ হয়েছে");
     } catch {
       showToast("সেটিংস সেভ করা যায়নি");
     }
@@ -1150,6 +1373,106 @@ export default function AdminPage() {
         r.name.toLowerCase().includes(q) || r.comment.toLowerCase().includes(q)
     );
   }, [reviews, globalSearch]);
+
+  const filteredLoggedInUsers = useMemo(() => {
+    const q = globalSearch.trim().toLowerCase();
+    if (!q) return loggedInUsers;
+    return loggedInUsers.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        u.provider.toLowerCase().includes(q) ||
+        (u.district || "").toLowerCase().includes(q)
+    );
+  }, [loggedInUsers, globalSearch]);
+
+  const salesReport = useMemo(() => {
+    const activeOrders = orders.filter((o) => o.status !== "Cancelled");
+
+    const sumOrders = (list: OrderItem[]) =>
+      list.reduce((acc, item) => acc + (Number(item.totalAmount) || 0), 0);
+
+    const countUnits = (list: OrderItem[]) =>
+      list.reduce(
+        (sum, ord) =>
+          sum +
+          (ord.items || []).reduce(
+            (lineSum, line) => lineSum + (Number(line.quantity) || 1),
+            0
+          ),
+        0
+      );
+
+    const allTimeRevenue = sumOrders(activeOrders);
+
+    if (!currentDate) {
+      return {
+        dailyRevenue: 0,
+        dailyCount: 0,
+        dailyUnits: 0,
+        monthlyRevenue: 0,
+        monthlyCount: 0,
+        monthlyUnits: 0,
+        yearlyRevenue: 0,
+        yearlyCount: 0,
+        yearlyUnits: 0,
+        allTimeRevenue,
+        periodOrders: [] as OrderItem[],
+        periodRevenue: 0,
+        periodUnits: 0,
+        avgOrderValue: 0,
+      };
+    }
+
+    const dailyOrders = activeOrders.filter((o) =>
+      isSameLocalDay(parseOrderDate(o.createdAt), currentDate)
+    );
+    const monthlyOrders = activeOrders.filter((o) =>
+      isSameLocalMonth(parseOrderDate(o.createdAt), currentDate)
+    );
+    const yearlyOrders = activeOrders.filter((o) =>
+      isSameLocalYear(parseOrderDate(o.createdAt), currentDate)
+    );
+
+    const dailyRevenue = sumOrders(dailyOrders);
+    const monthlyRevenue = sumOrders(monthlyOrders);
+    const yearlyRevenue = sumOrders(yearlyOrders);
+
+    const periodOrders =
+      salesPeriodTab === "daily"
+        ? dailyOrders
+        : salesPeriodTab === "monthly"
+        ? monthlyOrders
+        : yearlyOrders;
+
+    const periodRevenue =
+      salesPeriodTab === "daily"
+        ? dailyRevenue
+        : salesPeriodTab === "monthly"
+        ? monthlyRevenue
+        : yearlyRevenue;
+
+    const periodUnits = countUnits(periodOrders);
+    const avgOrderValue =
+      periodOrders.length > 0 ? Math.round(periodRevenue / periodOrders.length) : 0;
+
+    return {
+      dailyRevenue,
+      dailyCount: dailyOrders.length,
+      dailyUnits: countUnits(dailyOrders),
+      monthlyRevenue,
+      monthlyCount: monthlyOrders.length,
+      monthlyUnits: countUnits(monthlyOrders),
+      yearlyRevenue,
+      yearlyCount: yearlyOrders.length,
+      yearlyUnits: countUnits(yearlyOrders),
+      allTimeRevenue,
+      periodOrders,
+      periodRevenue,
+      periodUnits,
+      avgOrderValue,
+    };
+  }, [orders, salesPeriodTab, currentDate]);
 
   const customersList = useMemo<CustomerProfileSummary[]>(() => {
     const map = new Map<string, CustomerProfileSummary>();
@@ -1245,34 +1568,37 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b0b0c] text-neutral-100 p-4 relative overflow-hidden">
-        <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[480px] h-[260px] rounded-full bg-amber-400/10 blur-3xl" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#1E2B4D] via-[#15203B] to-[#0B0C10] text-white p-4 relative overflow-hidden">
+        <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[480px] h-[260px] rounded-full bg-[#0077E6]/20 blur-3xl" />
 
         <form
           onSubmit={handleLogin}
-          className="relative z-10 bg-neutral-950/95 border border-neutral-800 p-6 sm:p-8 rounded-3xl shadow-2xl w-full max-w-md space-y-5"
+          className="relative z-10 bg-[#111827]/95 border border-white/15 p-6 sm:p-8 rounded-3xl shadow-2xl w-full max-w-md space-y-5"
         >
-          <div className="flex items-center gap-3.5 border-b border-neutral-800/90 pb-4">
+          <div className="flex items-center gap-3.5 border-b border-white/10 pb-4">
             <img
               src="/images/zavero-logo.png"
-              alt="ZAVERO"
-              className="w-12 h-12 rounded-2xl object-cover bg-neutral-900 border border-amber-400/30 shrink-0"
+              alt={BRAND_NAME}
+              className="w-12 h-12 rounded-2xl object-contain bg-white/5 p-1.5 border border-[#FFB020]/30 shrink-0"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
             />
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-400">
-                ZAVERO • EXPLORE BEYOND TRENDS
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#FFB020]">
+                {BRAND_NAME} • {BRAND_TAGLINE}
               </p>
               <h1 className="text-xl font-black text-white tracking-tight mt-0.5">
                 Admin Control Panel
               </h1>
-              <p className="text-xs text-neutral-400 mt-0.5">
-                Mymensingh Storefront &amp; Order Management
+              <p className="text-xs text-white/65 mt-0.5">
+                Storefront, Sales, Users, Orders &amp; Wallets
               </p>
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-neutral-300">
+            <label className="block text-xs font-semibold text-white/85">
               Admin Password
             </label>
             <div className="relative">
@@ -1281,14 +1607,14 @@ export default function AdminPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter admin password"
-                className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-neutral-500 outline-none transition"
+                className="w-full bg-[#1E2B4D]/70 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-white/40 outline-none transition"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label="Toggle password visibility"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-amber-300 transition cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-[#FFB020] transition cursor-pointer"
               >
                 {showPassword ? (
                   <EyeOff className="w-4 h-4" />
@@ -1308,21 +1634,21 @@ export default function AdminPage() {
           <button
             type="submit"
             disabled={authLoading}
-            className="w-full bg-amber-400 hover:bg-amber-300 disabled:bg-neutral-700 text-neutral-950 disabled:text-neutral-400 py-3 rounded-xl text-sm font-extrabold tracking-wide transition cursor-pointer shadow-lg shadow-amber-400/10"
+            className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:bg-slate-700 text-white disabled:text-slate-400 py-3 rounded-xl text-sm font-extrabold tracking-wide transition cursor-pointer shadow-lg shadow-[#0077E6]/20"
           >
             {authLoading ? "Verifying Access..." : "Unlock Admin Panel"}
           </button>
 
-          <div className="pt-3 border-t border-neutral-800/90 flex items-center justify-between text-xs text-neutral-400">
+          <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs text-white/70">
             <Link
               href="/"
-              className="hover:text-amber-300 transition font-medium"
+              className="hover:text-[#FFB020] transition font-medium"
             >
-              ← Back to Storefront
+              ← Back to {BRAND_NAME} Store
             </Link>
             <Link
               href="/track-order"
-              className="hover:text-amber-300 transition font-medium"
+              className="hover:text-[#FFB020] transition font-medium"
             >
               Track Order
             </Link>
@@ -1344,6 +1670,11 @@ export default function AdminPage() {
       icon: <LayoutDashboard className="w-4 h-4" />,
     },
     {
+      key: "sales",
+      label: "Sales",
+      icon: <BarChart3 className="w-4 h-4" />,
+    },
+    {
       key: "orders",
       label: "Orders",
       icon: <ShoppingBag className="w-4 h-4" />,
@@ -1360,6 +1691,12 @@ export default function AdminPage() {
       label: "Customers",
       icon: <Users className="w-4 h-4" />,
       badge: customersList.length,
+    },
+    {
+      key: "users",
+      label: "Users",
+      icon: <UserCheck className="w-4 h-4" />,
+      badge: loggedInUsers.length,
     },
     {
       key: "subscribers",
@@ -1382,30 +1719,49 @@ export default function AdminPage() {
 
   const handleSelectSection = (sec: AdminSection) => {
     setActiveSection(sec);
-    if (sec === "subscribers" || sec === "orders" || sec === "customers") {
+    if (
+      sec === "subscribers" ||
+      sec === "orders" ||
+      sec === "customers" ||
+      sec === "sales"
+    ) {
       fetchDashboardData();
+    } else if (sec === "users") {
+      loadLoggedInUsers();
+    } else if (sec === "reviews") {
+      loadLocalReviews();
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f6f9] text-slate-900 flex flex-col">
+    <div className="min-h-screen bg-[#F4F6F9] text-[#111827] flex flex-col">
       {feedbackMsg && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-slate-950 text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg">
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-[#1E2B4D] text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg border border-white/15">
           {feedbackMsg}
         </div>
       )}
 
       <div className="flex-1 flex min-w-0">
         {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex w-64 shrink-0 bg-slate-950 text-slate-200 flex-col justify-between p-4 border-r border-slate-800">
+        <aside className="hidden lg:flex w-64 shrink-0 bg-[#1E2B4D] text-white/85 flex-col justify-between p-4 border-r border-[#15203B]">
           <div className="space-y-6">
-            <div className="px-2 pt-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-400">
-                Mymensingh Admin
-              </p>
-              <h2 className="text-lg font-black text-white tracking-tight mt-0.5">
-                FG TREND TECH
-              </h2>
+            <div className="px-2 pt-1 flex items-center gap-2.5">
+              <img
+                src="/images/zavero-logo.png"
+                alt={BRAND_NAME}
+                className="h-8 w-auto object-contain shrink-0"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#FFB020]">
+                  {BRAND_TAGLINE}
+                </p>
+                <h2 className="text-lg font-black text-white tracking-tight leading-tight">
+                  {BRAND_NAME}
+                </h2>
+              </div>
             </div>
 
             <nav className="space-y-1">
@@ -1418,8 +1774,8 @@ export default function AdminPage() {
                     onClick={() => handleSelectSection(item.key)}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer ${
                       isActive
-                        ? "bg-indigo-600 text-white shadow-xs"
-                        : "text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                        ? "bg-[#0077E6] text-white shadow-xs"
+                        : "text-white/80 hover:bg-white/10 hover:text-white"
                     }`}
                   >
                     <span className="flex items-center gap-2.5">
@@ -1431,7 +1787,7 @@ export default function AdminPage() {
                         className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
                           isActive
                             ? "bg-white/20 text-white"
-                            : "bg-slate-800 text-slate-300"
+                            : "bg-[#111827]/50 text-white/90"
                         }`}
                       >
                         {item.badge}
@@ -1443,10 +1799,10 @@ export default function AdminPage() {
             </nav>
           </div>
 
-          <div className="space-y-2 pt-4 border-t border-slate-800">
+          <div className="space-y-2 pt-4 border-t border-white/10">
             <Link
               href="/"
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white transition"
             >
               <span>Open Live Store</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -1468,22 +1824,22 @@ export default function AdminPage() {
 
         {/* Mobile Drawer Sidebar */}
         {mobileSidebarOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 flex bg-black/50 backdrop-blur-xs">
-            <aside className="w-64 bg-slate-950 text-slate-200 h-full p-4 flex flex-col justify-between">
+          <div className="lg:hidden fixed inset-0 z-50 flex bg-[#0B0C10]/60 backdrop-blur-xs">
+            <aside className="w-64 bg-[#1E2B4D] text-white/85 h-full p-4 flex flex-col justify-between overflow-y-auto">
               <div className="space-y-5">
                 <div className="flex items-center justify-between px-1">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#FFB020]">
                       Admin Menu
                     </p>
                     <h2 className="text-base font-black text-white">
-                      FG TREND TECH
+                      {BRAND_NAME}
                     </h2>
                   </div>
                   <button
                     type="button"
                     onClick={() => setMobileSidebarOpen(false)}
-                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 cursor-pointer"
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-white/80 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1502,8 +1858,8 @@ export default function AdminPage() {
                         }}
                         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer ${
                           isActive
-                            ? "bg-indigo-600 text-white"
-                            : "text-slate-300 hover:bg-slate-800"
+                            ? "bg-[#0077E6] text-white"
+                            : "text-white/80 hover:bg-white/10"
                         }`}
                       >
                         <span className="flex items-center gap-2.5">
@@ -1511,7 +1867,7 @@ export default function AdminPage() {
                           {item.label}
                         </span>
                         {typeof item.badge === "number" && (
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-200">
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#111827]/50 text-white">
                             {item.badge}
                           </span>
                         )}
@@ -1521,10 +1877,10 @@ export default function AdminPage() {
                 </nav>
               </div>
 
-              <div className="space-y-2 pt-3 border-t border-slate-800">
+              <div className="space-y-2 pt-3 border-t border-white/10">
                 <Link
                   href="/"
-                  className="block px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800"
+                  className="block px-3 py-2 rounded-xl text-xs font-medium text-white/80 hover:bg-white/10"
                 >
                   Open Live Store →
                 </Link>
@@ -1547,38 +1903,38 @@ export default function AdminPage() {
         {/* Main Column */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Top Header */}
-          <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+          <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-[#E3E6EB] px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <button
                 type="button"
                 onClick={() => setMobileSidebarOpen(true)}
                 aria-label="Open menu"
-                className="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer"
+                className="lg:hidden p-2 rounded-xl bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] cursor-pointer"
               >
                 <Menu className="w-4 h-4" />
               </button>
               <div className="truncate">
-                <h1 className="text-base sm:text-lg font-bold text-slate-900 capitalize truncate">
+                <h1 className="text-base sm:text-lg font-bold text-[#111827] capitalize truncate">
                   {activeSection}
                 </h1>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 w-52 md:w-64">
-                <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+              <div className="hidden sm:flex items-center bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3 py-1.5 w-52 md:w-64">
+                <Search className="w-4 h-4 text-[#4B5563] mr-2 shrink-0" />
                 <input
                   type="text"
-                  placeholder="Search orders, emails, items..."
+                  placeholder="Search orders, users, items..."
                   value={globalSearch}
                   onChange={(e) => setGlobalSearch(e.target.value)}
-                  className="bg-transparent text-xs sm:text-sm outline-none w-full text-slate-900"
+                  className="bg-transparent text-xs sm:text-sm outline-none w-full text-[#111827]"
                 />
                 {globalSearch && (
                   <button
                     type="button"
                     onClick={() => setGlobalSearch("")}
-                    className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="text-[#4B5563] hover:text-[#111827] cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -1589,7 +1945,7 @@ export default function AdminPage() {
                 type="button"
                 onClick={fetchDashboardData}
                 title="Refresh data"
-                className="p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+                className="p-2 rounded-xl bg-[#F4F6F9] text-[#111827] hover:bg-[#E3E6EB] transition cursor-pointer"
               >
                 <RefreshCw
                   className={`w-4 h-4 ${loadingData ? "animate-spin" : ""}`}
@@ -1598,7 +1954,7 @@ export default function AdminPage() {
 
               <Link
                 href="/"
-                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition"
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold bg-[#0077E6] text-white hover:bg-[#0062BE] transition"
               >
                 Store <ExternalLink className="w-3.5 h-3.5" />
               </Link>
@@ -1609,23 +1965,24 @@ export default function AdminPage() {
           <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl w-full mx-auto">
             {/* 4 Key Stats Cards */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
-                <p className="text-xs font-medium text-slate-500">
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs">
+                <p className="text-xs font-medium text-[#4B5563]">
                   Total Revenue
                 </p>
-                <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
+                <p className="text-xl sm:text-2xl font-extrabold text-[#111827] mt-1">
                   ৳{stats.revenue.toLocaleString()}
                 </p>
                 <p className="text-[11px] text-emerald-600 font-semibold mt-1">
-                  Active orders total
+                  Today: ৳{salesReport.dailyRevenue.toLocaleString()} • Month: ৳
+                  {salesReport.monthlyRevenue.toLocaleString()}
                 </p>
               </div>
 
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
-                <p className="text-xs font-medium text-slate-500">
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs">
+                <p className="text-xs font-medium text-[#4B5563]">
                   Total Orders
                 </p>
-                <p className="text-xl sm:text-2xl font-extrabold text-indigo-600 mt-1">
+                <p className="text-xl sm:text-2xl font-extrabold text-[#0077E6] mt-1">
                   {orders.length}
                 </p>
                 <p className="text-[11px] text-amber-600 font-semibold mt-1">
@@ -1633,32 +1990,32 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
-                <p className="text-xs font-medium text-slate-500">
-                  Subscribers &amp; Reviews
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs">
+                <p className="text-xs font-medium text-[#4B5563]">
+                  Logged-in Users
                 </p>
                 <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1">
-                  {subscribers.length}{" "}
+                  {loggedInUsers.length}{" "}
                   <span className="text-xs font-bold text-amber-600">
-                    / {reviews.length} rev
+                    / {subscribers.length} sub
                   </span>
                 </p>
-                <p className="text-[11px] text-slate-500 font-medium mt-1">
-                  Newsletter &amp; customer reviews
+                <p className="text-[11px] text-[#4B5563] font-medium mt-1">
+                  Accounts &amp; newsletter subscribers
                 </p>
               </div>
 
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
-                <p className="text-xs font-medium text-slate-500">
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs">
+                <p className="text-xs font-medium text-[#4B5563]">
                   Inventory &amp; Low Stock
                 </p>
-                <p className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
+                <p className="text-xl sm:text-2xl font-extrabold text-[#111827] mt-1">
                   {products.length}{" "}
                   <span className="text-xs font-bold text-rose-600">
                     ({stats.lowStockCount} low)
                   </span>
                 </p>
-                <p className="text-[11px] text-slate-500 font-medium mt-1">
+                <p className="text-[11px] text-[#4B5563] font-medium mt-1">
                   Stock ≤ 3 highlighted
                 </p>
               </div>
@@ -1668,28 +2025,32 @@ export default function AdminPage() {
             {activeSection === "overview" && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                  <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+                  <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        <p className="text-xs font-semibold text-[#4B5563] uppercase tracking-wider">
                           Sales Snapshot
                         </p>
-                        <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-1.5">
-                          <TrendingUp className="w-4 h-4 text-indigo-600" />
+                        <h2 className="text-base sm:text-lg font-bold text-[#111827] flex items-center gap-1.5">
+                          <TrendingUp className="w-4 h-4 text-[#0077E6]" />
                           Recent Active Orders Value
                         </h2>
                       </div>
-                      <span className="text-xs font-bold bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full">
-                        ৳{stats.revenue.toLocaleString()}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSection("sales")}
+                        className="text-xs font-bold bg-[#0077E6]/10 text-[#0077E6] hover:bg-[#0077E6]/20 px-2.5 py-1 rounded-full transition cursor-pointer"
+                      >
+                        Full Sales Report →
+                      </button>
                     </div>
 
                     {stats.recentSeries.length === 0 ? (
-                      <p className="text-xs text-slate-500 py-10 text-center">
+                      <p className="text-xs text-[#4B5563] py-10 text-center">
                         এখনো কোনো সক্রিয় অর্ডার ডাটা নেই।
                       </p>
                     ) : (
-                      <div className="h-44 flex items-end gap-3 pt-4 px-2 border-b border-slate-100">
+                      <div className="h-44 flex items-end gap-3 pt-4 px-2 border-b border-[#E3E6EB]">
                         {stats.recentSeries.map((pt, idx) => {
                           const heightPct = Math.max(
                             12,
@@ -1700,14 +2061,14 @@ export default function AdminPage() {
                               key={`${pt.label}-${idx}`}
                               className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end"
                             >
-                              <span className="text-[10px] font-bold text-slate-600">
+                              <span className="text-[10px] font-bold text-[#4B5563]">
                                 ৳{pt.amount}
                               </span>
                               <div
                                 style={{ height: `${heightPct}%` }}
-                                className="w-full max-w-[38px] rounded-t-xl bg-indigo-600/90 hover:bg-indigo-600 transition"
+                                className="w-full max-w-[38px] rounded-t-xl bg-[#0077E6]/90 hover:bg-[#0077E6] transition"
                               />
-                              <span className="text-[11px] font-semibold text-slate-500">
+                              <span className="text-[11px] font-semibold text-[#4B5563]">
                                 {pt.label}
                               </span>
                             </div>
@@ -1717,12 +2078,12 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between space-y-4">
+                  <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs flex flex-col justify-between space-y-4">
                     <div>
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      <p className="text-xs font-semibold text-[#4B5563] uppercase tracking-wider">
                         Catalog Mix (7 Categories)
                       </p>
-                      <h2 className="text-base sm:text-lg font-bold text-slate-900 mt-0.5">
+                      <h2 className="text-base sm:text-lg font-bold text-[#111827] mt-0.5">
                         Products by Category
                       </h2>
                     </div>
@@ -1731,12 +2092,12 @@ export default function AdminPage() {
                       {stats.categoryCounts.map((cat) => (
                         <div key={cat.label}>
                           <div className="flex justify-between text-xs font-bold mb-1">
-                            <span className="text-slate-800">{cat.label}</span>
-                            <span className="text-indigo-700">
+                            <span className="text-[#111827]">{cat.label}</span>
+                            <span className="text-[#0077E6]">
                               {cat.count} items
                             </span>
                           </div>
-                          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="w-full h-2 bg-[#F4F6F9] rounded-full overflow-hidden">
                             <div
                               style={{
                                 width: `${
@@ -1747,20 +2108,20 @@ export default function AdminPage() {
                                     : 0
                                 }%`,
                               }}
-                              className="h-full bg-indigo-600 rounded-full"
+                              className="h-full bg-[#0077E6] rounded-full"
                             />
                           </div>
                         </div>
                       ))}
                     </div>
 
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                      <span className="text-slate-500">
+                    <div className="pt-2 border-t border-[#E3E6EB] flex items-center justify-between text-xs">
+                      <span className="text-[#4B5563]">
                         Auto-stock on Confirm/Deliver:
                       </span>
                       <span
                         className={`font-bold ${
-                          autoDeductStock ? "text-emerald-600" : "text-slate-500"
+                          autoDeductStock ? "text-emerald-600" : "text-[#4B5563]"
                         }`}
                       >
                         {autoDeductStock ? "Enabled" : "Off"}
@@ -1769,26 +2130,26 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+                <div className="bg-white p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                    <h2 className="text-base sm:text-lg font-bold text-[#111827]">
                       Recent Orders
                     </h2>
                     <button
                       type="button"
                       onClick={() => handleSelectSection("orders")}
-                      className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                      className="text-xs font-bold text-[#0077E6] hover:underline cursor-pointer"
                     >
                       Manage All Orders →
                     </button>
                   </div>
 
                   {orders.length === 0 ? (
-                    <p className="text-sm text-slate-500 py-4 text-center">
+                    <p className="text-sm text-[#4B5563] py-4 text-center">
                       কোনো অর্ডার নেই।
                     </p>
                   ) : (
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-[#E3E6EB]">
                       {orders.slice(0, 5).map((ord) => {
                         const pay = extractPaymentInfo(ord.address);
                         return (
@@ -1798,10 +2159,10 @@ export default function AdminPage() {
                           >
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-bold text-sm text-slate-900">
+                                <span className="font-bold text-sm text-[#111827]">
                                   {ord.customerName}
                                 </span>
-                                <span className="text-xs font-mono text-slate-500">
+                                <span className="text-xs font-mono text-[#4B5563]">
                                   {ord.phone}
                                 </span>
                                 <span
@@ -1811,9 +2172,8 @@ export default function AdminPage() {
                                 >
                                   {ord.status || "Pending"}
                                 </span>
-                                {(pay.method === "bKash" ||
-                                  pay.method === "Nagad") && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
+                                {isWalletMethod(pay.method) && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
                                     {pay.method}
                                     {pay.trxId ? ` • ${pay.trxId}` : ""}
                                   </span>
@@ -1822,13 +2182,13 @@ export default function AdminPage() {
                             </div>
 
                             <div className="flex items-center gap-3 shrink-0">
-                              <span className="text-sm font-extrabold text-slate-900">
+                              <span className="text-sm font-extrabold text-[#111827]">
                                 ৳{Number(ord.totalAmount).toLocaleString()}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => setSelectedOrder(ord)}
-                                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer"
+                                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] cursor-pointer"
                               >
                                 Details
                               </button>
@@ -1842,22 +2202,248 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* SALES SECTION (DAILY, MONTHLY, YEARLY IN DETAILS) */}
+            {activeSection === "sales" && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div
+                    onClick={() => setSalesPeriodTab("daily")}
+                    className={`bg-white p-5 rounded-2xl border transition cursor-pointer ${
+                      salesPeriodTab === "daily"
+                        ? "border-[#0077E6] ring-2 ring-[#0077E6]/15"
+                        : "border-[#E3E6EB] hover:border-[#0077E6]/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
+                        Daily Sales (আজকের বিক্রি)
+                      </span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                        {salesReport.dailyCount} orders
+                      </span>
+                    </div>
+                    <p className="text-2xl sm:text-3xl font-black text-[#111827] mt-2">
+                      ৳{salesReport.dailyRevenue.toLocaleString()}
+                    </p>
+                    <p className="text-xs text-[#4B5563] mt-1.5">
+                      Units sold today: <strong>{salesReport.dailyUnits}</strong>
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => setSalesPeriodTab("monthly")}
+                    className={`bg-white p-5 rounded-2xl border transition cursor-pointer ${
+                      salesPeriodTab === "monthly"
+                        ? "border-[#0077E6] ring-2 ring-[#0077E6]/15"
+                        : "border-[#E3E6EB] hover:border-[#0077E6]/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
+                        Monthly Sales (চলতি মাসের বিক্রি)
+                      </span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#0077E6]/10 text-[#0077E6]">
+                        {salesReport.monthlyCount} orders
+                      </span>
+                    </div>
+                    <p className="text-2xl sm:text-3xl font-black text-[#0077E6] mt-2">
+                      ৳{salesReport.monthlyRevenue.toLocaleString()}
+                    </p>
+                    <p className="text-xs text-[#4B5563] mt-1.5">
+                      Units sold this month:{" "}
+                      <strong>{salesReport.monthlyUnits}</strong>
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => setSalesPeriodTab("yearly")}
+                    className={`bg-white p-5 rounded-2xl border transition cursor-pointer ${
+                      salesPeriodTab === "yearly"
+                        ? "border-[#0077E6] ring-2 ring-[#0077E6]/15"
+                        : "border-[#E3E6EB] hover:border-[#0077E6]/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
+                        Yearly Sales (চলতি বছরের বিক্রি)
+                      </span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800">
+                        {salesReport.yearlyCount} orders
+                      </span>
+                    </div>
+                    <p className="text-2xl sm:text-3xl font-black text-[#1E2B4D] mt-2">
+                      ৳{salesReport.yearlyRevenue.toLocaleString()}
+                    </p>
+                    <p className="text-xs text-[#4B5563] mt-1.5">
+                      Units sold this year:{" "}
+                      <strong>{salesReport.yearlyUnits}</strong> • All-time: ৳
+                      {salesReport.allTimeRevenue.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Detailed Period Breakdown */}
+                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E6EB] pb-4">
+                    <div>
+                      <h2 className="text-lg font-bold text-[#111827] capitalize">
+                        {salesPeriodTab} Sales Detailed Report
+                      </h2>
+                      <p className="text-xs text-[#4B5563] mt-0.5">
+                        Cancelled অর্ডার বাদ দিয়ে প্রকৃত বিক্রির হিসাব দেখানো হচ্ছে।
+                      </p>
+                    </div>
+
+                    <div className="inline-flex rounded-xl bg-[#F4F6F9] p-1 border border-[#E3E6EB] self-start sm:self-auto">
+                      {(["daily", "monthly", "yearly"] as SalesPeriodTab[]).map(
+                        (tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            onClick={() => setSalesPeriodTab(tab)}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold capitalize transition cursor-pointer ${
+                              salesPeriodTab === tab
+                                ? "bg-[#0077E6] text-white"
+                                : "text-[#4B5563] hover:text-[#111827]"
+                            }`}
+                          >
+                            {tab}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#F4F6F9] border border-[#E3E6EB] rounded-2xl p-4">
+                    <div>
+                      <p className="text-[11px] font-semibold text-[#4B5563]">
+                        Selected Period Revenue
+                      </p>
+                      <p className="text-base sm:text-lg font-black text-[#111827] mt-0.5">
+                        ৳{salesReport.periodRevenue.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold text-[#4B5563]">
+                        Valid Orders
+                      </p>
+                      <p className="text-base sm:text-lg font-black text-[#0077E6] mt-0.5">
+                        {salesReport.periodOrders.length}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold text-[#4B5563]">
+                        Total Items Sold
+                      </p>
+                      <p className="text-base sm:text-lg font-black text-emerald-700 mt-0.5">
+                        {salesReport.periodUnits}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold text-[#4B5563]">
+                        Avg. Order Value
+                      </p>
+                      <p className="text-base sm:text-lg font-black text-[#1E2B4D] mt-0.5">
+                        ৳{salesReport.avgOrderValue.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  {salesReport.periodOrders.length === 0 ? (
+                    <p className="text-sm text-[#4B5563] py-8 text-center">
+                      এই {salesPeriodTab} সময়ে এখনো কোনো সফল বা সক্রিয় অর্ডার নেই।
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                        <thead>
+                          <tr className="border-b border-[#E3E6EB] text-[#4B5563]">
+                            <th className="py-2.5 px-3 font-semibold">Date</th>
+                            <th className="py-2.5 px-3 font-semibold">
+                              Order ID
+                            </th>
+                            <th className="py-2.5 px-3 font-semibold">
+                              Customer
+                            </th>
+                            <th className="py-2.5 px-3 font-semibold">
+                              Payment
+                            </th>
+                            <th className="py-2.5 px-3 font-semibold">
+                              Status
+                            </th>
+                            <th className="py-2.5 px-3 font-semibold text-right">
+                              Amount
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#E3E6EB]">
+                          {salesReport.periodOrders.map((ord) => {
+                            const pay = extractPaymentInfo(ord.address);
+                            const dt = parseOrderDate(ord.createdAt);
+                            return (
+                              <tr
+                                key={ord._id}
+                                onClick={() => setSelectedOrder(ord)}
+                                className="hover:bg-[#F4F6F9] transition cursor-pointer"
+                              >
+                                <td className="py-3 px-3 text-xs text-[#4B5563] whitespace-nowrap">
+                                  {dt.toLocaleDateString("en-GB", {
+                                    day: "2-digit",
+                                    month: "short",
+                                    year: "numeric",
+                                  })}
+                                </td>
+                                <td className="py-3 px-3 font-mono text-xs text-[#111827]">
+                                  #{ord._id.slice(-6)}
+                                </td>
+                                <td className="py-3 px-3 font-semibold text-[#111827]">
+                                  {ord.customerName}{" "}
+                                  <span className="font-mono text-xs text-[#4B5563]">
+                                    ({ord.phone})
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-xs font-semibold text-[#0077E6]">
+                                  {pay.method}
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadgeStyle(
+                                      ord.status || "Pending"
+                                    )}`}
+                                  >
+                                    {ord.status || "Pending"}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 font-extrabold text-[#111827] text-right whitespace-nowrap">
+                                  ৳{Number(ord.totalAmount).toLocaleString()}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ORDERS SECTION */}
             {activeSection === "orders" && (
-              <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-2xs border border-slate-200 space-y-4">
+              <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-2xs border border-[#E3E6EB] space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">
+                    <h2 className="text-lg font-bold text-[#111827]">
                       Customer Orders ({filteredOrders.length})
                     </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <p className="text-xs text-[#4B5563] mt-0.5">
                       Confirmed বা Delivered করলে অটো-স্টক গার্ড সক্রিয় থাকে।
                     </p>
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-2.5">
-                    <div className="flex items-center bg-slate-100 rounded-xl px-3 py-1.5 border border-slate-200">
-                      <Search className="w-4 h-4 text-slate-400 mr-2" />
+                    <div className="flex items-center bg-[#F4F6F9] rounded-xl px-3 py-1.5 border border-[#E3E6EB]">
+                      <Search className="w-4 h-4 text-[#4B5563] mr-2" />
                       <input
                         type="text"
                         placeholder="Search phone, name or ID..."
@@ -1870,7 +2456,7 @@ export default function AdminPage() {
                     <select
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
-                      className="border border-slate-200 rounded-xl px-3 py-2 text-xs sm:text-sm bg-slate-100 text-slate-900 font-medium outline-none cursor-pointer"
+                      className="border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs sm:text-sm bg-[#F4F6F9] text-[#111827] font-medium outline-none cursor-pointer"
                     >
                       <option value="All">All Statuses</option>
                       {ORDER_STATUSES.map((st) => (
@@ -1883,19 +2469,18 @@ export default function AdminPage() {
                 </div>
 
                 {loadingData && orders.length === 0 ? (
-                  <p className="text-slate-500 text-sm py-6 text-center">
+                  <p className="text-[#4B5563] text-sm py-6 text-center">
                     Loading orders...
                   </p>
                 ) : filteredOrders.length === 0 ? (
-                  <p className="text-slate-500 text-sm py-6 text-center">
+                  <p className="text-[#4B5563] text-sm py-6 text-center">
                     কোনো অর্ডার পাওয়া যায়নি।
                   </p>
                 ) : (
                   <div className="space-y-3.5">
                     {filteredOrders.map((order) => {
                       const pay = extractPaymentInfo(order.address);
-                      const isMobileWallet =
-                        pay.method === "bKash" || pay.method === "Nagad";
+                      const wallet = isWalletMethod(pay.method);
                       const isStockDeducted = deductedOrderIds.includes(
                         order._id
                       );
@@ -1903,7 +2488,7 @@ export default function AdminPage() {
                       return (
                         <div
                           key={order._id}
-                          className="border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-300 transition"
+                          className="border border-[#E3E6EB] rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-[#0077E6]/50 transition"
                         >
                           <div className="space-y-1.5 min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -1917,9 +2502,9 @@ export default function AdminPage() {
 
                               <span
                                 className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                                  isMobileWallet
-                                    ? "bg-pink-50 text-pink-700 border-pink-200"
-                                    : "bg-slate-100 text-slate-700 border-slate-200"
+                                  wallet
+                                    ? "bg-amber-50 text-amber-800 border-amber-200"
+                                    : "bg-[#F4F6F9] text-[#111827] border-[#E3E6EB]"
                                 }`}
                               >
                                 <CreditCard className="w-3 h-3" />
@@ -1942,7 +2527,7 @@ export default function AdminPage() {
                                     "Order ID কপি করা হয়েছে"
                                   )
                                 }
-                                className="inline-flex items-center gap-1 text-[11px] font-mono bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md transition cursor-pointer"
+                                className="inline-flex items-center gap-1 text-[11px] font-mono bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] px-2 py-0.5 rounded-md transition cursor-pointer"
                                 title="Copy Order ID"
                               >
                                 <span>ID: {order._id}</span>
@@ -1954,18 +2539,18 @@ export default function AdminPage() {
                               </button>
                             </div>
 
-                            <p className="font-bold text-slate-900 text-sm sm:text-base">
+                            <p className="font-bold text-[#111827] text-sm sm:text-base">
                               {order.customerName} —{" "}
-                              <span className="font-mono text-slate-700">
+                              <span className="font-mono text-[#4B5563]">
                                 {order.phone}
                               </span>
                             </p>
 
-                            <p className="text-xs sm:text-sm text-slate-600 break-words">
+                            <p className="text-xs sm:text-sm text-[#4B5563] break-words">
                               {order.address}
                             </p>
 
-                            <p className="text-xs sm:text-sm text-slate-800">
+                            <p className="text-xs sm:text-sm text-[#111827]">
                               <span className="font-semibold">Items:</span>{" "}
                               {order.items
                                 ?.map((i) => {
@@ -1979,7 +2564,7 @@ export default function AdminPage() {
                                 .join(", ")}
                             </p>
 
-                            <p className="text-sm font-extrabold text-slate-900">
+                            <p className="text-sm font-extrabold text-[#111827]">
                               Total: ৳{Number(order.totalAmount).toLocaleString()}
                             </p>
                           </div>
@@ -1988,7 +2573,7 @@ export default function AdminPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedOrder(order)}
-                              className="inline-flex items-center gap-1 border border-slate-200 hover:border-slate-400 bg-slate-50 text-slate-800 px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer"
+                              className="inline-flex items-center gap-1 border border-[#E3E6EB] hover:border-[#0077E6] bg-[#F4F6F9] text-[#111827] px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5" />
                               Details
@@ -2008,7 +2593,7 @@ export default function AdminPage() {
                             </button>
 
                             <div>
-                              <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                              <label className="block text-[11px] font-semibold text-[#4B5563] mb-1">
                                 Update Status
                               </label>
                               <select
@@ -2017,7 +2602,7 @@ export default function AdminPage() {
                                 onChange={(e) =>
                                   handleStatusChange(order._id, e.target.value)
                                 }
-                                className="border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 font-medium outline-none focus:border-slate-900 disabled:opacity-50 cursor-pointer"
+                                className="border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm bg-white text-[#111827] font-medium outline-none focus:border-[#0077E6] disabled:opacity-50 cursor-pointer"
                               >
                                 {ORDER_STATUSES.map((st) => (
                                   <option key={st} value={st}>
@@ -2041,9 +2626,9 @@ export default function AdminPage() {
                 {/* Add New Product Form */}
                 <form
                   onSubmit={handleAddProduct}
-                  className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-slate-200 space-y-3 h-fit"
+                  className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-[#E3E6EB] space-y-3 h-fit"
                 >
-                  <h2 className="text-lg font-bold text-slate-900">
+                  <h2 className="text-lg font-bold text-[#111827]">
                     Add New Product
                   </h2>
 
@@ -2052,18 +2637,18 @@ export default function AdminPage() {
                     placeholder="Product Name *"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                    className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                     required
                   />
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-600">
+                    <label className="block text-xs font-semibold text-[#4B5563]">
                       Category (Auto-syncs to Storefront) *
                     </label>
                     <select
                       value={subCategory}
                       onChange={(e) => handleSubCategoryChange(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 font-medium outline-none focus:border-slate-900 cursor-pointer"
+                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm bg-white text-[#111827] font-medium outline-none focus:border-[#0077E6] cursor-pointer"
                     >
                       {STORE_SUBCATEGORIES.map((catLabel) => (
                         <option key={catLabel} value={catLabel}>
@@ -2079,7 +2664,7 @@ export default function AdminPage() {
                       placeholder="Price (BDT) *"
                       value={price}
                       onChange={(e) => setPrice(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                       required
                     />
                     <input
@@ -2087,7 +2672,7 @@ export default function AdminPage() {
                       placeholder="Old Price (optional)"
                       value={oldPrice}
                       onChange={(e) => setOldPrice(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                     />
                   </div>
 
@@ -2097,14 +2682,14 @@ export default function AdminPage() {
                       placeholder="Badge (e.g. Best Seller)"
                       value={badge}
                       onChange={(e) => setBadge(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                     />
                     <input
                       type="number"
                       placeholder="Stock"
                       value={stock}
                       onChange={(e) => setStock(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                     />
                   </div>
 
@@ -2120,9 +2705,9 @@ export default function AdminPage() {
                         }
                         value={sizesText}
                         onChange={(e) => setSizesText(e.target.value)}
-                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                       />
-                      <p className="text-[11px] text-slate-500 px-1">
+                      <p className="text-[11px] text-[#4B5563] px-1">
                         {isFootwearSubCategory(subCategory)
                           ? "Footwear size format (40, 41, 42, 43...)"
                           : "Garment size format (M, L, XL...)"}
@@ -2134,14 +2719,14 @@ export default function AdminPage() {
                       placeholder="Specs (e.g. 36H Battery • Fast Charge)"
                       value={specs}
                       onChange={(e) => setSpecs(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                      className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                     />
                   ) : null}
 
                   {/* Colors Option */}
-                  <div className="space-y-1.5 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                      <Palette className="w-3.5 h-3.5 text-indigo-600" />
+                  <div className="space-y-1.5 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-2.5">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-[#111827]">
+                      <Palette className="w-3.5 h-3.5 text-[#0077E6]" />
                       Available Colors (comma separated)
                     </label>
                     <input
@@ -2149,7 +2734,7 @@ export default function AdminPage() {
                       placeholder="e.g. Black, Silver, Midnight Blue"
                       value={colorsText}
                       onChange={(e) => setColorsText(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                      className="w-full bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                     />
                     <div className="flex flex-wrap gap-1.5 pt-0.5">
                       {QUICK_COLOR_PRESETS.map((preset) => (
@@ -2161,7 +2746,7 @@ export default function AdminPage() {
                               appendPresetToText(prev, preset)
                             )
                           }
-                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 hover:border-slate-400 text-slate-700 transition cursor-pointer"
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-[#E3E6EB] hover:border-[#0077E6] text-[#111827] transition cursor-pointer"
                         >
                           + {preset}
                         </button>
@@ -2170,10 +2755,10 @@ export default function AdminPage() {
                   </div>
 
                   {/* Multiple Images Upload & URLs */}
-                  <div className="space-y-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                  <div className="space-y-2 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-3">
                     <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                        <Images className="w-3.5 h-3.5 text-indigo-600" />
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-[#111827]">
+                        <Images className="w-3.5 h-3.5 text-[#0077E6]" />
                         Product Images ({previewAddImages.length}) *
                       </label>
                       {previewAddImages.length > 0 && (
@@ -2199,12 +2784,12 @@ export default function AdminPage() {
                             handleAddImageUrl("add");
                           }
                         }}
-                        className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:border-slate-900"
+                        className="flex-1 bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs text-[#111827] outline-none focus:border-[#0077E6]"
                       />
                       <button
                         type="button"
                         onClick={() => handleAddImageUrl("add")}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer shrink-0"
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-[#1E2B4D] hover:bg-[#15203B] text-white text-xs font-semibold transition cursor-pointer shrink-0"
                       >
                         <Link2 className="w-3.5 h-3.5" />
                         Add
@@ -2224,7 +2809,7 @@ export default function AdminPage() {
                       type="button"
                       disabled={processingImage}
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-slate-400 hover:border-slate-900 bg-white hover:bg-slate-100 text-slate-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                      className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-[#4B5563]/50 hover:border-[#0077E6] bg-white hover:bg-[#F4F6F9] text-[#111827] py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
                     >
                       <Upload className="w-3.5 h-3.5" />
                       {processingImage
@@ -2237,7 +2822,7 @@ export default function AdminPage() {
                         {previewAddImages.map((imgSrc, idx) => (
                           <div
                             key={`${idx}-${imgSrc.slice(0, 24)}`}
-                            className="relative group rounded-xl overflow-hidden border border-slate-200 bg-white aspect-square"
+                            className="relative group rounded-xl overflow-hidden border border-[#E3E6EB] bg-white aspect-square"
                           >
                             <img
                               src={imgSrc}
@@ -2245,7 +2830,7 @@ export default function AdminPage() {
                               className="w-full h-full object-cover"
                             />
                             {idx === 0 && (
-                              <span className="absolute bottom-1 left-1 bg-slate-950/85 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                              <span className="absolute bottom-1 left-1 bg-[#1E2B4D]/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
                                 Main
                               </span>
                             )}
@@ -2257,7 +2842,7 @@ export default function AdminPage() {
                                     handleMakePrimaryImage(idx, "add")
                                   }
                                   title="Set as Main Image"
-                                  className="bg-white/90 hover:bg-white text-slate-900 text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-2xs cursor-pointer"
+                                  className="bg-white/95 hover:bg-white text-[#111827] text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-2xs cursor-pointer"
                                 >
                                   1st
                                 </button>
@@ -2281,14 +2866,14 @@ export default function AdminPage() {
                     placeholder="Description (optional)"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                    className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
                     rows={3}
                   />
 
                   <button
                     type="submit"
                     disabled={creatingProduct || processingImage}
-                    className="w-full inline-flex items-center justify-center gap-1.5 bg-slate-900 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition cursor-pointer"
+                    className="w-full inline-flex items-center justify-center gap-1.5 bg-[#0077E6] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#0062BE] disabled:opacity-50 transition cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     {creatingProduct ? "Adding..." : "Add Product"}
@@ -2296,15 +2881,15 @@ export default function AdminPage() {
                 </form>
 
                 {/* All Products List */}
-                <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-slate-200 space-y-4">
+                <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-[#E3E6EB] space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <h2 className="text-lg font-bold text-slate-900">
+                    <h2 className="text-lg font-bold text-[#111827]">
                       All Products ({filteredProducts.length})
                     </h2>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center bg-slate-100 rounded-xl px-3 py-1.5 border border-slate-200">
-                        <Search className="w-4 h-4 text-slate-400 mr-1.5" />
+                      <div className="flex items-center bg-[#F4F6F9] rounded-xl px-3 py-1.5 border border-[#E3E6EB]">
+                        <Search className="w-4 h-4 text-[#4B5563] mr-1.5" />
                         <input
                           type="text"
                           placeholder="Search product or color..."
@@ -2317,7 +2902,7 @@ export default function AdminPage() {
                       <select
                         value={productCatFilter}
                         onChange={(e) => setProductCatFilter(e.target.value)}
-                        className="border border-slate-200 rounded-xl px-3 py-1.5 text-xs bg-slate-100 text-slate-800 font-semibold outline-none cursor-pointer"
+                        className="border border-[#E3E6EB] rounded-xl px-3 py-1.5 text-xs bg-[#F4F6F9] text-[#111827] font-semibold outline-none cursor-pointer"
                       >
                         <option value="all">All Categories</option>
                         {STORE_SUBCATEGORIES.map((catLabel) => (
@@ -2330,7 +2915,7 @@ export default function AdminPage() {
                   </div>
 
                   {filteredProducts.length === 0 ? (
-                    <p className="text-slate-500 text-sm py-6 text-center">
+                    <p className="text-[#4B5563] text-sm py-6 text-center">
                       {products.length === 0
                         ? "ডাটাবেজে এখনো কোনো প্রোডাক্ট নেই। বাম পাশ থেকে যোগ করুন।"
                         : "কোনো ম্যাচিং প্রোডাক্ট পাওয়া যায়নি।"}
@@ -2350,32 +2935,32 @@ export default function AdminPage() {
                         return (
                           <div
                             key={prod._id}
-                            className="border border-slate-200 rounded-2xl p-3.5 flex flex-col justify-between gap-3"
+                            className="border border-[#E3E6EB] rounded-2xl p-3.5 flex flex-col justify-between gap-3"
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               <div className="relative shrink-0">
                                 <img
                                   src={allProdImgs[0] || prod.image}
                                   alt={prod.name}
-                                  className="w-14 h-14 object-cover rounded-xl bg-slate-100"
+                                  className="w-14 h-14 object-cover rounded-xl bg-[#F4F6F9]"
                                 />
                                 {allProdImgs.length > 1 && (
-                                  <span className="absolute -bottom-1 -right-1 bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                  <span className="absolute -bottom-1 -right-1 bg-[#1E2B4D] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                                     +{allProdImgs.length - 1}
                                   </span>
                                 )}
                               </div>
                               <div className="min-w-0">
-                                <p className="font-semibold text-sm text-slate-900 truncate">
+                                <p className="font-semibold text-sm text-[#111827] truncate">
                                   {prod.name}
                                 </p>
-                                <p className="text-xs text-slate-500">
+                                <p className="text-xs text-[#4B5563]">
                                   {displaySubCat} •{" "}
-                                  <span className="font-bold text-slate-900">
+                                  <span className="font-bold text-[#111827]">
                                     ৳{prod.price}
                                   </span>
                                   {prod.oldPrice ? (
-                                    <span className="line-through text-slate-400 ml-1">
+                                    <span className="line-through text-[#4B5563]/70 ml-1">
                                       ৳{prod.oldPrice}
                                     </span>
                                   ) : null}
@@ -2387,23 +2972,23 @@ export default function AdminPage() {
                                         ? "bg-rose-100 text-rose-700"
                                         : isLowStock
                                         ? "bg-amber-100 text-amber-800"
-                                        : "bg-slate-100 text-slate-700"
+                                        : "bg-[#F4F6F9] text-[#111827]"
                                     }`}
                                   >
                                     Stock: {currentStock}
                                   </span>
                                   {allProdImgs.length > 1 && (
-                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#F4F6F9] text-[#111827]">
                                       {allProdImgs.length} Photos
                                     </span>
                                   )}
                                   {prod.sizes && prod.sizes.length > 0 && (
-                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#0077E6]/10 text-[#0077E6]">
                                       Sizes: {prod.sizes.join(", ")}
                                     </span>
                                   )}
                                   {prod.colors && prod.colors.length > 0 && (
-                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/70">
+                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#FFB020]/20 text-[#111827] border border-[#FFB020]/40">
                                       Colors: {prod.colors.join(", ")}
                                     </span>
                                   )}
@@ -2411,7 +2996,7 @@ export default function AdminPage() {
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E3E6EB]">
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
@@ -2423,7 +3008,7 @@ export default function AdminPage() {
                                     handleQuickStockChange(prod, -1)
                                   }
                                   title="Decrease stock"
-                                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-800 disabled:opacity-40 cursor-pointer"
+                                  className="w-7 h-7 rounded-lg bg-[#F4F6F9] hover:bg-[#E3E6EB] flex items-center justify-center text-[#111827] disabled:opacity-40 cursor-pointer"
                                 >
                                   <Minus className="w-3.5 h-3.5" />
                                 </button>
@@ -2434,7 +3019,7 @@ export default function AdminPage() {
                                     handleQuickStockChange(prod, 1)
                                   }
                                   title="Increase stock"
-                                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-800 disabled:opacity-40 cursor-pointer"
+                                  className="w-7 h-7 rounded-lg bg-[#F4F6F9] hover:bg-[#E3E6EB] flex items-center justify-center text-[#111827] disabled:opacity-40 cursor-pointer"
                                 >
                                   <Plus className="w-3.5 h-3.5" />
                                 </button>
@@ -2444,7 +3029,7 @@ export default function AdminPage() {
                                 <button
                                   type="button"
                                   onClick={() => openEditModal(prod)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-slate-100 text-slate-800 rounded-xl hover:bg-slate-200 transition cursor-pointer"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-[#F4F6F9] text-[#111827] rounded-xl hover:bg-[#E3E6EB] transition cursor-pointer"
                                 >
                                   <Pencil className="w-3 h-3" />
                                   Edit
@@ -2474,27 +3059,27 @@ export default function AdminPage() {
 
             {/* CUSTOMERS SECTION */}
             {activeSection === "customers" && (
-              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">
+                    <h2 className="text-lg font-bold text-[#111827]">
                       Customers ({customersList.length})
                     </h2>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-[#4B5563]">
                       যেকোনো কাস্টমারের উপর ক্লিক করলে তার সব অর্ডার ও প্রোডাক্টের বিস্তারিত দেখা যাবে।
                     </p>
                   </div>
                 </div>
 
                 {customersList.length === 0 ? (
-                  <p className="text-sm text-slate-500 py-6 text-center">
+                  <p className="text-sm text-[#4B5563] py-6 text-center">
                     এখনো কোনো কাস্টমার অর্ডার রেকর্ড পাওয়া যায়নি।
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs sm:text-sm">
                       <thead>
-                        <tr className="border-b border-slate-200 text-slate-500">
+                        <tr className="border-b border-[#E3E6EB] text-[#4B5563]">
                           <th className="py-2.5 px-3 font-semibold">Name</th>
                           <th className="py-2.5 px-3 font-semibold">Phone</th>
                           <th className="py-2.5 px-3 font-semibold">Address</th>
@@ -2507,26 +3092,26 @@ export default function AdminPage() {
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-[#E3E6EB]">
                         {customersList.map((cust) => (
                           <tr
                             key={cust.phone}
                             onClick={() => setSelectedCustomerPhone(cust.phone)}
-                            className="hover:bg-indigo-50/50 transition cursor-pointer"
+                            className="hover:bg-[#F4F6F9] transition cursor-pointer"
                           >
-                            <td className="py-3 px-3 font-semibold text-slate-900">
+                            <td className="py-3 px-3 font-semibold text-[#111827]">
                               {cust.name}
                             </td>
-                            <td className="py-3 px-3 font-mono text-slate-700">
+                            <td className="py-3 px-3 font-mono text-[#4B5563]">
                               {cust.phone}
                             </td>
-                            <td className="py-3 px-3 text-slate-600 max-w-xs truncate">
+                            <td className="py-3 px-3 text-[#4B5563] max-w-xs truncate">
                               {cust.address}
                             </td>
-                            <td className="py-3 px-3 font-bold text-indigo-700">
+                            <td className="py-3 px-3 font-bold text-[#0077E6]">
                               {cust.orderCount}
                             </td>
-                            <td className="py-3 px-3 font-extrabold text-slate-900 text-right">
+                            <td className="py-3 px-3 font-extrabold text-[#111827] text-right">
                               ৳{cust.totalSpent.toLocaleString()}
                             </td>
                             <td className="py-3 px-3 text-right">
@@ -2536,7 +3121,7 @@ export default function AdminPage() {
                                   e.stopPropagation();
                                   setSelectedCustomerPhone(cust.phone);
                                 }}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] text-xs font-semibold cursor-pointer"
                               >
                                 <Eye className="w-3.5 h-3.5" />
                                 View Orders
@@ -2551,15 +3136,142 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* LOGGED-IN USERS SECTION */}
+            {activeSection === "users" && (
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E6EB] pb-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-[#111827]">
+                      Logged-in &amp; Registered Users (
+                      {filteredLoggedInUsers.length})
+                    </h2>
+                    <p className="text-xs text-[#4B5563] mt-0.5">
+                      স্টোরফ্রন্টে লগইন বা রেজিস্টার করা ইউজারদের প্রোফাইল ও তথ্য
+                    </p>
+                  </div>
+
+                  {filteredLoggedInUsers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopyText(
+                          filteredLoggedInUsers.map((u) => u.email).join(", "),
+                          "all-users-emails",
+                          "সব ইউজার ইমেইল কপি করা হয়েছে"
+                        )
+                      }
+                      className="inline-flex items-center gap-1.5 bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto"
+                    >
+                      {copiedId === "all-users-emails" ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      Copy User Emails
+                    </button>
+                  )}
+                </div>
+
+                {filteredLoggedInUsers.length === 0 ? (
+                  <p className="text-sm text-[#4B5563] py-6 text-center">
+                    এখনো কোনো লগইন বা রেজিস্টার করা ইউজারের তথ্য পাওয়া যায়নি।
+                    স্টোরফ্রন্ট লগইন/ভেরিফিকেশন থেকে POST /api/users কল হলে
+                    এখানে দেখা যাবে।
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                      <thead>
+                        <tr className="border-b border-[#E3E6EB] text-[#4B5563]">
+                          <th className="py-2.5 px-3 font-semibold">User</th>
+                          <th className="py-2.5 px-3 font-semibold">Email</th>
+                          <th className="py-2.5 px-3 font-semibold">
+                            Method
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold">
+                            Location / Address
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold">Status</th>
+                          <th className="py-2.5 px-3 font-semibold text-right">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E3E6EB]">
+                        {filteredLoggedInUsers.map((user) => (
+                          <tr
+                            key={user.id}
+                            className="hover:bg-[#F4F6F9] transition"
+                          >
+                            <td className="py-3 px-3 font-bold text-[#111827]">
+                              {user.name}
+                            </td>
+                            <td className="py-3 px-3 text-[#111827]">
+                              {user.email}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#0077E6]/10 text-[#0077E6] uppercase">
+                                {user.provider}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-xs text-[#4B5563]">
+                              {[user.district, user.address]
+                                .filter(Boolean)
+                                .join(" • ") || "—"}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                {user.verified ? "Verified" : "Active"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleCopyText(
+                                      user.email,
+                                      user.id,
+                                      "ইমেইল কপি করা হয়েছে"
+                                    )
+                                  }
+                                  title="Copy email"
+                                  className="p-1.5 text-[#111827] hover:bg-[#E3E6EB] rounded-lg transition cursor-pointer"
+                                >
+                                  {copiedId === user.id ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteLocalUser(user)}
+                                  title="Remove user"
+                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* NEWSLETTER SUBSCRIBERS SECTION */}
             {activeSection === "subscribers" && (
-              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E6EB] pb-4">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">
+                    <h2 className="text-lg font-bold text-[#111827]">
                       Newsletter Subscribers ({filteredSubscribers.length})
                     </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <p className="text-xs text-[#4B5563] mt-0.5">
                       স্টোরফ্রন্ট ফুটার সাবস্ক্রিপশন ফর্ম থেকে সংগৃহীত ইমেইল লিস্ট
                     </p>
                   </div>
@@ -2574,10 +3286,10 @@ export default function AdminPage() {
                           "সব সাবস্ক্রাইবার ইমেইল কপি করা হয়েছে"
                         )
                       }
-                      className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto"
+                      className="inline-flex items-center gap-1.5 bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto"
                     >
                       {copiedId === "all-subscribers" ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
                       ) : (
                         <Copy className="w-3.5 h-3.5" />
                       )}
@@ -2587,25 +3299,25 @@ export default function AdminPage() {
                 </div>
 
                 {loadingData && subscribers.length === 0 ? (
-                  <p className="text-sm text-slate-500 py-6 text-center">
+                  <p className="text-sm text-[#4B5563] py-6 text-center">
                     Loading subscribers...
                   </p>
                 ) : filteredSubscribers.length === 0 ? (
-                  <p className="text-sm text-slate-500 py-6 text-center">
+                  <p className="text-sm text-[#4B5563] py-6 text-center">
                     এখনো কোনো নিউজলেটার সাবস্ক্রাইবার পাওয়া যায়নি।
                   </p>
                 ) : (
-                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                  <div className="divide-y divide-[#E3E6EB] border border-[#E3E6EB] rounded-2xl overflow-hidden">
                     {filteredSubscribers.map((sub) => (
                       <div
                         key={sub._id}
-                        className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-50/40 hover:bg-slate-50"
+                        className="flex items-center justify-between gap-3 px-4 py-3 bg-[#F4F6F9]/40 hover:bg-[#F4F6F9]"
                       >
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 truncate">
+                          <p className="text-sm font-semibold text-[#111827] truncate">
                             {sub.email}
                           </p>
-                          <p className="text-[11px] text-slate-400">
+                          <p className="text-[11px] text-[#4B5563]">
                             {sub.createdAt
                               ? `Subscribed: ${new Date(
                                   sub.createdAt
@@ -2625,7 +3337,7 @@ export default function AdminPage() {
                               )
                             }
                             title="Copy email"
-                            className="p-2 text-slate-700 hover:bg-slate-200/70 rounded-xl transition cursor-pointer"
+                            className="p-2 text-[#111827] hover:bg-[#E3E6EB] rounded-xl transition cursor-pointer"
                           >
                             {copiedId === sub._id ? (
                               <Check className="w-4 h-4 text-emerald-600" />
@@ -2653,20 +3365,20 @@ export default function AdminPage() {
 
             {/* CUSTOMER REVIEWS SECTION */}
             {activeSection === "reviews" && (
-              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-[#E3E6EB] pb-4">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">
+                    <h2 className="text-lg font-bold text-[#111827]">
                       Customer Reviews ({filteredReviews.length})
                     </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <p className="text-xs text-[#4B5563] mt-0.5">
                       কাস্টমারদের দেওয়া রিভিউ ও রিসিভ করা প্রোডাক্টের ছবি
                     </p>
                   </div>
                 </div>
 
                 {filteredReviews.length === 0 ? (
-                  <p className="text-sm text-slate-500 py-6 text-center">
+                  <p className="text-sm text-[#4B5563] py-6 text-center">
                     এখনো কোনো কাস্টমার রিভিউ যোগ হয়নি।
                   </p>
                 ) : (
@@ -2674,21 +3386,21 @@ export default function AdminPage() {
                     {filteredReviews.map((rev) => (
                       <div
                         key={rev.id}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3"
+                        className="rounded-2xl border border-[#E3E6EB] bg-[#F4F6F9] p-4 space-y-3"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-slate-950">
+                          <span className="text-sm font-bold text-[#111827]">
                             {rev.name}
                           </span>
                           <span className="text-xs font-bold text-amber-600">
                             {rev.rating} ★
                           </span>
                         </div>
-                        <p className="text-xs text-slate-700 leading-relaxed">
+                        <p className="text-xs text-[#4B5563] leading-relaxed">
                           {rev.comment}
                         </p>
                         {rev.photo && (
-                          <div className="aspect-video w-full rounded-xl overflow-hidden bg-slate-200 border border-slate-200">
+                          <div className="aspect-video w-full rounded-xl overflow-hidden bg-[#E3E6EB] border border-[#E3E6EB]">
                             <img
                               src={rev.photo}
                               alt={`${rev.name} product review`}
@@ -2718,15 +3430,15 @@ export default function AdminPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <form
                   onSubmit={handleSaveDeliverySettings}
-                  className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4"
+                  className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4"
                 >
-                  <h2 className="text-lg font-bold text-slate-900">
+                  <h2 className="text-lg font-bold text-[#111827]">
                     Mymensingh Delivery &amp; Wallet Settings
                   </h2>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
                         Inside Mymensingh Charge (৳)
                       </label>
                       <input
@@ -2738,12 +3450,12 @@ export default function AdminPage() {
                             insideMymensinghCharge: Number(e.target.value),
                           })
                         }
-                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
                         Outside Mymensingh Charge (৳)
                       </label>
                       <input
@@ -2755,13 +3467,13 @@ export default function AdminPage() {
                             outsideMymensinghCharge: Number(e.target.value),
                           })
                         }
-                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    <label className="block text-xs font-semibold text-[#4B5563] mb-1">
                       Free Delivery Threshold (৳, 0 = disabled)
                     </label>
                     <input
@@ -2773,14 +3485,14 @@ export default function AdminPage() {
                           freeDeliveryThreshold: Number(e.target.value),
                         })
                       }
-                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                      className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">
-                        bKash Reference Number
+                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
+                        bKash Number
                       </label>
                       <input
                         type="text"
@@ -2791,13 +3503,13 @@ export default function AdminPage() {
                             bkashNumber: e.target.value,
                           })
                         }
-                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">
-                        Nagad Reference Number
+                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
+                        Nagad Number
                       </label>
                       <input
                         type="text"
@@ -2808,47 +3520,64 @@ export default function AdminPage() {
                             nagadNumber: e.target.value,
                           })
                         }
-                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm outline-none focus:border-slate-900"
+                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
+                        Rocket Number
+                      </label>
+                      <input
+                        type="text"
+                        value={deliverySettings.rocketNumber}
+                        onChange={(e) =>
+                          setDeliverySettings({
+                            ...deliverySettings,
+                            rocketNumber: e.target.value,
+                          })
+                        }
+                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
                       />
                     </div>
                   </div>
 
                   <button
                     type="submit"
-                    className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition cursor-pointer"
+                    className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition cursor-pointer"
                   >
                     Save Settings
                   </button>
                 </form>
 
-                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4 h-fit">
+                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4 h-fit">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                    <h2 className="text-lg font-bold text-slate-900">
+                    <h2 className="text-lg font-bold text-[#111827]">
                       Auto-Stock Deduction Guard
                     </h2>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-[#4B5563] leading-relaxed">
                     অর্ডার <strong>Confirmed</strong> বা{" "}
                     <strong>Delivered</strong> করলে সংশ্লিষ্ট প্রোডাক্টের স্টক
                     স্বয়ংক্রিয়ভাবে কমানো হবে এবং একই অর্ডারের জন্য যেন দ্বিতীয়বার
                     স্টক না কাটে সেটির গার্ড সক্রিয় থাকবে।
                   </p>
 
-                  <label className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 border border-slate-200 cursor-pointer">
-                    <span className="text-sm font-semibold text-slate-900">
+                  <label className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F4F6F9] border border-[#E3E6EB] cursor-pointer">
+                    <span className="text-sm font-semibold text-[#111827]">
                       Enable Auto-Stock Guard
                     </span>
                     <input
                       type="checkbox"
                       checked={autoDeductStock}
                       onChange={(e) => setAutoDeductStock(e.target.checked)}
-                      className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                      className="w-4 h-4 accent-[#0077E6] cursor-pointer"
                     />
                   </label>
 
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-[#4B5563]">
                     Protected orders count:{" "}
                     <strong>{deductedOrderIds.length}</strong>
                   </p>
@@ -2858,9 +3587,11 @@ export default function AdminPage() {
           </main>
 
           {/* Footer */}
-          <footer className="bg-white border-t border-slate-200 px-4 sm:px-6 py-4 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p>© 2026 FG Trend Tech Admin Dashboard • Mymensingh.</p>
-            <p>Support: fgtrendtech.bd@gmail.com</p>
+          <footer className="bg-white border-t border-[#E3E6EB] px-4 sm:px-6 py-4 text-xs text-[#4B5563] flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p>
+              © 2026 {BRAND_NAME} Admin Dashboard • {BRAND_TAGLINE}.
+            </p>
+            <p>Support: {SUPPORT_EMAIL}</p>
           </footer>
         </div>
       </div>
@@ -2869,45 +3600,49 @@ export default function AdminPage() {
       {selectedCustomer && (
         <div
           onClick={() => setSelectedCustomerPhone(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4 overflow-y-auto"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 my-auto max-h-[88vh] overflow-y-auto"
+            className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-[#E3E6EB] space-y-4 my-auto max-h-[88vh] overflow-y-auto"
           >
-            <div className="flex items-start justify-between border-b border-slate-100 pb-3.5 gap-3">
+            <div className="flex items-start justify-between border-b border-[#E3E6EB] pb-3.5 gap-3">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#0077E6]">
                   Customer Order History
                 </p>
-                <h3 className="text-lg font-bold text-slate-900">
+                <h3 className="text-lg font-bold text-[#111827]">
                   {selectedCustomer.name} •{" "}
-                  <span className="font-mono text-slate-700 text-base">
+                  <span className="font-mono text-[#4B5563] text-base">
                     {selectedCustomer.phone}
                   </span>
                 </h3>
-                <p className="text-xs text-slate-600 mt-0.5">
+                <p className="text-xs text-[#4B5563] mt-0.5">
                   {selectedCustomer.address}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedCustomerPhone(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 cursor-pointer shrink-0"
+                className="p-1.5 rounded-full hover:bg-[#F4F6F9] cursor-pointer shrink-0"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-xs sm:text-sm">
+            <div className="grid grid-cols-2 gap-3 bg-[#F4F6F9] border border-[#E3E6EB] rounded-2xl p-3.5 text-xs sm:text-sm">
               <div>
-                <span className="text-slate-500 block text-xs">Total Orders</span>
-                <span className="font-extrabold text-slate-900 text-base">
+                <span className="text-[#4B5563] block text-xs">
+                  Total Orders
+                </span>
+                <span className="font-extrabold text-[#111827] text-base">
                   {selectedCustomer.orderCount}
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-slate-500 block text-xs">Total Spent</span>
+                <span className="text-[#4B5563] block text-xs">
+                  Total Spent
+                </span>
                 <span className="font-extrabold text-emerald-700 text-base">
                   ৳{selectedCustomer.totalSpent.toLocaleString()}
                 </span>
@@ -2920,11 +3655,11 @@ export default function AdminPage() {
                 return (
                   <div
                     key={ord._id || idx}
-                    className="border border-slate-200 rounded-2xl p-4 space-y-2.5 bg-white"
+                    className="border border-[#E3E6EB] rounded-2xl p-4 space-y-2.5 bg-white"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E3E6EB] pb-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-slate-700">
+                        <span className="text-xs font-mono font-bold text-[#4B5563]">
                           #{ord._id}
                         </span>
                         <span
@@ -2934,34 +3669,34 @@ export default function AdminPage() {
                         >
                           {ord.status || "Pending"}
                         </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
                           {pay.method}
                           {pay.trxId ? ` • TrxID: ${pay.trxId}` : ""}
                         </span>
                       </div>
 
-                      <span className="text-sm font-extrabold text-slate-900">
+                      <span className="text-sm font-extrabold text-[#111827]">
                         ৳{Number(ord.totalAmount).toLocaleString()}
                       </span>
                     </div>
 
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-[#E3E6EB]">
                       {ord.items?.map((line, lIdx) => (
                         <div
                           key={`${line.name}-${lIdx}`}
                           className="py-2 flex items-center justify-between gap-3 text-xs sm:text-sm"
                         >
                           <div className="min-w-0">
-                            <p className="font-semibold text-slate-900 truncate">
+                            <p className="font-semibold text-[#111827] truncate">
                               {line.name}
                             </p>
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-[#4B5563]">
                               {line.size ? `Size: ${line.size} • ` : ""}
                               {line.color ? `Color: ${line.color} • ` : ""}
                               Qty: {line.quantity} × ৳{line.price}
                             </p>
                           </div>
-                          <p className="font-bold text-slate-900 shrink-0">
+                          <p className="font-bold text-[#111827] shrink-0">
                             ৳{(line.price * line.quantity).toLocaleString()}
                           </p>
                         </div>
@@ -2972,11 +3707,11 @@ export default function AdminPage() {
               })}
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-slate-100">
+            <div className="flex justify-end pt-2 border-t border-[#E3E6EB]">
               <button
                 type="button"
                 onClick={() => setSelectedCustomerPhone(null)}
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
+                className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
               >
                 Close
               </button>
@@ -2987,21 +3722,21 @@ export default function AdminPage() {
 
       {/* Order Details Modal */}
       {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#E3E6EB] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E3E6EB] pb-3">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#4B5563]">
                   Order Details
                 </p>
-                <h3 className="text-base font-bold font-mono text-slate-900">
+                <h3 className="text-base font-bold font-mono text-[#111827]">
                   #{selectedOrder._id}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedOrder(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
+                className="p-1.5 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3010,49 +3745,49 @@ export default function AdminPage() {
             {(() => {
               const pay = extractPaymentInfo(selectedOrder.address);
               return (
-                <div className="space-y-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <div className="space-y-2 text-xs sm:text-sm bg-[#F4F6F9] border border-[#E3E6EB] rounded-2xl p-4">
                   <p>
-                    <span className="font-semibold text-slate-600">
+                    <span className="font-semibold text-[#4B5563]">
                       Customer:
                     </span>{" "}
-                    <span className="font-bold text-slate-900">
+                    <span className="font-bold text-[#111827]">
                       {selectedOrder.customerName}
                     </span>
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-600">
+                    <span className="font-semibold text-[#4B5563]">
                       Phone:
                     </span>{" "}
-                    <span className="font-mono text-slate-800">
+                    <span className="font-mono text-[#111827]">
                       {selectedOrder.phone}
                     </span>
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-600">
+                    <span className="font-semibold text-[#4B5563]">
                       Payment:
                     </span>{" "}
-                    <span className="font-bold text-pink-700">
+                    <span className="font-bold text-[#0077E6]">
                       {pay.method}
                     </span>
                     {pay.trxId && (
-                      <span className="ml-2 font-mono text-xs bg-pink-100 text-pink-800 px-2 py-0.5 rounded-md">
+                      <span className="ml-2 font-mono text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">
                         TrxID: {pay.trxId}
                       </span>
                     )}
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-600">
+                    <span className="font-semibold text-[#4B5563]">
                       Address:
                     </span>{" "}
-                    <span className="text-slate-800">
+                    <span className="text-[#111827]">
                       {selectedOrder.address}
                     </span>
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-600">
+                    <span className="font-semibold text-[#4B5563]">
                       Status:
                     </span>{" "}
-                    <span className="font-bold text-slate-900">
+                    <span className="font-bold text-[#111827]">
                       {selectedOrder.status || "Pending"}
                     </span>
                   </p>
@@ -3061,26 +3796,26 @@ export default function AdminPage() {
             })()}
 
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
                 Ordered Items
               </p>
-              <div className="border border-slate-200 rounded-2xl divide-y divide-slate-100 px-3.5">
+              <div className="border border-[#E3E6EB] rounded-2xl divide-y divide-[#E3E6EB] px-3.5">
                 {selectedOrder.items?.map((item, idx) => (
                   <div
                     key={`${item.name}-${idx}`}
                     className="py-2.5 flex items-center justify-between text-xs sm:text-sm"
                   >
                     <div>
-                      <p className="font-semibold text-slate-900">
+                      <p className="font-semibold text-[#111827]">
                         {item.name}
                       </p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-[#4B5563]">
                         {item.size ? `Size: ${item.size} • ` : ""}
                         {item.color ? `Color: ${item.color} • ` : ""}Qty:{" "}
                         {item.quantity} × ৳{item.price}
                       </p>
                     </div>
-                    <p className="font-bold text-slate-900">
+                    <p className="font-bold text-[#111827]">
                       ৳{item.price * item.quantity}
                     </p>
                   </div>
@@ -3088,18 +3823,18 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <span className="text-sm font-bold text-slate-900">
+            <div className="flex items-center justify-between pt-2 border-t border-[#E3E6EB]">
+              <span className="text-sm font-bold text-[#111827]">
                 Total: ৳{Number(selectedOrder.totalAmount).toLocaleString()}
               </span>
 
               <button
                 type="button"
                 onClick={() => handleCopyOrderSummary(selectedOrder)}
-                className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer"
               >
                 {copiedId === `sum-${selectedOrder._id}` ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <Check className="w-3.5 h-3.5 text-emerald-300" />
                 ) : (
                   <Copy className="w-3.5 h-3.5" />
                 )}
@@ -3112,19 +3847,19 @@ export default function AdminPage() {
 
       {/* Edit Product Modal */}
       {editingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4 overflow-y-auto">
           <form
             onSubmit={handleSaveProductEdit}
-            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-3 my-auto max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#E3E6EB] space-y-3 my-auto max-h-[90vh] overflow-y-auto"
           >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-lg font-bold text-slate-900">
+            <div className="flex items-center justify-between border-b border-[#E3E6EB] pb-3">
+              <h3 className="text-lg font-bold text-[#111827]">
                 Edit Product
               </h3>
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
+                className="p-1.5 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3136,17 +3871,17 @@ export default function AdminPage() {
               placeholder="Product Name *"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+              className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
             />
 
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-slate-600">
+              <label className="block text-xs font-semibold text-[#4B5563]">
                 Category
               </label>
               <select
                 value={editSubCategory}
                 onChange={(e) => setEditSubCategory(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white text-slate-900 font-medium outline-none focus:border-slate-900 cursor-pointer"
+                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm bg-white text-[#111827] font-medium outline-none focus:border-[#0077E6] cursor-pointer"
               >
                 {STORE_SUBCATEGORIES.map((catLabel) => (
                   <option key={catLabel} value={catLabel}>
@@ -3163,14 +3898,14 @@ export default function AdminPage() {
                 placeholder="Price (BDT) *"
                 value={editPrice}
                 onChange={(e) => setEditPrice(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
               />
               <input
                 type="number"
                 placeholder="Old Price (optional)"
                 value={editOldPrice}
                 onChange={(e) => setEditOldPrice(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
               />
             </div>
 
@@ -3180,14 +3915,14 @@ export default function AdminPage() {
                 placeholder="Badge"
                 value={editBadge}
                 onChange={(e) => setEditBadge(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
               />
               <input
                 type="number"
                 placeholder="Stock"
                 value={editStock}
                 onChange={(e) => setEditStock(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
               />
             </div>
 
@@ -3202,7 +3937,7 @@ export default function AdminPage() {
                 }
                 value={editSizesText}
                 onChange={(e) => setEditSizesText(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
               />
             ) : editCategory === "gadget" ? (
               <input
@@ -3210,14 +3945,14 @@ export default function AdminPage() {
                 placeholder="Specs"
                 value={editSpecs}
                 onChange={(e) => setEditSpecs(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
               />
             ) : null}
 
             {/* Edit Colors Option */}
-            <div className="space-y-1.5 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                <Palette className="w-3.5 h-3.5 text-indigo-600" />
+            <div className="space-y-1.5 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-2.5">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-[#111827]">
+                <Palette className="w-3.5 h-3.5 text-[#0077E6]" />
                 Colors (comma separated)
               </label>
               <input
@@ -3225,7 +3960,7 @@ export default function AdminPage() {
                 placeholder="e.g. Black, Silver, Midnight Blue"
                 value={editColorsText}
                 onChange={(e) => setEditColorsText(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+                className="w-full bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
               />
               <div className="flex flex-wrap gap-1.5 pt-0.5">
                 {QUICK_COLOR_PRESETS.map((preset) => (
@@ -3237,7 +3972,7 @@ export default function AdminPage() {
                         appendPresetToText(prev, preset)
                       )
                     }
-                    className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 hover:border-slate-400 text-slate-700 transition cursor-pointer"
+                    className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-[#E3E6EB] hover:border-[#0077E6] text-[#111827] transition cursor-pointer"
                   >
                     + {preset}
                   </button>
@@ -3246,9 +3981,9 @@ export default function AdminPage() {
             </div>
 
             {/* Edit Multiple Images */}
-            <div className="space-y-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                <Images className="w-3.5 h-3.5 text-indigo-600" />
+            <div className="space-y-2 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-3">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-[#111827]">
+                <Images className="w-3.5 h-3.5 text-[#0077E6]" />
                 Product Images ({editImagesList.length}) *
               </label>
 
@@ -3264,12 +3999,12 @@ export default function AdminPage() {
                       handleAddImageUrl("edit");
                     }
                   }}
-                  className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:border-slate-900"
+                  className="flex-1 bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs text-[#111827] outline-none focus:border-[#0077E6]"
                 />
                 <button
                   type="button"
                   onClick={() => handleAddImageUrl("edit")}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer shrink-0"
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-[#1E2B4D] hover:bg-[#15203B] text-white text-xs font-semibold transition cursor-pointer shrink-0"
                 >
                   <Link2 className="w-3.5 h-3.5" />
                   Add
@@ -3289,7 +4024,7 @@ export default function AdminPage() {
                 type="button"
                 disabled={processingImage}
                 onClick={() => editFileInputRef.current?.click()}
-                className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-slate-400 hover:border-slate-900 bg-white text-slate-800 py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
+                className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-[#4B5563]/50 hover:border-[#0077E6] bg-white text-[#111827] py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
               >
                 <Upload className="w-3.5 h-3.5" />
                 {processingImage ? "Processing Photos..." : "Add More Photos"}
@@ -3300,7 +4035,7 @@ export default function AdminPage() {
                   {editImagesList.map((imgSrc, idx) => (
                     <div
                       key={`${idx}-${imgSrc.slice(0, 24)}`}
-                      className="relative rounded-xl overflow-hidden border border-slate-200 bg-white aspect-square"
+                      className="relative rounded-xl overflow-hidden border border-[#E3E6EB] bg-white aspect-square"
                     >
                       <img
                         src={imgSrc}
@@ -3308,7 +4043,7 @@ export default function AdminPage() {
                         className="w-full h-full object-cover"
                       />
                       {idx === 0 && (
-                        <span className="absolute bottom-1 left-1 bg-slate-950/85 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                        <span className="absolute bottom-1 left-1 bg-[#1E2B4D]/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
                           Main
                         </span>
                       )}
@@ -3318,7 +4053,7 @@ export default function AdminPage() {
                             type="button"
                             onClick={() => handleMakePrimaryImage(idx, "edit")}
                             title="Set as Main Image"
-                            className="bg-white/90 hover:bg-white text-slate-900 text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-2xs cursor-pointer"
+                            className="bg-white/95 hover:bg-white text-[#111827] text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-2xs cursor-pointer"
                           >
                             1st
                           </button>
@@ -3342,7 +4077,7 @@ export default function AdminPage() {
               placeholder="Description (optional)"
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+              className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
               rows={2}
             />
 
@@ -3350,14 +4085,14 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className="flex-1 border border-slate-300 text-slate-800 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-100 transition cursor-pointer"
+                className="flex-1 border border-[#E3E6EB] text-[#111827] py-2.5 rounded-xl text-sm font-semibold hover:bg-[#F4F6F9] transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={savingEdit || processingImage}
-                className="flex-1 bg-slate-900 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition cursor-pointer"
+                className="flex-1 bg-[#0077E6] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#0062BE] disabled:opacity-50 transition cursor-pointer"
               >
                 {savingEdit ? "Saving..." : "Save Changes"}
               </button>

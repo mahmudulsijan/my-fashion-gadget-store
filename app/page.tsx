@@ -414,7 +414,6 @@ export default function HomeStore() {
 
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
-  const [regPhone, setRegPhone] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(true);
@@ -754,7 +753,7 @@ export default function HomeStore() {
     setRegStep("form");
     setRegOtpCode("");
     setAuthMode("login");
-    setLoginIdentifier(customerUser?.email || customerUser?.phone || "");
+    setLoginIdentifier(customerUser?.email || "");
     setActiveBottomTab("account");
     setIsAccountModalOpen(true);
   };
@@ -762,37 +761,32 @@ export default function HomeStore() {
   const handleStandardLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
-    const idVal = loginIdentifier.trim();
+    const idVal = loginIdentifier.trim().toLowerCase();
     if (!idVal || !loginPassword.trim()) {
       setLoginError(
         lang === "bn"
-          ? "ইমেইল/ফোন এবং পাসওয়ার্ড দিন।"
-          : "Please enter your email/phone and password."
+          ? "আপনার Gmail এবং পাসওয়ার্ড দিন।"
+          : "Please enter your Gmail address and password."
       );
       return;
     }
 
-    const emailMatch = isValidEmail(idVal);
-    const phoneMatch = isValidBdPhone(idVal);
-    if (!emailMatch && !phoneMatch) {
+    if (!isValidEmail(idVal)) {
       setLoginError(
         lang === "bn"
-          ? "সঠিক ইমেইল অথবা ১১ সংখ্যার মোবাইল নম্বর দিন।"
-          : "Enter a valid email address or 11-digit BD mobile number."
+          ? "সঠিক Gmail ঠিকানা দিন।"
+          : "Please enter a valid Gmail address."
       );
       return;
     }
 
-    const derivedName = emailMatch
-      ? idVal.split("@")[0]
-      : `Member ${idVal.slice(-4)}`;
+    const derivedName = idVal.split("@")[0];
     persistCustomerProfile({
       name: derivedName,
-      email: emailMatch ? idVal : undefined,
-      phone: phoneMatch ? idVal : undefined,
+      email: idVal,
       district: customerDistrict || "Mymensingh",
       address: customerAddress || "",
-      provider: emailMatch ? "email" : "phone",
+      provider: "email",
       verified: true,
     });
 
@@ -830,11 +824,19 @@ export default function HomeStore() {
   const handleForgotPassword = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
-    if (!forgotIdentifier.trim()) return;
+    const cleanEmail = forgotIdentifier.trim().toLowerCase();
+    if (!cleanEmail || !isValidEmail(cleanEmail)) {
+      setLoginError(
+        lang === "bn"
+          ? "সঠিক Gmail ঠিকানা দিন।"
+          : "Please enter a valid Gmail address."
+      );
+      return;
+    }
     setForgotNotice(
       lang === "bn"
-        ? `${forgotIdentifier.trim()}-এ পাসওয়ার্ড রিসেট নির্দেশনা পাঠানো হয়েছে।`
-        : `Password reset instructions sent to ${forgotIdentifier.trim()}.`
+        ? `${cleanEmail}-এ পাসওয়ার্ড রিসেট নির্দেশনা পাঠানো হয়েছে।`
+        : `Password reset instructions sent to ${cleanEmail}.`
     );
   };
 
@@ -843,35 +845,24 @@ export default function HomeStore() {
     setLoginError("");
     setRegOtpNotice("");
 
-    if (
-      !regName.trim() ||
-      !regEmail.trim() ||
-      !regPhone.trim() ||
-      !regPassword
-    ) {
+    if (!regName.trim() || !regEmail.trim() || !regPassword) {
       setLoginError(
         lang === "bn"
-          ? "সব বাধ্যতামূলক তথ্য পূরণ করুন।"
-          : "Please complete all required registration fields."
+          ? "নাম, Gmail এবং পাসওয়ার্ড পূরণ করুন।"
+          : "Please fill in your name, Gmail address, and password."
       );
       return;
     }
+
     if (!isValidEmail(regEmail)) {
       setLoginError(
         lang === "bn"
-          ? "সঠিক ইমেইল ঠিকানা দিন।"
-          : "Please enter a valid email address."
+          ? "সঠিক Gmail ঠিকানা দিন।"
+          : "Please enter a valid Gmail address."
       );
       return;
     }
-    if (!isValidBdPhone(regPhone)) {
-      setLoginError(
-        lang === "bn"
-          ? "সঠিক ১১ সংখ্যার মোবাইল নম্বর দিন।"
-          : "Please enter a valid 11-digit Bangladesh mobile number."
-      );
-      return;
-    }
+
     if (regPassword.length < 6) {
       setLoginError(
         lang === "bn"
@@ -880,6 +871,7 @@ export default function HomeStore() {
       );
       return;
     }
+
     if (regPassword !== regConfirmPassword) {
       setLoginError(
         lang === "bn"
@@ -888,6 +880,7 @@ export default function HomeStore() {
       );
       return;
     }
+
     if (!agreeTerms) {
       setLoginError(
         lang === "bn"
@@ -912,8 +905,8 @@ export default function HomeStore() {
         setLoginError(
           data.message ||
             (lang === "bn"
-              ? "ইমেইলে ভেরিফিকেশন কোড পাঠানো যায়নি।"
-              : "Could not send verification code to email.")
+              ? "Gmail-এ ভেরিফিকেশন কোড পাঠানো যায়নি।"
+              : "Could not send verification code to Gmail.")
         );
         return;
       }
@@ -946,8 +939,8 @@ export default function HomeStore() {
     if (cleanCode.length < 6) {
       setLoginError(
         lang === "bn"
-          ? "ইমেইলে আসা ৬ ডিজিটের কোডটি লিখুন।"
-          : "Please enter the 6-digit verification code sent to your email."
+          ? "Gmail-এ আসা ৬ ডিজিটের কোডটি লিখুন।"
+          : "Please enter the 6-digit verification code sent to your Gmail."
       );
       return;
     }
@@ -975,7 +968,6 @@ export default function HomeStore() {
       persistCustomerProfile({
         name: regName.trim(),
         email: cleanEmail,
-        phone: regPhone.trim(),
         district: customerDistrict || "Mymensingh",
         address: customerAddress || "",
         provider: "email",
@@ -984,7 +976,6 @@ export default function HomeStore() {
 
       setRegName("");
       setRegEmail("");
-      setRegPhone("");
       setRegPassword("");
       setRegConfirmPassword("");
       setRegOtpCode("");
@@ -994,8 +985,8 @@ export default function HomeStore() {
       setActiveBottomTab("home");
       notify(
         lang === "bn"
-          ? "ইমেইল ভেরিফাই হয়ে অ্যাকাউন্ট তৈরি হয়েছে!"
-          : "Email verified and account created!"
+          ? "Gmail ভেরিফাই হয়ে অ্যাকাউন্ট তৈরি ও লগইন সম্পন্ন হয়েছে!"
+          : "Gmail verified! Account created and logged in."
       );
     } catch {
       setLoginError(
@@ -3012,7 +3003,7 @@ export default function HomeStore() {
         </div>
       )}
 
-      {/* Login / Register (with Email OTP) / Forgot Password Modal */}
+      {/* Login / Register (with Gmail OTP) / Forgot Password Modal */}
       {isAccountModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/75 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-[#1E2B4D] text-white rounded-3xl max-w-5xl w-full overflow-hidden shadow-2xl border border-[#E3E6EB]/20 my-auto">
@@ -3046,11 +3037,6 @@ export default function HomeStore() {
                   {customerUser.email && (
                     <p className="text-xs text-white/80">
                       {customerUser.email}
-                    </p>
-                  )}
-                  {customerUser.phone && (
-                    <p className="text-xs text-white/80 font-mono">
-                      {customerUser.phone}
                     </p>
                   )}
                   <p className="text-xs text-white/60">
@@ -3166,8 +3152,8 @@ export default function HomeStore() {
                       <span className="inline-flex items-center gap-1.5 bg-[#0077E6]/20 text-[#FFB020] border border-[#0077E6]/40 text-[11px] font-bold px-3 py-0.5 rounded-full">
                         <ShieldCheck className="w-3.5 h-3.5" />
                         {lang === "bn"
-                          ? "নিরাপদ কাস্টমার পোর্টাল"
-                          : "Verified Customer Access"}
+                          ? "Gmail অ্যাকাউন্ট লগইন"
+                          : "Gmail Account Sign-In"}
                       </span>
                       <h3 className="text-2xl font-black text-white leading-tight">
                         {lang === "bn" ? (
@@ -3186,12 +3172,12 @@ export default function HomeStore() {
                       </h3>
 
                       <input
-                        type="text"
+                        type="email"
                         required
                         placeholder={
                           lang === "bn"
-                            ? "আপনার ইমেইল বা মোবাইল নম্বর দিন *"
-                            : "Enter your email or mobile number *"
+                            ? "আপনার Gmail ঠিকানা দিন *"
+                            : "Enter your Gmail address *"
                         }
                         value={loginIdentifier}
                         onChange={(e) => setLoginIdentifier(e.target.value)}
@@ -3292,8 +3278,8 @@ export default function HomeStore() {
                           className="text-[#FFB020] hover:underline font-semibold cursor-pointer"
                         >
                           {lang === "bn"
-                            ? "নতুন অ্যাকাউন্ট খুলুন →"
-                            : "Create Account →"}
+                            ? "Gmail দিয়ে অ্যাকাউন্ট খুলুন →"
+                            : "Create Account with Gmail →"}
                         </button>
                         <button
                           type="button"
@@ -3308,12 +3294,6 @@ export default function HomeStore() {
                             : "Guest Shopping →"}
                         </button>
                       </div>
-
-                      <p className="text-[11px] text-white/55 pt-1 leading-relaxed">
-                        {lang === "bn"
-                          ? "আপনার অর্ডার আপডেট ও ডেলিভারি সুবিধার জন্য তথ্য নিরাপদে সংরক্ষিত থাকে।"
-                          : "Your account details are used securely for order updates, tracking, and saved delivery preferences."}
-                      </p>
                     </form>
                   )}
 
@@ -3326,7 +3306,7 @@ export default function HomeStore() {
                         <h3 className="text-xl font-black text-white">
                           {lang === "bn" ? (
                             <>
-                              নতুন{" "}
+                              Gmail দিয়ে{" "}
                               <span className="text-[#FFB020]">
                                 {BRAND_NAME}
                               </span>{" "}
@@ -3334,11 +3314,11 @@ export default function HomeStore() {
                             </>
                           ) : (
                             <>
-                              Create Your{" "}
+                              Create{" "}
                               <span className="text-[#FFB020]">
                                 {BRAND_NAME}
                               </span>{" "}
-                              Account
+                              Account via Gmail
                             </>
                           )}
                         </h3>
@@ -3346,7 +3326,9 @@ export default function HomeStore() {
                         <input
                           type="text"
                           required
-                          placeholder="Full Name *"
+                          placeholder={
+                            lang === "bn" ? "পুরো নাম *" : "Full Name *"
+                          }
                           value={regName}
                           onChange={(e) => setRegName(e.target.value)}
                           className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
@@ -3355,18 +3337,13 @@ export default function HomeStore() {
                         <input
                           type="email"
                           required
-                          placeholder="Email Address *"
+                          placeholder={
+                            lang === "bn"
+                              ? "Gmail ঠিকানা (example@gmail.com) *"
+                              : "Gmail Address (example@gmail.com) *"
+                          }
                           value={regEmail}
                           onChange={(e) => setRegEmail(e.target.value)}
-                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
-                        />
-
-                        <input
-                          type="tel"
-                          required
-                          placeholder="Mobile Number (017XXXXXXXX) *"
-                          value={regPhone}
-                          onChange={(e) => setRegPhone(e.target.value)}
                           className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
                         />
 
@@ -3374,7 +3351,9 @@ export default function HomeStore() {
                           <input
                             type="password"
                             required
-                            placeholder="Password *"
+                            placeholder={
+                              lang === "bn" ? "পাসওয়ার্ড *" : "Password *"
+                            }
                             value={regPassword}
                             onChange={(e) => setRegPassword(e.target.value)}
                             className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
@@ -3382,7 +3361,11 @@ export default function HomeStore() {
                           <input
                             type="password"
                             required
-                            placeholder="Confirm Password *"
+                            placeholder={
+                              lang === "bn"
+                                ? "কনফার্ম পাসওয়ার্ড *"
+                                : "Confirm Password *"
+                            }
                             value={regConfirmPassword}
                             onChange={(e) =>
                               setRegConfirmPassword(e.target.value)
@@ -3398,7 +3381,11 @@ export default function HomeStore() {
                             onChange={(e) => setAgreeTerms(e.target.checked)}
                             className="accent-[#0077E6] rounded"
                           />
-                          <span>Agree to Terms & Conditions</span>
+                          <span>
+                            {lang === "bn"
+                              ? "Terms & Conditions-এ সম্মত আছি"
+                              : "Agree to Terms & Conditions"}
+                          </span>
                         </label>
 
                         {loginError && (
@@ -3413,16 +3400,12 @@ export default function HomeStore() {
                           className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:opacity-50 text-white font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
                         >
                           {regLoading
-                            ? "Sending Code to Email..."
-                            : "Create Account"}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleGoogleAuth(true)}
-                          className="w-full bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold py-2.5 rounded-xl text-xs sm:text-sm transition cursor-pointer"
-                        >
-                          Sign Up with Google
+                            ? lang === "bn"
+                              ? "Gmail-এ কোড পাঠানো হচ্ছে..."
+                              : "Sending Code to Gmail..."
+                            : lang === "bn"
+                            ? "ভেরিফিকেশন কোড পাঠান"
+                            : "Send Verification Code"}
                         </button>
                       </form>
                     ) : (
@@ -3431,7 +3414,9 @@ export default function HomeStore() {
                         className="space-y-3"
                       >
                         <h3 className="text-xl font-black text-white">
-                          Verify Your Email
+                          {lang === "bn"
+                            ? "আপনার Gmail ভেরিফাই করুন"
+                            : "Verify Your Gmail"}
                         </h3>
 
                         {regOtpNotice && (
@@ -3445,7 +3430,11 @@ export default function HomeStore() {
                           inputMode="numeric"
                           maxLength={6}
                           required
-                          placeholder="Enter 6-digit verification code *"
+                          placeholder={
+                            lang === "bn"
+                              ? "৬ ডিজিটের ভেরিফিকেশন কোড লিখুন *"
+                              : "Enter 6-digit verification code *"
+                          }
                           value={regOtpCode}
                           onChange={(e) =>
                             setRegOtpCode(e.target.value.replace(/\D/g, ""))
@@ -3465,8 +3454,12 @@ export default function HomeStore() {
                           className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:opacity-50 text-white font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
                         >
                           {regLoading
-                            ? "Verifying..."
-                            : "Verify & Complete Registration"}
+                            ? lang === "bn"
+                              ? "যাচাই ও লগইন হচ্ছে..."
+                              : "Verifying & Logging In..."
+                            : lang === "bn"
+                            ? "কোড ভেরিফাই করে লগইন করুন"
+                            : "Verify Code & Login"}
                         </button>
 
                         <div className="flex items-center justify-between text-xs pt-1">
@@ -3479,7 +3472,7 @@ export default function HomeStore() {
                             }}
                             className="text-white/70 hover:text-white cursor-pointer"
                           >
-                            ← Edit Details
+                            {lang === "bn" ? "← তথ্য বদলান" : "← Edit Details"}
                           </button>
 
                           <button
@@ -3488,7 +3481,7 @@ export default function HomeStore() {
                             onClick={handleRegisterSubmit}
                             className="text-[#FFB020] hover:underline font-semibold cursor-pointer"
                           >
-                            Resend Code
+                            {lang === "bn" ? "আবার কোড পাঠান" : "Resend Code"}
                           </button>
                         </div>
                       </form>
@@ -3507,13 +3500,18 @@ export default function HomeStore() {
                         className="space-y-2.5"
                       >
                         <input
-                          type="text"
+                          type="email"
                           required
-                          placeholder="Enter Email or Mobile Number *"
+                          placeholder="Enter your Gmail address *"
                           value={forgotIdentifier}
                           onChange={(e) => setForgotIdentifier(e.target.value)}
                           className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white outline-none"
                         />
+                        {loginError && (
+                          <p className="text-xs text-rose-300 font-medium">
+                            {loginError}
+                          </p>
+                        )}
                         <button
                           type="submit"
                           className="w-full bg-[#0077E6] hover:bg-[#0062BE] text-white font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
@@ -3528,7 +3526,10 @@ export default function HomeStore() {
                       )}
                       <button
                         type="button"
-                        onClick={() => setAuthMode("login")}
+                        onClick={() => {
+                          setAuthMode("login");
+                          setLoginError("");
+                        }}
                         className="text-xs text-[#FFB020] hover:underline cursor-pointer"
                       >
                         ← Back to Login
