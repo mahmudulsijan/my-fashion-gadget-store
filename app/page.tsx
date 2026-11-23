@@ -381,7 +381,7 @@ export default function HomeStore() {
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>("home");
 
-  // Real Customer Reviews State (no fake hardcoded reviews)
+  // Real Customer Reviews State
   const [reviews, setReviews] = useState<SimpleReview[]>([]);
   const [reviewName, setReviewName] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
@@ -759,36 +759,6 @@ export default function HomeStore() {
     setIsAccountModalOpen(true);
   };
 
-  const handleAuthBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 4 * 1024 * 1024) {
-      notify(
-        lang === "bn"
-          ? "ব্যানার ছবির সাইজ ৪ MB-এর কম হতে হবে।"
-          : "Banner image must be under 4 MB."
-      );
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setAuthBannerImage(reader.result);
-        try {
-          localStorage.setItem("zavero_login_banner", reader.result);
-        } catch {
-          // ignore
-        }
-        notify(
-          lang === "bn"
-            ? "লগইন ব্যানার ছবি আপডেট হয়েছে"
-            : "Login banner image updated"
-        );
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleStandardLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
@@ -1046,7 +1016,9 @@ export default function HomeStore() {
     } catch (err) {
       console.error("Failed to remove user:", err);
     }
-    notify(lang === "bn" ? "সাইন আউট সম্পন্ন হয়েছে" : "Signed out of your account");
+    notify(
+      lang === "bn" ? "সাইন আউট সম্পন্ন হয়েছে" : "Signed out of your account"
+    );
   };
 
   const handleSelectLocation = (loc: (typeof DELIVERY_LOCATIONS)[number]) => {
@@ -1455,36 +1427,24 @@ export default function HomeStore() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F6F9] text-[#111827] pb-24 lg:pb-0 selection:bg-[#0077E6] selection:text-white">
+    <div className="min-h-screen bg-[#F4F6F9] text-[#111827] pb-24 lg:pb-20 selection:bg-[#0077E6] selection:text-white">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-[#1E2B4D] text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg border border-white/15">
+        <div className="fixed bottom-24 lg:bottom-20 left-1/2 -translate-x-1/2 z-[60] bg-[#1E2B4D] text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg border border-white/15">
           {toastMessage}
         </div>
       )}
 
-      {/* A. Announcement Bar */}
-      <div className="bg-[#1E2B4D] text-white/95 text-xs py-2 px-3 sm:px-4 text-center tracking-wide border-b border-[#E3E6EB]/20">
-        {lang === "bn"
-          ? `${BRAND_NAME} (${BRAND_TAGLINE}) • সারা দেশে COD, bKash, Nagad ও Rocket • ময়মনসিংহের ভেতরে ৳${deliveryConfig.insideMymensingh} এবং বাইরে ৳${deliveryConfig.outsideMymensingh}`
-          : `${BRAND_NAME} — ${BRAND_TAGLINE} • COD, bKash, Nagad & Rocket • Inside Mymensingh ৳${deliveryConfig.insideMymensingh} & Outside Mymensingh ৳${deliveryConfig.outsideMymensingh}`}
-        {deliveryConfig.freeThreshold > 0
-          ? lang === "bn"
-            ? ` • ৳${deliveryConfig.freeThreshold}+ অর্ডারে ফ্রি ডেলিভারি`
-            : ` • Free Delivery over ৳${deliveryConfig.freeThreshold}`
-          : ""}
-      </div>
-
-      {/* B. Sticky Navigation Bar + Mega Menu (Mobile-First Clean Layout) */}
+      {/* Sticky Navigation Bar + Mega Menu (Clean Mobile Brand + Right Search & Language Switch) */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E3E6EB] transition-all">
-        <div className="max-w-7xl mx-auto px-2.5 sm:px-4 h-16 flex items-center justify-between gap-1.5 sm:gap-3">
-          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
               aria-label="Toggle Menu"
-              className="lg:hidden p-2 rounded-lg hover:bg-[#F4F6F9] text-[#111827] cursor-pointer shrink-0">
-            
+              className="lg:hidden p-2 rounded-lg hover:bg-[#F4F6F9] text-[#111827] cursor-pointer shrink-0"
+            >
               {mobileMenuOpen ? (
                 <X className="w-5 h-5" />
               ) : (
@@ -1499,7 +1459,7 @@ export default function HomeStore() {
                 setActiveBottomTab("home");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
-              className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0"
+              className="flex items-center gap-2 shrink-0 min-w-0"
             >
               <img
                 src="/images/zavero-logo.png"
@@ -1510,7 +1470,7 @@ export default function HomeStore() {
                 }}
               />
               <div className="leading-none">
-                <span className="font-black text-sm sm:text-xl tracking-tight text-[#111827] block">
+                <span className="font-black text-base sm:text-xl tracking-tight text-[#111827] block">
                   {BRAND_NAME}
                 </span>
                 <span className="text-[10px] font-semibold text-[#1E2B4D] tracking-wider hidden sm:block">
@@ -1619,12 +1579,13 @@ export default function HomeStore() {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Right Side: Only Search Icon + Language Switch */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setSearchOverlayOpen(true)}
               aria-label="Open Search Overlay"
-              className="w-8 h-8 sm:w-auto sm:h-10 sm:px-3 rounded-full bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] border border-[#E3E6EB] flex items-center justify-center gap-1.5 text-xs font-medium transition cursor-pointer shrink-0"
+              className="w-9 h-9 sm:w-auto sm:h-10 sm:px-3.5 rounded-full bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] border border-[#E3E6EB] flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer shrink-0"
             >
               <Search className="w-4 h-4 text-[#1E2B4D] shrink-0" />
               <span className="hidden md:inline">
@@ -1636,69 +1597,10 @@ export default function HomeStore() {
               type="button"
               onClick={toggleLanguage}
               title="Switch Language (English / বাংলা)"
-              className="h-8 sm:h-10 px-2 sm:px-3 rounded-full border border-[#E3E6EB] bg-white hover:bg-[#F4F6F9] text-[#111827] flex items-center gap-1 text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0"
+              className="h-9 sm:h-10 px-2.5 sm:px-3.5 rounded-full border border-[#E3E6EB] bg-white hover:bg-[#F4F6F9] text-[#111827] flex items-center gap-1 text-xs font-bold transition cursor-pointer shrink-0"
             >
               <Globe className="w-3.5 h-3.5 text-[#1E2B4D] shrink-0" />
               <span>{lang === "en" ? "বাংলা" : "EN"}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={openAccountModal}
-              title={customerUser ? customerUser.name : "Login / Register"}
-              className={`h-8 sm:h-10 px-2 sm:px-3 rounded-full border flex items-center gap-1 text-xs font-semibold transition cursor-pointer shrink-0 ${
-                customerUser
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100"
-                  : "bg-[#1E2B4D] border-[#1E2B4D] text-white hover:bg-[#151F38]"
-              }`}
-            >
-              <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              <span className="hidden sm:inline max-w-[85px] truncate">
-                {customerUser
-                  ? customerUser.name.split(" ")[0]
-                  : lang === "bn"
-                  ? "লগইন"
-                  : "Login"}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => jumpToCatalog({ wishlistOnly: !showWishlistOnly })}
-              title="Wishlist"
-              className={`hidden sm:flex relative p-2.5 rounded-full border transition cursor-pointer shrink-0 ${
-                showWishlistOnly
-                  ? "bg-rose-50 border-rose-200 text-rose-600"
-                  : "bg-white border-[#E3E6EB] text-[#111827] hover:bg-[#F4F6F9]"
-              }`}
-            >
-              <Heart
-                className={`w-4 h-4 ${
-                  wishlist.length > 0 ? "fill-rose-500 text-rose-500" : ""
-                }`}
-              />
-              {wishlist.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                  {wishlist.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setIsCartOpen(true);
-                setActiveBottomTab("cart");
-              }}
-              className="relative flex items-center gap-1 sm:gap-2 bg-[#0077E6] hover:bg-[#0062BE] text-white px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-semibold transition cursor-pointer shadow-xs shrink-0"
-            >
-              <ShoppingBag className="w-4 h-4 shrink-0" />
-              <span>{lang === "bn" ? "কার্ট" : "Cart"}</span>
-              {totalCartCount > 0 && (
-                <span className="bg-[#FFB020] text-[#111827] text-[10px] sm:text-[11px] font-extrabold px-1.5 sm:px-2 py-0.5 rounded-full">
-                  {totalCartCount}
-                </span>
-              )}
             </button>
           </div>
         </div>
@@ -1727,17 +1629,13 @@ export default function HomeStore() {
                 type="button"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  openAccountModal();
+                  jumpToCatalog({ wishlistOnly: !showWishlistOnly });
                 }}
-                className="inline-flex items-center gap-1.5 bg-[#1E2B4D] text-white px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer"
+                className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer"
               >
-                <User className="w-3.5 h-3.5" />
+                <Heart className="w-3.5 h-3.5" />
                 <span>
-                  {customerUser
-                    ? customerUser.name
-                    : lang === "bn"
-                    ? "লগইন / রেজিস্টার"
-                    : "Login / Register"}
+                  {lang === "bn" ? "উইশলিস্ট" : "Wishlist"} ({wishlist.length})
                 </span>
               </button>
             </div>
@@ -2514,7 +2412,9 @@ export default function HomeStore() {
       {/* H. Why Choose Us */}
       <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-12">
         <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111827] mb-5">
-          {lang === "bn" ? `কেন ${BRAND_NAME} বেছে নেবেন` : `Why Choose ${BRAND_NAME}`}
+          {lang === "bn"
+            ? `কেন ${BRAND_NAME} বেছে নেবেন`
+            : `Why Choose ${BRAND_NAME}`}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-[#E3E6EB] flex items-start gap-3.5">
@@ -2885,7 +2785,7 @@ export default function HomeStore() {
         </div>
       </footer>
 
-     {/* Floating WhatsApp Icon Only (No Phone Number Exposed) & Scroll-to-Top */}
+      {/* Floating WhatsApp Icon & Scroll-to-Top */}
       <div className="fixed bottom-24 right-4 sm:right-6 z-40 flex flex-col gap-2.5">
         {showScrollTop && (
           <button
@@ -2908,7 +2808,7 @@ export default function HomeStore() {
         </a>
       </div>
 
-      {/* Floating Bottom Navigation Bar (Visible on Mobile, Tablet & Desktop) */}
+      {/* Floating Bottom Navigation Bar (Cart & Login live here) */}
       <nav className="fixed bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-xl z-40 bg-white/95 backdrop-blur-md border border-[#E3E6EB] rounded-full shadow-xl px-2 sm:px-3 py-1.5">
         <div className="grid grid-cols-5 items-center text-[11px] sm:text-xs font-semibold">
           <button
@@ -3265,12 +3165,15 @@ export default function HomeStore() {
                     <form onSubmit={handleStandardLogin} className="space-y-3">
                       <span className="inline-flex items-center gap-1.5 bg-[#0077E6]/20 text-[#FFB020] border border-[#0077E6]/40 text-[11px] font-bold px-3 py-0.5 rounded-full">
                         <ShieldCheck className="w-3.5 h-3.5" />
-                        {lang === "bn" ? "নিরাপদ কাস্টমার পোর্টাল" : "Verified Customer Access"}
+                        {lang === "bn"
+                          ? "নিরাপদ কাস্টমার পোর্টাল"
+                          : "Verified Customer Access"}
                       </span>
                       <h3 className="text-2xl font-black text-white leading-tight">
                         {lang === "bn" ? (
                           <>
-                            আপনার <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
+                            আপনার{" "}
+                            <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
                             অ্যাকাউন্টে লগইন করুন
                           </>
                         ) : (
@@ -3330,7 +3233,9 @@ export default function HomeStore() {
                             onChange={(e) => setRememberMe(e.target.checked)}
                             className="accent-[#0077E6] rounded"
                           />
-                          <span>{lang === "bn" ? "মনে রাখুন" : "Remember Me"}</span>
+                          <span>
+                            {lang === "bn" ? "মনে রাখুন" : "Remember Me"}
+                          </span>
                         </label>
 
                         <button
@@ -3421,13 +3326,18 @@ export default function HomeStore() {
                         <h3 className="text-xl font-black text-white">
                           {lang === "bn" ? (
                             <>
-                              নতুন <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
+                              নতুন{" "}
+                              <span className="text-[#FFB020]">
+                                {BRAND_NAME}
+                              </span>{" "}
                               অ্যাকাউন্ট তৈরি করুন
                             </>
                           ) : (
                             <>
                               Create Your{" "}
-                              <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
+                              <span className="text-[#FFB020]">
+                                {BRAND_NAME}
+                              </span>{" "}
                               Account
                             </>
                           )}
@@ -3627,7 +3537,7 @@ export default function HomeStore() {
                   )}
                 </div>
 
-                {/* Right Trusted Brand Showcase Column (No Change Banner Button) */}
+                {/* Right Trusted Brand Showcase Column */}
                 <div className="lg:col-span-6 relative min-h-[280px] lg:min-h-full bg-[#111827] flex flex-col justify-between p-6 sm:p-8 overflow-hidden">
                   <img
                     src={authBannerImage}
