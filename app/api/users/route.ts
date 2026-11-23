@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import mongoose, { Schema, Model } from "mongoose";
+import { connectDB } from "@/app/lib/mongodb";
 
 interface IUser {
   name: string;
@@ -36,30 +37,6 @@ const User: Model<IUser> =
   (mongoose.models.User as Model<IUser>) ||
   mongoose.model<IUser>("User", UserSchema);
 
-const MONGODB_URI = process.env.MONGODB_URI || process.env.DATABASE_URL || "";
-
-declare global {
-  // eslint-disable-next-line no-var
-  var _mongooseUsersCache:
-    | { conn: typeof mongoose | null; promise: Promise<typeof mongoose> | null }
-    | undefined;
-}
-
-const cached = global._mongooseUsersCache || { conn: null, promise: null };
-global._mongooseUsersCache = cached;
-
-async function connectDB() {
-  if (cached.conn) return cached.conn;
-  if (!MONGODB_URI) {
-    throw new Error("MONGODB_URI environment variable is not set");
-  }
-  if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI).then((m) => m);
-  }
-  cached.conn = await cached.promise;
-  return cached.conn;
-}
-
 // অ্যাডমিন প্যানেলে সব লগইন/রেজিস্টার ইউজার আনার জন্য
 export async function GET() {
   try {
@@ -75,7 +52,7 @@ export async function GET() {
   } catch (error) {
     console.error("GET /api/users error:", error);
     return NextResponse.json(
-      { success: false, message: "ইউজার লিস্ট লোড করতে সমস্যা হয়েছে" },
+      { success: false, message: "ইউজার লিস্ট লোড করতে সমস্যা হয়েছে" },
       { status: 500 }
     );
   }
@@ -130,7 +107,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("POST /api/users error:", error);
     return NextResponse.json(
-      { success: false, message: "ইউজার তথ্য সেভ করতে সমস্যা হয়েছে" },
+      { success: false, message: "ইউজার তথ্য সেভ করতে সমস্যা হয়েছে" },
       { status: 500 }
     );
   }
@@ -146,7 +123,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!id && !email) {
       return NextResponse.json(
-        { success: false, message: "id অথবা email প্রয়োজন" },
+        { success: false, message: "id অথবা email প্রয়োজন" },
         { status: 400 }
       );
     }
@@ -157,19 +134,19 @@ export async function DELETE(req: NextRequest) {
 
     if (!deleted) {
       return NextResponse.json(
-        { success: false, message: "ইউজার পাওয়া যায়নি" },
+        { success: false, message: "ইউজার পাওয়া যায়নি" },
         { status: 404 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: "ইউজার ডিলিট করা হয়েছে",
+      message: "ইউজার ডিলিট করা হয়েছে",
     });
   } catch (error) {
     console.error("DELETE /api/users error:", error);
     return NextResponse.json(
-      { success: false, message: "ইউজার ডিলিট করতে সমস্যা হয়েছে" },
+      { success: false, message: "ইউজার ডিলিট করতে সমস্যা হয়েছে" },
       { status: 500 }
     );
   }

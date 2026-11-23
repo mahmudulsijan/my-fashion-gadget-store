@@ -13,18 +13,22 @@ import {
   Truck,
   Package,
   Lock,
+  Sun,
+  Moon,
 } from "lucide-react";
 
-const BRAND_NAME = "ZAVERO";
-const BRAND_TAGLINE = "Explore Beyond Trends";
-const SUPPORT_EMAIL = "zavero.trends.bd@gmail.com";
+const BRAND_NAME = "MAVÉRON";
+const BRAND_TAGLINE = "ELEVATE YOUR EVERYDAY";
+const SUPPORT_EMAIL = "maveron.store@gmail.com";
 
 type Lang = "en" | "bn";
+type ThemeMode = "night" | "light";
 
 export default function LoginPage() {
   const router = useRouter();
 
   const [lang, setLang] = useState<Lang>("bn");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("night");
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -32,11 +36,53 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const isLight = themeMode === "light";
+
+  const t = {
+    pageBg: isLight
+      ? "bg-[#F4F4F6] text-[#111114]"
+      : "bg-[#09090B] text-[#F4F4F5]",
+    headerBg: isLight
+      ? "bg-white/95 backdrop-blur-md border-b border-zinc-200"
+      : "bg-[#09090B]/95 backdrop-blur-md border-b border-zinc-800",
+    surface: isLight
+      ? "bg-white border border-zinc-200 shadow-sm"
+      : "bg-[#121216] border border-zinc-800 shadow-xl",
+    pillBtn: isLight
+      ? "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300"
+      : "bg-zinc-900 hover:bg-zinc-800 text-zinc-100 border border-zinc-700",
+    input: isLight
+      ? "bg-zinc-100 border border-zinc-300 text-[#111114] placeholder:text-zinc-500 focus:border-zinc-500"
+      : "bg-zinc-900 border border-zinc-700 text-white placeholder:text-zinc-500 focus:border-zinc-400",
+    titleText: isLight ? "text-[#111114]" : "text-white",
+    bodyText: isLight ? "text-zinc-700" : "text-zinc-300",
+    mutedText: isLight ? "text-zinc-500" : "text-zinc-400",
+    cta: isLight
+      ? "bg-gradient-to-b from-[#27272A] via-[#18181B] to-[#09090B] hover:opacity-95 text-white"
+      : "bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-400 hover:brightness-105 text-zinc-950",
+    badge: isLight
+      ? "bg-zinc-100 text-zinc-900 border border-zinc-300"
+      : "bg-zinc-900 text-zinc-200 border border-zinc-700",
+    trustPanel: isLight
+      ? "bg-[#18181B] text-white"
+      : "bg-[#0E0E12] text-white border-t lg:border-t-0 lg:border-l border-zinc-800",
+    footerBg: isLight
+      ? "bg-white border-t border-zinc-200 text-zinc-600"
+      : "bg-[#0E0E12] border-t border-zinc-800 text-zinc-400",
+  };
+
   useEffect(() => {
     try {
-      const savedLang = localStorage.getItem("zavero_store_lang");
+      const savedLang =
+        localStorage.getItem("maveron_store_lang") ||
+        localStorage.getItem("zavero_store_lang");
       if (savedLang === "en" || savedLang === "bn") {
         setLang(savedLang);
+      }
+
+      const savedTheme = localStorage.getItem("maveron_theme_mode");
+      if (savedTheme === "night" || savedTheme === "light") {
+        setThemeMode(savedTheme);
       }
     } catch {
       // ignore
@@ -47,7 +93,17 @@ export default function LoginPage() {
     const next: Lang = lang === "en" ? "bn" : "en";
     setLang(next);
     try {
-      localStorage.setItem("zavero_store_lang", next);
+      localStorage.setItem("maveron_store_lang", next);
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleThemeMode = () => {
+    const next: ThemeMode = themeMode === "night" ? "light" : "night";
+    setThemeMode(next);
+    try {
+      localStorage.setItem("maveron_theme_mode", next);
     } catch {
       // ignore
     }
@@ -121,21 +177,38 @@ export default function LoginPage() {
               : "Invalid or expired verification code.")
         );
       } else {
+        const resolvedName =
+          String(data?.user?.name || data?.name || "").trim() ||
+          cleanEmail.split("@")[0] ||
+          `${BRAND_NAME} Member`;
+        const resolvedDistrict = String(
+          data?.user?.district || "Mymensingh"
+        ).trim();
+        const resolvedAddress = String(data?.user?.address || "").trim();
+
+        const userPayload = {
+          name: resolvedName,
+          email: cleanEmail,
+          district: resolvedDistrict,
+          address: resolvedAddress,
+          provider: "email",
+          verified: true,
+        };
+
         try {
-          const fallbackName = cleanEmail.split("@")[0] || "ZAVERO Member";
-          localStorage.setItem(
-            "zavero_user",
-            JSON.stringify({
-              name: fallbackName,
-              email: cleanEmail,
-              district: "Mymensingh",
-              address: "",
-              provider: "email",
-              verified: true,
-            })
-          );
+          localStorage.setItem("maveron_user", JSON.stringify(userPayload));
         } catch {
           // ignore
+        }
+
+        try {
+          await fetch("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(userPayload),
+          });
+        } catch (syncErr) {
+          console.error("Failed to sync verified user to /api/users:", syncErr);
         }
 
         setMessage(
@@ -159,34 +232,63 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F6F9] text-[#111827] flex flex-col justify-between">
+    <div
+      suppressHydrationWarning
+      className={`min-h-screen flex flex-col justify-between transition-colors duration-200 ${t.pageBg}`}
+    >
       {/* Top Bar */}
-      <header className="bg-white border-b border-[#E3E6EB] sticky top-0 z-20">
+      <header className={`sticky top-0 z-20 ${t.headerBg}`}>
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#111827] hover:text-[#0077E6] transition"
+            className={`inline-flex items-center gap-2 text-xs sm:text-sm font-semibold transition whitespace-nowrap ${t.titleText}`}
           >
             <ArrowLeft className="w-4 h-4 shrink-0" />
             <span>{lang === "bn" ? "স্টোরে ফিরুন" : "Back to Store"}</span>
           </Link>
 
-          <div className="flex items-center gap-2.5">
-            <div className="text-right leading-none">
-              <span className="font-black text-sm sm:text-base tracking-tight text-[#111827] block">
+          <div className="flex items-center gap-2">
+            <div className="text-right leading-none mr-1">
+              <span
+                className={`font-black text-sm sm:text-base tracking-wider block ${t.titleText}`}
+              >
                 {BRAND_NAME}
               </span>
-              <span className="text-[10px] font-medium text-[#4B5563] hidden sm:block">
+              <span
+                className={`text-[9px] tracking-[0.18em] font-medium hidden sm:block ${t.mutedText}`}
+              >
                 {BRAND_TAGLINE}
               </span>
             </div>
 
             <button
               type="button"
-              onClick={toggleLanguage}
-              className="h-9 px-3 rounded-full border border-[#E3E6EB] bg-white hover:bg-[#F4F6F9] text-[#111827] flex items-center gap-1 text-xs font-bold transition cursor-pointer"
+              onClick={toggleThemeMode}
+              aria-label="Toggle Light or Night Mode"
+              className={`h-9 px-3 rounded-full flex items-center gap-1.5 text-xs font-bold transition cursor-pointer ${t.pillBtn}`}
             >
-              <Globe className="w-3.5 h-3.5 text-[#1E2B4D]" />
+              {themeMode === "night" ? (
+                <Sun className="w-3.5 h-3.5" />
+              ) : (
+                <Moon className="w-3.5 h-3.5" />
+              )}
+              <span className="hidden sm:inline">
+                {themeMode === "night"
+                  ? lang === "bn"
+                    ? "লাইট"
+                    : "Light"
+                  : lang === "bn"
+                  ? "নাইট"
+                  : "Night"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              className={`h-9 px-3 rounded-full flex items-center gap-1 text-xs font-bold transition cursor-pointer ${t.pillBtn}`}
+            >
+              <Globe className={`w-3.5 h-3.5 ${t.mutedText}`} />
               <span>{lang === "en" ? "বাংলা" : "EN"}</span>
             </button>
           </div>
@@ -195,25 +297,29 @@ export default function LoginPage() {
 
       {/* Main Card */}
       <main className="flex-1 flex items-center justify-center px-4 py-8 sm:py-10">
-        <div className="w-full max-w-4xl bg-white border border-[#E3E6EB] rounded-3xl shadow-sm overflow-hidden grid lg:grid-cols-12">
+        <div
+          className={`w-full max-w-4xl rounded-3xl overflow-hidden grid lg:grid-cols-12 ${t.surface}`}
+        >
           {/* Left Form Panel */}
           <div className="lg:col-span-7 p-6 sm:p-8 flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <span className="inline-flex items-center gap-1.5 bg-[#0077E6]/10 text-[#0077E6] border border-[#0077E6]/25 text-[11px] font-bold px-3 py-1 rounded-full">
+                <span
+                  className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full ${t.badge}`}
+                >
                   <ShieldCheck className="w-3.5 h-3.5" />
                   {lang === "bn"
                     ? "নিরাপদ ইমেইল OTP সাইন-ইন"
                     : "Protected One-Time Email Sign-In"}
                 </span>
 
-                <h1 className="text-2xl font-black text-[#111827] pt-1">
+                <h1 className={`text-2xl font-black pt-1 ${t.titleText}`}>
                   {lang === "bn"
                     ? `${BRAND_NAME} অ্যাকাউন্টে লগইন করুন`
                     : `Sign In to ${BRAND_NAME}`}
                 </h1>
 
-                <p className="text-xs sm:text-sm text-[#4B5563] leading-relaxed">
+                <p className={`text-xs sm:text-sm leading-relaxed ${t.mutedText}`}>
                   {step === "email"
                     ? lang === "bn"
                       ? "আপনার ইমেইলে একটি ৬ ডিজিটের ভেরিফিকেশন কোড পাঠানো হবে। কোনো অতিরিক্ত পাসওয়ার্ড মনে রাখার প্রয়োজন নেই।"
@@ -225,13 +331,13 @@ export default function LoginPage() {
               </div>
 
               {error && (
-                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm font-medium">
+                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs sm:text-sm font-medium">
                   {error}
                 </div>
               )}
 
               {message && (
-                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-medium">
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs sm:text-sm font-medium">
                   {message}
                 </div>
               )}
@@ -239,18 +345,22 @@ export default function LoginPage() {
               {step === "email" ? (
                 <form onSubmit={handleSendCode} className="space-y-4">
                   <div>
-                    <label className="block text-xs sm:text-sm font-semibold text-[#111827] mb-1.5">
+                    <label
+                      className={`block text-xs sm:text-sm font-semibold mb-1.5 ${t.titleText}`}
+                    >
                       {lang === "bn" ? "ইমেইল ঠিকানা" : "Email Address"}
                     </label>
                     <div className="relative">
-                      <Mail className="w-4 h-4 text-[#4B5563] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <Mail
+                        className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${t.mutedText}`}
+                      />
                       <input
                         type="email"
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="example@gmail.com"
-                        className="w-full pl-10 pr-3.5 py-2.5 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl text-sm text-[#111827] outline-none focus:border-[#0077E6] transition"
+                        className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl text-sm outline-none transition ${t.input}`}
                       />
                     </div>
                   </div>
@@ -258,7 +368,7 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-bold rounded-xl transition disabled:opacity-50 cursor-pointer shadow-xs"
+                    className={`w-full py-3 px-4 text-sm font-extrabold rounded-xl transition disabled:opacity-50 cursor-pointer shadow-xs ${t.cta}`}
                   >
                     {loading
                       ? lang === "bn"
@@ -272,11 +382,15 @@ export default function LoginPage() {
               ) : (
                 <form onSubmit={handleVerifyCode} className="space-y-4">
                   <div>
-                    <label className="block text-xs sm:text-sm font-semibold text-[#111827] mb-1.5">
+                    <label
+                      className={`block text-xs sm:text-sm font-semibold mb-1.5 ${t.titleText}`}
+                    >
                       {lang === "bn" ? "৬ ডিজিটের কোড" : "6-Digit Code"}
                     </label>
                     <div className="relative">
-                      <KeyRound className="w-4 h-4 text-[#4B5563] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <KeyRound
+                        className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${t.mutedText}`}
+                      />
                       <input
                         type="text"
                         inputMode="numeric"
@@ -287,7 +401,7 @@ export default function LoginPage() {
                           setCode(e.target.value.replace(/\D/g, ""))
                         }
                         placeholder="123456"
-                        className="w-full pl-10 pr-3.5 py-2.5 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl text-center text-lg tracking-widest font-bold text-[#111827] outline-none focus:border-[#0077E6] transition"
+                        className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl text-center text-lg tracking-widest font-bold outline-none transition ${t.input}`}
                       />
                     </div>
                   </div>
@@ -295,7 +409,7 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 px-4 bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-bold rounded-xl transition disabled:opacity-50 cursor-pointer shadow-xs"
+                    className={`w-full py-3 px-4 text-sm font-extrabold rounded-xl transition disabled:opacity-50 cursor-pointer shadow-xs ${t.cta}`}
                   >
                     {loading
                       ? lang === "bn"
@@ -315,7 +429,7 @@ export default function LoginPage() {
                         setError("");
                         setMessage("");
                       }}
-                      className="text-[#4B5563] hover:text-[#111827] hover:underline cursor-pointer"
+                      className={`hover:underline cursor-pointer ${t.mutedText}`}
                     >
                       {lang === "bn" ? "ইমেইল পরিবর্তন করুন" : "Change Email"}
                     </button>
@@ -324,7 +438,7 @@ export default function LoginPage() {
                       type="button"
                       disabled={loading}
                       onClick={handleSendCode}
-                      className="text-[#0077E6] font-semibold hover:underline cursor-pointer"
+                      className={`font-semibold hover:underline cursor-pointer ${t.titleText}`}
                     >
                       {lang === "bn" ? "আবার কোড পাঠান" : "Resend Code"}
                     </button>
@@ -333,9 +447,13 @@ export default function LoginPage() {
               )}
             </div>
 
-            <div className="pt-4 border-t border-[#E3E6EB] flex flex-wrap items-center justify-between gap-2 text-xs text-[#4B5563]">
+            <div
+              className={`pt-4 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+                t.mutedText
+              } ${isLight ? "border-zinc-200" : "border-zinc-800"}`}
+            >
               <span className="inline-flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-[#1E2B4D]" />
+                <Lock className="w-3.5 h-3.5" />
                 {lang === "bn"
                   ? "আপনার সেশন ও তথ্য সুরক্ষিত"
                   : "Your session details stay private"}
@@ -343,7 +461,7 @@ export default function LoginPage() {
 
               <Link
                 href="/track-order"
-                className="font-semibold text-[#0077E6] hover:underline"
+                className={`font-semibold hover:underline ${t.titleText}`}
               >
                 {lang === "bn" ? "অর্ডার ট্র্যাক করুন →" : "Track an Order →"}
               </Link>
@@ -351,26 +469,28 @@ export default function LoginPage() {
           </div>
 
           {/* Right Brand Trust Panel */}
-          <div className="lg:col-span-5 bg-[#1E2B4D] text-white p-6 sm:p-8 flex flex-col justify-between space-y-6">
+          <div
+            className={`lg:col-span-5 p-6 sm:p-8 flex flex-col justify-between space-y-6 ${t.trustPanel}`}
+          >
             <div className="space-y-2">
-              <span className="text-[11px] font-bold uppercase tracking-widest text-[#FFB020]">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-300">
                 {BRAND_NAME} • {BRAND_TAGLINE}
               </span>
-              <h2 className="text-xl font-bold leading-snug">
+              <h2 className="text-xl font-bold leading-snug text-white">
                 {lang === "bn"
                   ? "বিশ্বস্ত শপিং ও সহজ অর্ডার অভিজ্ঞতা"
                   : "Trusted Shopping Across Bangladesh"}
               </h2>
-              <p className="text-xs text-white/75 leading-relaxed">
+              <p className="text-xs text-zinc-300/80 leading-relaxed">
                 {lang === "bn"
                   ? "ফ্যাশন, ফুটওয়্যার, বিউটি, গ্যাজেট ও মোবাইল অ্যাক্সেসরিজের নির্বিঘ্ন অর্ডার ও ট্র্যাকিং উপভোগ করুন।"
                   : "Enjoy seamless ordering, live order tracking, and flexible payment options across Bangladesh."}
               </p>
             </div>
 
-            <div className="space-y-2.5 text-xs text-white/95">
-              <div className="flex items-center gap-3 bg-white/10 rounded-2xl p-3 border border-white/10">
-                <CheckCircle2 className="w-4 h-4 text-[#FFB020] shrink-0" />
+            <div className="space-y-2.5 text-xs text-zinc-100">
+              <div className="flex items-center gap-3 bg-white/5 rounded-2xl p-3 border border-white/10">
+                <CheckCircle2 className="w-4 h-4 text-zinc-200 shrink-0" />
                 <span>
                   {lang === "bn"
                     ? "১০০% মান যাচাইকৃত অরিজিনাল পণ্য"
@@ -378,8 +498,8 @@ export default function LoginPage() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-3 bg-white/10 rounded-2xl p-3 border border-white/10">
-                <Truck className="w-4 h-4 text-[#FFB020] shrink-0" />
+              <div className="flex items-center gap-3 bg-white/5 rounded-2xl p-3 border border-white/10">
+                <Truck className="w-4 h-4 text-zinc-200 shrink-0" />
                 <span>
                   {lang === "bn"
                     ? "COD, bKash, Nagad ও Rocket পেমেন্ট"
@@ -387,8 +507,8 @@ export default function LoginPage() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-3 bg-white/10 rounded-2xl p-3 border border-white/10">
-                <Package className="w-4 h-4 text-[#FFB020] shrink-0" />
+              <div className="flex items-center gap-3 bg-white/5 rounded-2xl p-3 border border-white/10">
+                <Package className="w-4 h-4 text-zinc-200 shrink-0" />
                 <span>
                   {lang === "bn"
                     ? "রিয়েল-টাইম অর্ডার স্ট্যাটাস আপডেট"
@@ -397,12 +517,12 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-white/10 text-[11px] text-white/65 space-y-1">
+            <div className="pt-2 border-t border-white/10 text-[11px] text-zinc-400 space-y-1">
               <p>
                 {lang === "bn" ? "সাপোর্ট ইমেইল:" : "Support Email:"}{" "}
                 <a
                   href={`mailto:${SUPPORT_EMAIL}`}
-                  className="text-white hover:text-[#FFB020] underline underline-offset-2"
+                  className="text-white hover:underline underline-offset-2"
                 >
                   {SUPPORT_EMAIL}
                 </a>
@@ -413,7 +533,9 @@ export default function LoginPage() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-[#E3E6EB] py-3.5 px-4 text-center text-xs text-[#4B5563]">
+      <footer
+        className={`py-3.5 px-4 text-center text-xs ${t.footerBg}`}
+      >
         © 2026 {BRAND_NAME} — {BRAND_TAGLINE}. All rights reserved.
       </footer>
     </div>

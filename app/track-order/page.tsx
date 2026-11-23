@@ -15,6 +15,8 @@ import {
   MessageCircle,
   Mail,
   X,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 interface TrackedOrderItem {
@@ -36,10 +38,10 @@ interface TrackedOrder {
   createdAt?: string;
 }
 
-const BRAND_NAME = "ZAVERO";
-const BRAND_TAGLINE = "Explore Beyond Trends";
+const BRAND_NAME = "MAVÉRON";
+const BRAND_TAGLINE = "ELEVATE YOUR EVERYDAY";
 const WHATSAPP_WA_LINK = "https://wa.me/8801533919648";
-const SUPPORT_EMAIL = "zavero.trends.bd@gmail.com";
+const SUPPORT_EMAIL = "maveron.store@gmail.com";
 
 const PROGRESS_STEPS = [
   "Pending",
@@ -49,6 +51,7 @@ const PROGRESS_STEPS = [
 ] as const;
 
 type Lang = "en" | "bn";
+type ThemeMode = "night" | "light";
 type StatusFilter = "all" | "Pending" | "Confirmed" | "Shipped" | "Delivered";
 
 function formatOrderDate(rawDate?: string): string | null {
@@ -68,6 +71,7 @@ function formatOrderDate(rawDate?: string): string | null {
 
 export default function TrackOrderPage() {
   const [lang, setLang] = useState<Lang>("en");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("night");
   const [query, setQuery] = useState("");
   const [orders, setOrders] = useState<TrackedOrder[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -76,11 +80,59 @@ export default function TrackOrderPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const isLight = themeMode === "light";
+
+  const t = {
+    pageBg: isLight
+      ? "bg-[#F4F4F6] text-[#111114]"
+      : "bg-[#09090B] text-[#F4F4F5]",
+    topBar: isLight
+      ? "bg-[#18181B] text-zinc-200 border-b border-zinc-800"
+      : "bg-[#121216] text-zinc-300 border-b border-zinc-800",
+    headerBg: isLight
+      ? "bg-white/95 backdrop-blur-md border-b border-zinc-200"
+      : "bg-[#09090B]/95 backdrop-blur-md border-b border-zinc-800",
+    surface: isLight
+      ? "bg-white border border-zinc-200 shadow-2xs"
+      : "bg-[#121216] border border-zinc-800 shadow-sm",
+    surfaceAlt: isLight
+      ? "bg-zinc-100 border border-zinc-200"
+      : "bg-zinc-900 border border-zinc-800",
+    pillBtn: isLight
+      ? "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300"
+      : "bg-zinc-900 hover:bg-zinc-800 text-zinc-100 border border-zinc-700",
+    input: isLight
+      ? "bg-zinc-100 border border-zinc-300 text-[#111114] placeholder:text-zinc-500 focus:border-zinc-500"
+      : "bg-zinc-900 border border-zinc-700 text-white placeholder:text-zinc-500 focus:border-zinc-400",
+    titleText: isLight ? "text-[#111114]" : "text-white",
+    bodyText: isLight ? "text-zinc-700" : "text-zinc-300",
+    mutedText: isLight ? "text-zinc-500" : "text-zinc-400",
+    cta: isLight
+      ? "bg-gradient-to-b from-[#27272A] via-[#18181B] to-[#09090B] hover:opacity-95 text-white"
+      : "bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-400 hover:brightness-105 text-zinc-950",
+    chipActive: isLight
+      ? "bg-[#18181B] text-white"
+      : "bg-white text-zinc-950",
+    chipIdle: isLight
+      ? "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+      : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800",
+    footerBg: isLight
+      ? "bg-white text-zinc-600 border-t border-zinc-200"
+      : "bg-[#0E0E12] text-zinc-400 border-t border-zinc-800",
+  };
+
   useEffect(() => {
     try {
-      const savedLang = localStorage.getItem("zavero_store_lang");
+      const savedLang =
+        localStorage.getItem("maveron_store_lang") ||
+        localStorage.getItem("zavero_store_lang");
       if (savedLang === "en" || savedLang === "bn") {
         setLang(savedLang);
+      }
+
+      const savedTheme = localStorage.getItem("maveron_theme_mode");
+      if (savedTheme === "night" || savedTheme === "light") {
+        setThemeMode(savedTheme);
       }
     } catch {
       // ignore
@@ -91,7 +143,17 @@ export default function TrackOrderPage() {
     const next: Lang = lang === "en" ? "bn" : "en";
     setLang(next);
     try {
-      localStorage.setItem("zavero_store_lang", next);
+      localStorage.setItem("maveron_store_lang", next);
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleThemeMode = () => {
+    const next: ThemeMode = themeMode === "night" ? "light" : "night";
+    setThemeMode(next);
+    try {
+      localStorage.setItem("maveron_theme_mode", next);
     } catch {
       // ignore
     }
@@ -139,6 +201,8 @@ export default function TrackOrderPage() {
   useEffect(() => {
     try {
       const savedUser =
+        localStorage.getItem("maveron_user") ||
+        sessionStorage.getItem("maveron_user") ||
         localStorage.getItem("zavero_user") ||
         sessionStorage.getItem("zavero_user");
       if (savedUser) {
@@ -171,64 +235,91 @@ export default function TrackOrderPage() {
   const visibleOrders = useMemo(() => {
     if (statusFilter === "all") return orders;
     return orders.filter(
-      (ord) => (ord.status || "Pending").toLowerCase() === statusFilter.toLowerCase()
+      (ord) =>
+        (ord.status || "Pending").toLowerCase() === statusFilter.toLowerCase()
     );
   }, [orders, statusFilter]);
 
   const getStatusBadgeStyle = (status: string) => {
     switch (status) {
       case "Delivered":
-        return "bg-emerald-100 text-emerald-800 border-emerald-200";
+        return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
       case "Shipped":
-        return "bg-[#0077E6]/10 text-[#0077E6] border-[#0077E6]/30";
+        return "bg-sky-500/15 text-sky-400 border-sky-500/30";
       case "Confirmed":
-        return "bg-[#1E2B4D]/10 text-[#1E2B4D] border-[#1E2B4D]/30";
+        return "bg-indigo-500/15 text-indigo-400 border-indigo-500/30";
       case "Cancelled":
-        return "bg-rose-100 text-rose-800 border-rose-200";
+        return "bg-rose-500/15 text-rose-400 border-rose-500/30";
       default:
-        return "bg-[#FFB020]/20 text-[#111827] border-[#FFB020]/50";
+        return "bg-amber-500/15 text-amber-400 border-amber-500/30";
     }
   };
 
   return (
     <div
       suppressHydrationWarning
-      className="min-h-screen bg-[#F4F6F9] text-[#111827] flex flex-col"
+      className={`min-h-screen flex flex-col transition-colors duration-200 ${t.pageBg}`}
     >
       {/* Top Announcement Bar */}
-      <div className="bg-[#1E2B4D] text-white text-xs py-2 px-4 text-center border-b border-[#E3E6EB]/20">
+      <div className={`text-xs py-2 px-4 text-center ${t.topBar}`}>
         {lang === "bn"
           ? `${BRAND_NAME} (${BRAND_TAGLINE}) • লাইভ অর্ডার স্ট্যাটাস ট্র্যাকিং`
           : `${BRAND_NAME} — ${BRAND_TAGLINE} • Real-Time Order Status Lookup`}
       </div>
 
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E3E6EB]">
+      <header className={`sticky top-0 z-30 ${t.headerBg}`}>
         <div className="max-w-4xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#111827] hover:text-[#0077E6] transition"
+            className={`inline-flex items-center gap-2 text-xs sm:text-sm font-semibold transition whitespace-nowrap ${t.titleText}`}
           >
             <ArrowLeft className="w-4 h-4 shrink-0" />
             <span>{lang === "bn" ? "স্টোরে ফিরুন" : "Back to Store"}</span>
           </Link>
 
-          <div className="flex items-center gap-2.5">
-            <div className="text-right leading-none">
-              <span className="font-black text-sm sm:text-lg tracking-tight text-[#111827] block">
+          <div className="flex items-center gap-2">
+            <div className="text-right leading-none mr-1">
+              <span
+                className={`font-black text-sm sm:text-lg tracking-wider block ${t.titleText}`}
+              >
                 {BRAND_NAME}
               </span>
-              <span className="text-[10px] font-semibold text-[#4B5563] hidden sm:block">
+              <span
+                className={`text-[9px] tracking-[0.18em] font-semibold hidden sm:block ${t.mutedText}`}
+              >
                 {BRAND_TAGLINE}
               </span>
             </div>
 
             <button
               type="button"
-              onClick={toggleLanguage}
-              className="h-9 px-3 rounded-full border border-[#E3E6EB] bg-white hover:bg-[#F4F6F9] text-[#111827] flex items-center gap-1 text-xs font-bold transition cursor-pointer"
+              onClick={toggleThemeMode}
+              aria-label="Toggle Light or Night Mode"
+              className={`h-9 px-3 rounded-full flex items-center gap-1.5 text-xs font-bold transition cursor-pointer ${t.pillBtn}`}
             >
-              <Globe className="w-3.5 h-3.5 text-[#1E2B4D]" />
+              {themeMode === "night" ? (
+                <Sun className="w-3.5 h-3.5" />
+              ) : (
+                <Moon className="w-3.5 h-3.5" />
+              )}
+              <span className="hidden sm:inline">
+                {themeMode === "night"
+                  ? lang === "bn"
+                    ? "লাইট"
+                    : "Light"
+                  : lang === "bn"
+                  ? "নাইট"
+                  : "Night"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              className={`h-9 px-3 rounded-full flex items-center gap-1 text-xs font-bold transition cursor-pointer ${t.pillBtn}`}
+            >
+              <Globe className={`w-3.5 h-3.5 ${t.mutedText}`} />
               <span>{lang === "en" ? "বাংলা" : "EN"}</span>
             </button>
           </div>
@@ -237,16 +328,22 @@ export default function TrackOrderPage() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-3 sm:px-4 py-8 sm:py-10 space-y-6">
-        <div className="bg-white rounded-3xl border border-[#E3E6EB] p-5 sm:p-8 shadow-2xs space-y-4">
+        <div className={`rounded-3xl p-5 sm:p-8 space-y-4 ${t.surface}`}>
           <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-[#1E2B4D] text-[#FFB020] flex items-center justify-center shrink-0">
+            <div
+              className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                isLight
+                  ? "bg-[#18181B] text-white"
+                  : "bg-gradient-to-br from-zinc-200 to-zinc-400 text-zinc-950"
+              }`}
+            >
               <PackageSearch className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-[#111827]">
+              <h1 className={`text-xl sm:text-2xl font-bold ${t.titleText}`}>
                 {lang === "bn" ? "আপনার অর্ডার ট্র্যাক করুন" : "Track Your Order"}
               </h1>
-              <p className="text-xs sm:text-sm text-[#4B5563]">
+              <p className={`text-xs sm:text-sm ${t.mutedText}`}>
                 {lang === "bn"
                   ? "বর্তমান ডেলিভারি স্ট্যাটাস জানতে মোবাইল নম্বর (যেমন: 017XXXXXXXX) অথবা অর্ডার আইডি দিন।"
                   : "Enter your phone number (e.g. 017XXXXXXXX) or Order ID to check current status."}
@@ -259,7 +356,9 @@ export default function TrackOrderPage() {
             className="flex flex-col sm:flex-row gap-2.5 pt-1"
           >
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-[#4B5563] absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Search
+                className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${t.mutedText}`}
+              />
               <input
                 type="text"
                 required
@@ -270,7 +369,7 @@ export default function TrackOrderPage() {
                     ? "মোবাইল নম্বর বা অর্ডার আইডি লিখুন..."
                     : "Phone number or Order ID..."
                 }
-                className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl pl-10 pr-9 py-3 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                className={`w-full rounded-xl pl-10 pr-9 py-3 text-sm outline-none ${t.input}`}
               />
               {query && (
                 <button
@@ -282,7 +381,7 @@ export default function TrackOrderPage() {
                     setErrorMsg("");
                   }}
                   aria-label="Clear search"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5563] hover:text-[#111827] cursor-pointer"
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${t.mutedText}`}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -291,7 +390,7 @@ export default function TrackOrderPage() {
             <button
               type="submit"
               disabled={loading}
-              className="bg-[#0077E6] hover:bg-[#0062BE] disabled:opacity-50 text-white text-sm font-semibold px-6 py-3 rounded-xl transition cursor-pointer shrink-0"
+              className={`disabled:opacity-50 text-sm font-extrabold px-6 py-3 rounded-xl transition cursor-pointer shrink-0 ${t.cta}`}
             >
               {loading
                 ? lang === "bn"
@@ -305,7 +404,7 @@ export default function TrackOrderPage() {
         </div>
 
         {errorMsg && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-2xl p-4">
+          <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm rounded-2xl p-4">
             {errorMsg}
           </div>
         )}
@@ -313,7 +412,9 @@ export default function TrackOrderPage() {
         {searched && !loading && !errorMsg && (
           <div className="space-y-4">
             {orders.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-2 bg-white rounded-2xl border border-[#E3E6EB] p-3">
+              <div
+                className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl p-3 ${t.surface}`}
+              >
                 <div className="flex flex-wrap items-center gap-1.5">
                   {(
                     [
@@ -329,16 +430,14 @@ export default function TrackOrderPage() {
                       type="button"
                       onClick={() => setStatusFilter(tab.key)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                        statusFilter === tab.key
-                          ? "bg-[#1E2B4D] text-white"
-                          : "bg-[#F4F6F9] text-[#4B5563] hover:bg-[#E3E6EB]"
+                        statusFilter === tab.key ? t.chipActive : t.chipIdle
                       }`}
                     >
                       {lang === "bn" ? tab.bn : tab.en}
                     </button>
                   ))}
                 </div>
-                <span className="text-xs font-semibold text-[#4B5563] px-2">
+                <span className={`text-xs font-semibold px-2 ${t.mutedText}`}>
                   {visibleOrders.length}{" "}
                   {lang === "bn" ? "টি অর্ডার" : "order(s)"}
                 </span>
@@ -346,13 +445,13 @@ export default function TrackOrderPage() {
             )}
 
             {visibleOrders.length === 0 ? (
-              <div className="bg-white rounded-3xl border border-[#E3E6EB] p-8 text-center space-y-2">
-                <p className="text-sm font-semibold text-[#111827]">
+              <div className={`rounded-3xl p-8 text-center space-y-2 ${t.surface}`}>
+                <p className={`text-sm font-semibold ${t.titleText}`}>
                   {lang === "bn"
                     ? `“${query}” এর জন্য কোনো অর্ডার পাওয়া যায়নি`
                     : `No orders found for “${query}”`}
                 </p>
-                <p className="text-xs text-[#4B5563]">
+                <p className={`text-xs ${t.mutedText}`}>
                   {lang === "bn"
                     ? "মোবাইল নম্বর অথবা অর্ডার আইডি আবার যাচাই করে চেষ্টা করুন।"
                     : "Double-check your phone number or Order ID and try again."}
@@ -373,24 +472,28 @@ export default function TrackOrderPage() {
                 return (
                   <div
                     key={order._id}
-                    className="bg-white rounded-3xl border border-[#E3E6EB] p-5 sm:p-6 shadow-2xs space-y-5"
+                    className={`rounded-3xl p-5 sm:p-6 space-y-5 ${t.surface}`}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-[#E3E6EB]">
+                    <div
+                      className={`flex flex-wrap items-start justify-between gap-3 pb-3 border-b ${
+                        isLight ? "border-zinc-200" : "border-zinc-800"
+                      }`}
+                    >
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs text-[#4B5563] font-mono">
+                          <span className={`text-xs font-mono ${t.mutedText}`}>
                             {lang === "bn" ? "অর্ডার আইডি:" : "Order ID:"}{" "}
                             {order._id}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleCopyId(order._id)}
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] px-2 py-0.5 rounded-md transition cursor-pointer"
+                            className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md transition cursor-pointer ${t.pillBtn}`}
                             title="Copy Order ID"
                           >
                             {copiedId === order._id ? (
                               <>
-                                <Check className="w-3 h-3 text-emerald-600" />
+                                <Check className="w-3 h-3 text-emerald-500" />
                                 <span>
                                   {lang === "bn" ? "কপি হয়েছে" : "Copied"}
                                 </span>
@@ -406,12 +509,12 @@ export default function TrackOrderPage() {
                           </button>
                         </div>
 
-                        <h2 className="text-base font-bold text-[#111827]">
+                        <h2 className={`text-base font-bold ${t.titleText}`}>
                           {order.customerName} • {order.phone}
                         </h2>
 
                         {formattedDate && (
-                          <p className="text-xs text-[#4B5563]">
+                          <p className={`text-xs ${t.mutedText}`}>
                             {lang === "bn" ? "অর্ডারের সময়:" : "Placed on:"}{" "}
                             {formattedDate}
                           </p>
@@ -436,7 +539,7 @@ export default function TrackOrderPage() {
 
                     {/* Progress Stepper */}
                     {isCancelled ? (
-                      <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold px-4 py-2.5 rounded-2xl">
+                      <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold px-4 py-2.5 rounded-2xl">
                         {lang === "bn"
                           ? "এই অর্ডারটি বাতিল করা হয়েছে। সহায়তার জন্য সাপোর্টে যোগাযোগ করুন।"
                           : "This order has been cancelled. For assistance, contact support."}
@@ -449,12 +552,18 @@ export default function TrackOrderPage() {
                             <div key={step} className="space-y-1.5">
                               <div
                                 className={`h-2 rounded-full transition ${
-                                  completed ? "bg-[#0077E6]" : "bg-[#E3E6EB]"
+                                  completed
+                                    ? isLight
+                                      ? "bg-[#18181B]"
+                                      : "bg-white"
+                                    : isLight
+                                    ? "bg-zinc-200"
+                                    : "bg-zinc-800"
                                 }`}
                               />
                               <p
                                 className={`text-[11px] font-bold text-center ${
-                                  completed ? "text-[#111827]" : "text-[#4B5563]/60"
+                                  completed ? t.titleText : t.mutedText
                                 }`}
                               >
                                 {step}
@@ -465,15 +574,15 @@ export default function TrackOrderPage() {
                       </div>
                     )}
 
-                    <div className="text-xs sm:text-sm text-[#4B5563] space-y-1">
+                    <div className={`text-xs sm:text-sm space-y-1 ${t.bodyText}`}>
                       <p>
-                        <span className="font-semibold text-[#111827]">
+                        <span className={`font-semibold ${t.titleText}`}>
                           {lang === "bn" ? "ঠিকানা:" : "Address:"}
                         </span>{" "}
                         {order.address}
                       </p>
                       <p>
-                        <span className="font-semibold text-[#111827]">
+                        <span className={`font-semibold ${t.titleText}`}>
                           {lang === "bn" ? "আইটেম:" : "Items:"}
                         </span>{" "}
                         {(order.items || [])
@@ -489,11 +598,15 @@ export default function TrackOrderPage() {
                       </p>
                     </div>
 
-                    <div className="pt-3 border-t border-[#E3E6EB] flex items-center justify-between text-sm font-bold text-[#111827]">
+                    <div
+                      className={`pt-3 border-t flex items-center justify-between text-sm font-bold ${t.titleText} ${
+                        isLight ? "border-zinc-200" : "border-zinc-800"
+                      }`}
+                    >
                       <span>
                         {lang === "bn" ? "সর্বমোট পরিশোধযোগ্য" : "Total Payable"}
                       </span>
-                      <span className="text-[#0077E6]">
+                      <span>
                         ৳{Number(order.totalAmount).toLocaleString()}
                       </span>
                     </div>
@@ -506,7 +619,7 @@ export default function TrackOrderPage() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-[#1E2B4D] text-white/80 border-t border-[#E3E6EB]/20 px-4 py-4 text-xs">
+      <footer className={`px-4 py-4 text-xs ${t.footerBg}`}>
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
           <span>
             {lang === "bn"
@@ -518,16 +631,18 @@ export default function TrackOrderPage() {
               href={WHATSAPP_WA_LINK}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-emerald-300 hover:text-white font-semibold"
+              className="inline-flex items-center gap-1 text-emerald-500 hover:underline font-semibold"
             >
               <MessageCircle className="w-3.5 h-3.5" />
               <span>WhatsApp</span>
             </a>
             <a
               href={`mailto:${SUPPORT_EMAIL}`}
-              className="inline-flex items-center gap-1 hover:text-white"
+              className={`inline-flex items-center gap-1 ${
+                isLight ? "hover:text-zinc-950" : "hover:text-white"
+              }`}
             >
-              <Mail className="w-3.5 h-3.5 text-[#FFB020]" />
+              <Mail className="w-3.5 h-3.5" />
               <span>{SUPPORT_EMAIL}</span>
             </a>
           </div>

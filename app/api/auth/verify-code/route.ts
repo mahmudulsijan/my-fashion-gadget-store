@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import mongoose from "mongoose";
 import { connectDB } from "@/app/lib/mongodb";
 import OtpCode from "@/app/models/OtpCode";
+
+const BRAND_NAME = "MAVÉRON";
 
 function signSession(payload: string, secret: string): string {
   const sig = crypto.createHmac("sha256", secret).update(payload).digest("hex");
@@ -58,6 +61,62 @@ export async function POST(req: NextRequest) {
 
     await OtpCode.deleteOne({ _id: record._id });
 
+    const now = new Date();
+    const defaultName = email.split("@")[0] || `${BRAND_NAME} Member`;
+
+    let savedUser: Record<string, unknown> = {
+      name: defaultName,
+      email,
+      provider: "email",
+      verified: true,
+    };
+
+    try {
+      const db = mongoose.connection.db;
+      if (db) {
+        const usersCollection = db.collection("users");
+        const existing = await usersCollection.findOne({ email });
+
+        await usersCollection.updateOne(
+          { email },
+          {
+            $set: {
+              email,
+              name:
+                typeof existing?.name === "string" && existing.name.trim()
+                  ? existing.name.trim()
+                  : defaultName,
+              provider:
+                typeof existing?.provider === "string" && existing.provider.trim()
+                  ? existing.provider
+                  : "email",
+              verified: true,
+              lastLoginAt: now,
+              updatedAt: now,
+            },
+            $setOnInsert: {
+              createdAt: now,
+            },
+          },
+          { upsert: true }
+        );
+
+        const updatedDoc = await usersCollection.findOne({ email });
+        if (updatedDoc) {
+          savedUser = {
+            _id: String(updatedDoc._id),
+            name: String(updatedDoc.name || defaultName),
+            email: String(updatedDoc.email || email),
+            provider: String(updatedDoc.provider || "email"),
+            verified: Boolean(updatedDoc.verified ?? true),
+            lastLoginAt: updatedDoc.lastLoginAt,
+          };
+        }
+      }
+    } catch (userSaveErr) {
+      console.error("Failed to upsert verified user into users collection:", userSaveErr);
+    }
+
     const secret = process.env.AUTH_SECRET || "dev-secret-change-in-production";
     const sessionData = JSON.stringify({
       email,
@@ -68,7 +127,7 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({
       success: true,
       message: "লগইন সফল হয়েছে",
-      user: { email },
+      user: savedUser,
     });
 
     res.cookies.set("auth_session", token, {

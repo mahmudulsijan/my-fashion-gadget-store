@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import { connectDB } from "@/app/lib/mongodb";
 import { Order } from "@/app/models/Order";
 
+const BRAND_NAME = "MAVÉRON";
+
 type IncomingOrderItem = {
   productId?: string;
   name?: string;
@@ -57,7 +59,7 @@ export async function POST(req: NextRequest) {
 
       return {
         ...(validObjectId ? { productId: validObjectId } : {}),
-        name: String(item?.name || "ZAVERO Product").trim(),
+        name: String(item?.name || `${BRAND_NAME} Product`).trim(),
         price: Number(item?.price) || 0,
         quantity: Math.max(1, Number(item?.quantity) || 1),
         size: String(item?.size || ""),

@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   MessageCircle,
   Sparkles,
+  Sun,
+  Moon,
+  Globe,
 } from "lucide-react";
 
 type ApiProduct = {
@@ -42,10 +45,23 @@ type ProductReview = {
   photo?: string;
 };
 
-const BRAND_NAME = "ZAVERO";
-const BRAND_TAGLINE = "Explore Beyond Trends";
+type Lang = "en" | "bn";
+type ThemeMode = "night" | "light";
+
+const BRAND_NAME = "MAVÉRON";
+const BRAND_TAGLINE = "ELEVATE YOUR EVERYDAY";
 const WHATSAPP_DISPLAY = "01533919648";
 const WHATSAPP_WA_LINK = "https://wa.me/8801533919648";
+
+const CATEGORY_BN: Record<string, string> = {
+  "Men's Fashion": "মেনস ফ্যাশন",
+  "Women's Fashion": "উইমেনস ফ্যাশন",
+  "Men's Footwear": "মেনস ফুটওয়্যার",
+  "Women's Footwear": "উইমেনস ফুটওয়্যার",
+  Gadgets: "গ্যাজেটস",
+  "Beauty Products": "বিউটি প্রোডাক্টস",
+  "Mobile Accessories": "মোবাইল অ্যাক্সেসরিজ",
+};
 
 function parseStringArray(val: unknown): string[] {
   if (Array.isArray(val)) {
@@ -76,7 +92,6 @@ function mapProduct(item: Record<string, unknown>, idx: number): ApiProduct {
       ? "gadget"
       : "fashion";
 
-  // ডাটাবেজ থেকে আসা আসল ছবিগুলোই অগ্রাধিকার পাবে
   const imgs: string[] = [];
   const rawImages = parseStringArray(item.images);
   for (const u of rawImages) {
@@ -104,21 +119,22 @@ function mapProduct(item: Record<string, unknown>, idx: number): ApiProduct {
       ? ["M", "L", "XL"]
       : [];
 
-  // কোনো hardcoded fallback color রাখা হয়নি; ডাটাবেজে যা আছে সেটাই দেখাবে
   const parsedColors = parseStringArray(item.colors);
 
   return {
     id: String(item._id || item.id || idx),
-    name: String(item.name || "ZAVERO Product"),
+    name: String(item.name || `${BRAND_NAME} Product`),
     category,
     subCategory,
     price: Number(item.price) || 0,
     oldPrice:
-      item.oldPrice !== undefined && item.oldPrice !== null && Number(item.oldPrice) > 0
+      item.oldPrice !== undefined &&
+      item.oldPrice !== null &&
+      Number(item.oldPrice) > 0
         ? Number(item.oldPrice)
         : undefined,
     images: imgs,
-    badge: String(item.badge || "ZAVERO Edit"),
+    badge: String(item.badge || `${BRAND_NAME} Edit`),
     sizes: parsedSizes.length > 0 ? parsedSizes : undefined,
     colors: parsedColors.length > 0 ? parsedColors : undefined,
     specs: String(
@@ -139,6 +155,9 @@ function ProductDetailsContent() {
   const params = useParams<{ id: string }>();
   const productId = String(params?.id || "");
 
+  const [lang, setLang] = useState<Lang>("en");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("night");
+
   const [allProducts, setAllProducts] = useState<ApiProduct[]>([]);
   const [product, setProduct] = useState<ApiProduct | null>(null);
   const [loading, setLoading] = useState(true);
@@ -158,6 +177,76 @@ function ProductDetailsContent() {
   const [revRating, setRevRating] = useState(5);
   const [revComment, setRevComment] = useState("");
   const [revPhoto, setRevPhoto] = useState("");
+
+  const isLight = themeMode === "light";
+
+  const t = {
+    pageBg: isLight
+      ? "bg-[#F4F4F6] text-[#111114]"
+      : "bg-[#09090B] text-[#F4F4F5]",
+    headerBg: isLight
+      ? "bg-white/95 backdrop-blur-md border-b border-zinc-200"
+      : "bg-[#09090B]/95 backdrop-blur-md border-b border-zinc-800",
+    surface: isLight
+      ? "bg-white border border-zinc-200"
+      : "bg-[#121216] border border-zinc-800",
+    surfaceAlt: isLight
+      ? "bg-zinc-100 border border-zinc-200"
+      : "bg-zinc-900 border border-zinc-800",
+    pillBtn: isLight
+      ? "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300"
+      : "bg-zinc-900 hover:bg-zinc-800 text-zinc-100 border border-zinc-700",
+    input: isLight
+      ? "bg-zinc-100 border border-zinc-300 text-[#111114] placeholder:text-zinc-500"
+      : "bg-zinc-900 border border-zinc-700 text-white placeholder:text-zinc-500",
+    titleText: isLight ? "text-[#111114]" : "text-white",
+    bodyText: isLight ? "text-zinc-700" : "text-zinc-300",
+    mutedText: isLight ? "text-zinc-500" : "text-zinc-400",
+    cta: isLight
+      ? "bg-gradient-to-b from-[#27272A] via-[#18181B] to-[#09090B] text-white"
+      : "bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-400 text-zinc-950",
+    chipActive: isLight
+      ? "bg-[#18181B] text-white border-[#18181B]"
+      : "bg-white text-zinc-950 border-white",
+    chipIdle: isLight
+      ? "bg-zinc-100 text-zinc-700 border-zinc-200"
+      : "bg-zinc-900 text-zinc-300 border-zinc-800",
+  };
+
+  useEffect(() => {
+    try {
+      const savedLang = localStorage.getItem("maveron_store_lang");
+      if (savedLang === "en" || savedLang === "bn") setLang(savedLang);
+      const savedTheme = localStorage.getItem("maveron_theme_mode");
+      if (savedTheme === "night" || savedTheme === "light")
+        setThemeMode(savedTheme);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const toggleLanguage = () => {
+    const next: Lang = lang === "en" ? "bn" : "en";
+    setLang(next);
+    try {
+      localStorage.setItem("maveron_store_lang", next);
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleThemeMode = () => {
+    const next: ThemeMode = themeMode === "night" ? "light" : "night";
+    setThemeMode(next);
+    try {
+      localStorage.setItem("maveron_theme_mode", next);
+    } catch {
+      // ignore
+    }
+  };
+
+  const catLabelText = (label: string) =>
+    lang === "bn" ? CATEGORY_BN[label] || label : label;
 
   useEffect(() => {
     let active = true;
@@ -205,7 +294,9 @@ function ProductDetailsContent() {
   useEffect(() => {
     if (!productId) return;
     try {
-      const saved = localStorage.getItem(`zavero_reviews_${productId}`);
+      const saved =
+        localStorage.getItem(`maveron_reviews_${productId}`) ||
+        localStorage.getItem(`zavero_reviews_${productId}`);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) setReviews(parsed);
@@ -240,7 +331,7 @@ function ProductDetailsContent() {
     optColor?: string
   ) => {
     try {
-      const raw = localStorage.getItem("zavero_cart");
+      const raw = localStorage.getItem("maveron_cart");
       const current = raw ? JSON.parse(raw) : [];
       const cartItemObj = {
         id: targetProduct.id,
@@ -277,7 +368,7 @@ function ProductDetailsContent() {
           selectedColor: optColor,
         });
       }
-      localStorage.setItem("zavero_cart", JSON.stringify(current));
+      localStorage.setItem("maveron_cart", JSON.stringify(current));
     } catch {
       // ignore
     }
@@ -338,7 +429,7 @@ function ProductDetailsContent() {
     ];
     setReviews(next);
     try {
-      localStorage.setItem(`zavero_reviews_${productId}`, JSON.stringify(next));
+      localStorage.setItem(`maveron_reviews_${productId}`, JSON.stringify(next));
     } catch {
       // ignore
     }
@@ -350,28 +441,46 @@ function ProductDetailsContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f7f7f7] p-6 max-w-6xl mx-auto">
-        <div className="h-96 rounded-3xl bg-neutral-200 animate-pulse" />
+      <div
+        suppressHydrationWarning
+        className={`min-h-screen p-6 max-w-6xl mx-auto ${t.pageBg}`}
+      >
+        <div
+          className={`h-96 rounded-3xl animate-pulse ${
+            isLight ? "bg-zinc-200" : "bg-zinc-800"
+          }`}
+        />
       </div>
     );
   }
 
   if (notFoundItem || !product) {
     return (
-      <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl border border-neutral-200 p-8 max-w-md w-full text-center space-y-4">
-          <h1 className="text-xl font-bold text-neutral-950">
-            Product Not Found
+      <div
+        suppressHydrationWarning
+        className={`min-h-screen flex items-center justify-center p-4 ${t.pageBg}`}
+      >
+        <div
+          className={`rounded-3xl p-8 max-w-md w-full text-center space-y-4 ${t.surface}`}
+        >
+          <h1 className={`text-xl font-bold ${t.titleText}`}>
+            {lang === "bn" ? "প্রোডাক্ট পাওয়া যায়নি" : "Product Not Found"}
           </h1>
-          <p className="text-sm text-neutral-600">
-            এই প্রোডাক্টটি পাওয়া যায়নি বা সরিয়ে ফেলা হয়েছে।
+          <p className={`text-sm ${t.mutedText}`}>
+            {lang === "bn"
+              ? "এই প্রোডাক্টটি পাওয়া যায়নি বা সরিয়ে ফেলা হয়েছে।"
+              : "This product could not be found or is no longer available."}
           </p>
           <Link
             href="/"
-            className="inline-flex items-center gap-2 bg-neutral-950 text-amber-300 text-sm font-semibold px-5 py-2.5 rounded-xl"
+            className={`inline-flex items-center gap-2 text-sm font-extrabold px-5 py-2.5 rounded-xl ${t.cta}`}
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to {BRAND_NAME} Store</span>
+            <span>
+              {lang === "bn"
+                ? `${BRAND_NAME} স্টোরে ফিরুন`
+                : `Back to ${BRAND_NAME} Store`}
+            </span>
           </Link>
         </div>
       </div>
@@ -384,38 +493,73 @@ function ProductDetailsContent() {
       : null;
 
   return (
-    <div className="min-h-screen bg-[#f7f7f7] text-neutral-900 pb-16">
-      <header className="sticky top-0 z-30 bg-white border-b border-neutral-200">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+    <div suppressHydrationWarning className={`min-h-screen pb-16 ${t.pageBg}`}>
+      <header className={`sticky top-0 z-30 ${t.headerBg}`}>
+        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-sm font-bold text-neutral-900 hover:text-amber-700"
+            className={`inline-flex items-center gap-2 text-sm font-bold whitespace-nowrap ${t.titleText}`}
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>{BRAND_NAME} Store</span>
+            <span>{BRAND_NAME}</span>
           </Link>
 
-          <a
-            href={WHATSAPP_WA_LINK}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-full"
-          >
-            <MessageCircle className="w-3.5 h-3.5" />
-            <span>WhatsApp: {WHATSAPP_DISPLAY}</span>
-          </a>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleThemeMode}
+              aria-label="Toggle Theme"
+              className={`h-9 px-3 rounded-full inline-flex items-center gap-1.5 text-xs font-bold cursor-pointer ${t.pillBtn}`}
+            >
+              {themeMode === "night" ? (
+                <Sun className="w-3.5 h-3.5" />
+              ) : (
+                <Moon className="w-3.5 h-3.5" />
+              )}
+              <span className="hidden sm:inline">
+                {themeMode === "night"
+                  ? lang === "bn"
+                    ? "লাইট"
+                    : "Light"
+                  : lang === "bn"
+                  ? "নাইট"
+                  : "Night"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              className={`h-9 px-3 rounded-full inline-flex items-center gap-1 text-xs font-bold cursor-pointer ${t.pillBtn}`}
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>{lang === "en" ? "বাংলা" : "EN"}</span>
+            </button>
+
+            <a
+              href={WHATSAPP_WA_LINK}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-full whitespace-nowrap"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{WHATSAPP_DISPLAY}</span>
+            </a>
+          </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 pt-6 space-y-10">
-        <div className="bg-white rounded-3xl border border-neutral-200 p-5 sm:p-8 grid lg:grid-cols-12 gap-8">
+        <div
+          className={`rounded-3xl p-5 sm:p-8 grid lg:grid-cols-12 gap-8 ${t.surface}`}
+        >
           <div className="lg:col-span-6 space-y-3">
             <div
               onMouseEnter={() => setIsZoomed(true)}
               onMouseLeave={() => setIsZoomed(false)}
               onMouseMove={handleMouseMove}
               onClick={() => setIsZoomed((z) => !z)}
-              className="aspect-square rounded-2xl bg-neutral-100 overflow-hidden border border-neutral-200 cursor-zoom-in relative"
+              className={`aspect-square rounded-2xl overflow-hidden cursor-zoom-in relative ${t.surfaceAlt}`}
             >
               <img
                 src={product.images[activeImgIdx] || product.images[0]}
@@ -437,8 +581,10 @@ function ProductDetailsContent() {
                     onClick={() => setActiveImgIdx(idx)}
                     className={`w-16 h-16 rounded-xl overflow-hidden border-2 shrink-0 cursor-pointer ${
                       activeImgIdx === idx
-                        ? "border-neutral-950"
-                        : "border-neutral-200 opacity-75"
+                        ? isLight
+                          ? "border-zinc-950"
+                          : "border-white"
+                        : "border-zinc-700 opacity-70"
                     }`}
                   >
                     <img
@@ -454,8 +600,8 @@ function ProductDetailsContent() {
 
           <div className="lg:col-span-6 space-y-5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="bg-neutral-950 text-amber-300 text-xs font-bold px-3 py-1 rounded-full">
-                {product.subCategory}
+              <span className={`text-xs font-bold px-3 py-1 rounded-full ${t.chipActive}`}>
+                {catLabelText(product.subCategory)}
               </span>
               {discountPct && (
                 <span className="bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
@@ -465,43 +611,49 @@ function ProductDetailsContent() {
               <span
                 className={`text-xs font-bold px-2.5 py-1 rounded-full ${
                   product.stock > 0
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-rose-100 text-rose-700"
+                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                    : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
                 }`}
               >
                 {product.stock > 0
-                  ? `Stock Quantity: ${product.stock}`
+                  ? lang === "bn"
+                    ? `স্টক: ${product.stock}`
+                    : `Stock Quantity: ${product.stock}`
+                  : lang === "bn"
+                  ? "স্টক শেষ"
                   : "Out of Stock"}
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black text-neutral-950">
+            <h1 className={`text-2xl sm:text-3xl font-black ${t.titleText}`}>
               {product.name}
             </h1>
 
             <div className="flex items-center gap-3">
-              <span className="text-2xl font-black text-neutral-950">
+              <span className={`text-2xl font-black ${t.titleText}`}>
                 ৳{product.price}
               </span>
               {product.oldPrice && product.oldPrice > product.price && (
-                <span className="text-sm text-neutral-400 line-through">
+                <span className={`text-sm line-through ${t.mutedText}`}>
                   ৳{product.oldPrice}
                 </span>
               )}
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-neutral-700 ml-auto">
+              <span
+                className={`inline-flex items-center gap-1 text-xs font-bold ml-auto ${t.bodyText}`}
+              >
                 <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                {product.rating.toFixed(1)} ({product.reviewCount} reviews)
+                {product.rating.toFixed(1)} ({product.reviewCount})
               </span>
             </div>
 
-            <p className="text-sm text-neutral-600 leading-relaxed">
+            <p className={`text-sm leading-relaxed ${t.bodyText}`}>
               {product.description}
             </p>
 
             {product.specs && (
-              <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-3.5 text-xs text-neutral-700">
-                <span className="font-bold text-neutral-950 block mb-1">
-                  Specifications:
+              <div className={`rounded-2xl p-3.5 text-xs ${t.surfaceAlt} ${t.bodyText}`}>
+                <span className={`font-bold block mb-1 ${t.titleText}`}>
+                  {lang === "bn" ? "স্পেসিফিকেশন:" : "Specifications:"}
                 </span>
                 {product.specs}
               </div>
@@ -509,8 +661,8 @@ function ProductDetailsContent() {
 
             {product.sizes && product.sizes.length > 0 && (
               <div className="space-y-1.5">
-                <span className="text-xs font-bold text-neutral-700 block">
-                  Available Sizes:
+                <span className={`text-xs font-bold block ${t.bodyText}`}>
+                  {lang === "bn" ? "সাইজ নির্বাচন করুন:" : "Available Sizes:"}
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {product.sizes.map((sz) => (
@@ -519,9 +671,7 @@ function ProductDetailsContent() {
                       type="button"
                       onClick={() => setSelectedSize(sz)}
                       className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border cursor-pointer ${
-                        selectedSize === sz
-                          ? "bg-neutral-950 text-amber-300 border-neutral-950"
-                          : "bg-white text-neutral-700 border-neutral-200"
+                        selectedSize === sz ? t.chipActive : t.chipIdle
                       }`}
                     >
                       {sz}
@@ -533,8 +683,8 @@ function ProductDetailsContent() {
 
             {product.colors && product.colors.length > 0 && (
               <div className="space-y-1.5">
-                <span className="text-xs font-bold text-neutral-700 block">
-                  Available Colors:
+                <span className={`text-xs font-bold block ${t.bodyText}`}>
+                  {lang === "bn" ? "কালার নির্বাচন করুন:" : "Available Colors:"}
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {product.colors.map((col) => (
@@ -543,9 +693,7 @@ function ProductDetailsContent() {
                       type="button"
                       onClick={() => setSelectedColor(col)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer ${
-                        selectedColor === col
-                          ? "bg-amber-100 text-neutral-950 border-amber-500"
-                          : "bg-white text-neutral-700 border-neutral-200"
+                        selectedColor === col ? t.chipActive : t.chipIdle
                       }`}
                     >
                       {col}
@@ -556,7 +704,7 @@ function ProductDetailsContent() {
             )}
 
             <div className="flex items-center gap-3 pt-2">
-              <div className="flex items-center border border-neutral-200 rounded-xl bg-neutral-50">
+              <div className={`flex items-center rounded-xl ${t.surfaceAlt}`}>
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
@@ -578,37 +726,53 @@ function ProductDetailsContent() {
                 type="button"
                 disabled={product.stock <= 0}
                 onClick={handleAddCurrentToCart}
-                className="flex-1 inline-flex items-center justify-center gap-2 bg-neutral-950 hover:bg-neutral-800 disabled:bg-neutral-300 text-amber-300 text-sm font-bold py-3 px-5 rounded-xl transition cursor-pointer"
+                className={`flex-1 disabled:opacity-45 inline-flex items-center justify-center gap-2 text-sm font-extrabold py-3 px-5 rounded-xl transition cursor-pointer ${t.cta}`}
               >
                 <ShoppingBag className="w-4 h-4" />
                 <span>
                   {addedNotice
-                    ? "Added to Cart!"
+                    ? lang === "bn"
+                      ? "কার্টে যোগ হয়েছে!"
+                      : "Added to Cart!"
+                    : lang === "bn"
+                    ? `কার্টে যোগ করুন — ৳${product.price * quantity}`
                     : `Add to Cart — ৳${product.price * quantity}`}
                 </span>
               </button>
             </div>
 
             <div className="grid sm:grid-cols-3 gap-3 pt-2 text-xs">
-              <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-1">
-                <Truck className="w-4 h-4 text-neutral-900" />
-                <p className="font-bold text-neutral-950">Delivery Info</p>
-                <p className="text-neutral-600">
-                  Inside Mymensingh ৳70, Outside ৳130 (2–4 days).
+              <div className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}>
+                <Truck className={`w-4 h-4 ${t.titleText}`} />
+                <p className={`font-bold ${t.titleText}`}>
+                  {lang === "bn" ? "ডেলিভারি তথ্য" : "Delivery Info"}
+                </p>
+                <p className={t.mutedText}>
+                  {lang === "bn"
+                    ? "ময়মনসিংহের ভেতরে ৳৭০, বাইরে ৳১৩০ (২–৪ দিন)।"
+                    : "Inside Mymensingh ৳70, Outside ৳130 (2–4 days)."}
                 </p>
               </div>
-              <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-1">
-                <RotateCcw className="w-4 h-4 text-neutral-900" />
-                <p className="font-bold text-neutral-950">Return &amp; Exchange</p>
-                <p className="text-neutral-600">
-                  7-day easy size/item exchange with parcel video.
+              <div className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}>
+                <RotateCcw className={`w-4 h-4 ${t.titleText}`} />
+                <p className={`font-bold ${t.titleText}`}>
+                  {lang === "bn" ? "রিটার্ন ও এক্সচেঞ্জ" : "Return & Exchange"}
+                </p>
+                <p className={t.mutedText}>
+                  {lang === "bn"
+                    ? "আনবক্সিং ভিডিওসহ ৭ দিনের এক্সচেঞ্জ সুবিধা।"
+                    : "7-day easy size/item exchange with parcel video."}
                 </p>
               </div>
-              <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-1">
-                <ShieldCheck className="w-4 h-4 text-neutral-900" />
-                <p className="font-bold text-neutral-950">Secure Payment</p>
-                <p className="text-neutral-600">
-                  COD, bKash, Nagad &amp; Rocket supported.
+              <div className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}>
+                <ShieldCheck className={`w-4 h-4 ${t.titleText}`} />
+                <p className={`font-bold ${t.titleText}`}>
+                  {lang === "bn" ? "নিরাপদ পেমেন্ট" : "Secure Payment"}
+                </p>
+                <p className={t.mutedText}>
+                  {lang === "bn"
+                    ? "COD, bKash, Nagad ও Rocket সুবিধা।"
+                    : "COD, bKash, Nagad & Rocket supported."}
                 </p>
               </div>
             </div>
@@ -616,25 +780,29 @@ function ProductDetailsContent() {
         </div>
 
         {frequentlyBoughtTogether.length > 0 && (
-          <div className="bg-white rounded-3xl border border-neutral-200 p-6 space-y-4">
-            <h2 className="text-lg font-bold text-neutral-950">
-              Frequently Bought Together
+          <div className={`rounded-3xl p-6 space-y-4 ${t.surface}`}>
+            <h2 className={`text-lg font-bold ${t.titleText}`}>
+              {lang === "bn"
+                ? "একসাথে বেশি কেনা হয়"
+                : "Frequently Bought Together"}
             </h2>
             <div className="flex flex-wrap items-center gap-4">
               {[product, ...frequentlyBoughtTogether].map((item, i) => (
                 <React.Fragment key={item.id}>
-                  {i > 0 && <Plus className="w-4 h-4 text-neutral-400" />}
-                  <div className="flex items-center gap-3 bg-neutral-50 p-3 rounded-2xl border border-neutral-200">
+                  {i > 0 && <Plus className={`w-4 h-4 ${t.mutedText}`} />}
+                  <div
+                    className={`flex items-center gap-3 p-3 rounded-2xl ${t.surfaceAlt}`}
+                  >
                     <img
                       src={item.images[0]}
                       alt={item.name}
                       className="w-14 h-14 rounded-xl object-cover"
                     />
                     <div>
-                      <p className="text-xs font-bold text-neutral-950">
+                      <p className={`text-xs font-bold ${t.titleText}`}>
                         {item.name}
                       </p>
-                      <p className="text-xs font-extrabold text-amber-800">
+                      <p className={`text-xs font-extrabold ${t.bodyText}`}>
                         ৳{item.price}
                       </p>
                     </div>
@@ -644,18 +812,22 @@ function ProductDetailsContent() {
               <button
                 type="button"
                 onClick={handleAddBundleToCart}
-                className="ml-auto inline-flex items-center gap-1.5 bg-neutral-950 hover:bg-neutral-800 text-amber-300 text-xs font-bold px-4 py-3 rounded-xl cursor-pointer"
+                className={`ml-auto inline-flex items-center gap-1.5 text-xs font-extrabold px-4 py-3 rounded-xl cursor-pointer ${t.cta}`}
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Add Bundle to Cart</span>
+                <span>
+                  {lang === "bn" ? "বান্ডেল কার্টে নিন" : "Add Bundle to Cart"}
+                </span>
               </button>
             </div>
           </div>
         )}
 
-        <div className="bg-white rounded-3xl border border-neutral-200 p-6 space-y-5">
-          <h2 className="text-lg font-bold text-neutral-950">
-            Customer Reviews with Photos ({reviews.length})
+        <div className={`rounded-3xl p-6 space-y-5 ${t.surface}`}>
+          <h2 className={`text-lg font-bold ${t.titleText}`}>
+            {lang === "bn"
+              ? `কাস্টমার রিভিউ (${reviews.length})`
+              : `Customer Reviews with Photos (${reviews.length})`}
           </h2>
 
           <form onSubmit={handleReviewSubmit} className="space-y-3">
@@ -663,15 +835,15 @@ function ProductDetailsContent() {
               <input
                 type="text"
                 required
-                placeholder="Your name *"
+                placeholder={lang === "bn" ? "আপনার নাম *" : "Your name *"}
                 value={revName}
                 onChange={(e) => setRevName(e.target.value)}
-                className="sm:col-span-3 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none"
+                className={`sm:col-span-3 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none ${t.input}`}
               />
               <select
                 value={revRating}
                 onChange={(e) => setRevRating(Number(e.target.value))}
-                className="sm:col-span-2 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs sm:text-sm outline-none"
+                className={`sm:col-span-2 rounded-xl px-3 py-2 text-xs sm:text-sm outline-none ${t.input}`}
               >
                 <option value={5}>5 ★</option>
                 <option value={4}>4 ★</option>
@@ -682,22 +854,36 @@ function ProductDetailsContent() {
               <input
                 type="text"
                 required
-                placeholder="Write review about received product... *"
+                placeholder={
+                  lang === "bn"
+                    ? "রিসিভ করা প্রোডাক্ট নিয়ে রিভিউ লিখুন... *"
+                    : "Write review about received product... *"
+                }
                 value={revComment}
                 onChange={(e) => setRevComment(e.target.value)}
-                className="sm:col-span-5 bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none"
+                className={`sm:col-span-5 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none ${t.input}`}
               />
               <button
                 type="submit"
-                className="sm:col-span-2 bg-neutral-950 text-amber-300 text-xs sm:text-sm font-bold py-2 px-4 rounded-xl cursor-pointer"
+                className={`sm:col-span-2 text-xs sm:text-sm font-extrabold py-2 px-4 rounded-xl cursor-pointer ${t.cta}`}
               >
-                Post Review
+                {lang === "bn" ? "রিভিউ দিন" : "Post Review"}
               </button>
             </div>
 
-            <label className="inline-flex items-center gap-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold px-3.5 py-2 rounded-xl cursor-pointer">
+            <label
+              className={`inline-flex items-center gap-2 text-xs font-semibold px-3.5 py-2 rounded-xl cursor-pointer ${t.pillBtn}`}
+            >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{revPhoto ? "Photo Attached" : "Add Product Photo"}</span>
+              <span>
+                {revPhoto
+                  ? lang === "bn"
+                    ? "ছবি যুক্ত হয়েছে"
+                    : "Photo Attached"
+                  : lang === "bn"
+                  ? "প্রোডাক্টের ছবি যোগ করুন"
+                  : "Add Product Photo"}
+              </span>
               <input
                 type="file"
                 accept="image/*"
@@ -712,18 +898,18 @@ function ProductDetailsContent() {
               {reviews.map((r) => (
                 <div
                   key={r.id}
-                  className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-2"
+                  className={`p-4 rounded-2xl space-y-2 ${t.surfaceAlt}`}
                 >
                   <div className="flex items-center justify-between text-xs font-bold">
-                    <span>{r.name}</span>
-                    <span className="text-amber-500">{r.rating} ★</span>
+                    <span className={t.titleText}>{r.name}</span>
+                    <span className="text-amber-400">{r.rating} ★</span>
                   </div>
-                  <p className="text-xs text-neutral-600">{r.comment}</p>
+                  <p className={`text-xs ${t.bodyText}`}>{r.comment}</p>
                   {r.photo && (
                     <img
                       src={r.photo}
                       alt={r.name}
-                      className="w-full h-36 object-cover rounded-xl border border-neutral-200"
+                      className="w-full h-36 object-cover rounded-xl"
                     />
                   )}
                 </div>
@@ -740,8 +926,8 @@ export default function ProductDetailsPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#f7f7f7] p-6 max-w-6xl mx-auto">
-          <div className="h-96 rounded-3xl bg-neutral-200 animate-pulse" />
+        <div className="min-h-screen bg-[#09090B] p-6 max-w-6xl mx-auto">
+          <div className="h-96 rounded-3xl bg-zinc-800 animate-pulse" />
         </div>
       }
     >

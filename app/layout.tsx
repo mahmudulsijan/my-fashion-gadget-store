@@ -1,43 +1,43 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const BRAND_NAME = "MAVÉRON";
+const BRAND_TAGLINE = "Elevate Your Everyday";
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://my-fashion-gadget-store.vercel.app";
+const LOGO_ICON = "/images/maveron-logo.png";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "ZAVERO — Explore Beyond Trends",
-    template: "%s | ZAVERO",
+    default: `${BRAND_NAME} — ${BRAND_TAGLINE}`,
+    template: `%s | ${BRAND_NAME}`,
   },
-  description:
-    "ZAVERO — Explore Beyond Trends. Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories across Bangladesh.",
+  description: `${BRAND_NAME} — ${BRAND_TAGLINE}. Shop Men's Fashion, Women's Fashion, Men's Footwear, Women's Footwear, Gadgets, Beauty Products, and Mobile Accessories across Bangladesh.`,
   icons: {
-    icon: "/images/zavero-logo.png",
-    shortcut: "/images/zavero-logo.png",
-    apple: "/images/zavero-logo.png",
+    icon: LOGO_ICON,
+    shortcut: LOGO_ICON,
+    apple: LOGO_ICON,
   },
   openGraph: {
     type: "website",
-    siteName: "ZAVERO",
-    title: "ZAVERO — Explore Beyond Trends",
-    description:
-      "ZAVERO — Explore Beyond Trends. Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories across Bangladesh.",
+    siteName: BRAND_NAME,
+    title: `${BRAND_NAME} — ${BRAND_TAGLINE}`,
+    description: `${BRAND_NAME} — ${BRAND_TAGLINE}. Shop Men's Fashion, Women's Fashion, Men's Footwear, Women's Footwear, Gadgets, Beauty Products, and Mobile Accessories across Bangladesh.`,
     url: SITE_URL,
     images: [
       {
         url: "/hero-banner.jpg",
         width: 1200,
         height: 630,
-        alt: "ZAVERO — Explore Beyond Trends Storefront Banner",
+        alt: `${BRAND_NAME} — ${BRAND_TAGLINE} Banner`,
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "ZAVERO — Explore Beyond Trends",
-    description:
-      "ZAVERO — Explore Beyond Trends. Shop Men's & Women's Fashion, Men's & Women's Footwear, Beauty Products, Gadgets & Mobile Accessories across Bangladesh.",
+    title: `${BRAND_NAME} — ${BRAND_TAGLINE}`,
+    description: `${BRAND_NAME} — ${BRAND_TAGLINE}. Shop Men's Fashion, Women's Fashion, Men's Footwear, Women's Footwear, Gadgets, Beauty Products, and Mobile Accessories across Bangladesh.`,
     images: ["/hero-banner.jpg"],
   },
 };
@@ -48,8 +48,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

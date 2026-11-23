@@ -30,9 +30,10 @@ import {
   Flame,
   Star,
   Globe,
+  Sun,
+  Moon,
   EyeOff,
   KeyRound,
-  ChevronDown,
 } from "lucide-react";
 
 type Product = {
@@ -65,7 +66,7 @@ type CustomerProfile = {
   phone?: string;
   district: string;
   address: string;
-  provider?: "email" | "phone" | "google" | "otp";
+  provider?: "email" | "phone" | "google" | "facebook" | "otp";
   verified?: boolean;
 };
 
@@ -90,13 +91,17 @@ type SimpleReview = {
 type SortOption = "featured" | "price-asc" | "price-desc" | "discount";
 type BottomTab = "home" | "categories" | "cart" | "orders" | "account";
 type Lang = "en" | "bn";
+type ThemeMode = "night" | "light";
 type PaymentOption = "Cash on Delivery" | "bKash" | "Nagad" | "Rocket";
 type AuthMode = "login" | "register" | "forgot";
 
-const BRAND_NAME = "ZAVERO";
-const BRAND_TAGLINE = "Explore Beyond Trends";
+const BRAND_NAME = "MAVÉRON";
+const BRAND_TAGLINE = "ELEVATE YOUR EVERYDAY";
 const WHATSAPP_WA_LINK = "https://wa.me/8801533919648";
-const SUPPORT_EMAIL = "zavero.trends.bd@gmail.com";
+const SUPPORT_EMAIL = "maveron.store@gmail.com";
+const HERO_BANNER_SRC = "/hero-banner.jpg";
+const LOGIN_SILK_BG_SRC = "/images/maveron-silk-bg.jpg";
+const LOGO_SRC = "/images/maveron-logo.png";
 
 const DEFAULT_DELIVERY_CONFIG: DeliveryConfig = {
   insideMymensingh: 70,
@@ -159,7 +164,6 @@ const FEATURED_CATEGORIES = [
     subtitle: "Shirts, Panjabi & Streetwear",
     filterKey: "fashion" as const,
     subFilter: "Men's Fashion",
-    gradientClass: "from-[#1E2B4D] via-[#15203B] to-[#0B0C10]",
     image: CATEGORY_IMAGES.mensFashion,
   },
   {
@@ -167,7 +171,6 @@ const FEATURED_CATEGORIES = [
     subtitle: "Co-ords, Kurtis & Modest Wear",
     filterKey: "fashion" as const,
     subFilter: "Women's Fashion",
-    gradientClass: "from-[#22325A] via-[#182342] to-[#0B0C10]",
     image: CATEGORY_IMAGES.womensFashion,
   },
   {
@@ -175,7 +178,6 @@ const FEATURED_CATEGORIES = [
     subtitle: "Sneakers, Loafers & Boots",
     filterKey: "fashion" as const,
     subFilter: "Men's Footwear",
-    gradientClass: "from-[#1E2B4D] via-[#111827] to-[#0B0C10]",
     image: CATEGORY_IMAGES.mensFootwear,
   },
   {
@@ -183,7 +185,6 @@ const FEATURED_CATEGORIES = [
     subtitle: "Heels, Flats & Casual Shoes",
     filterKey: "fashion" as const,
     subFilter: "Women's Footwear",
-    gradientClass: "from-[#1B2847] via-[#141D33] to-[#0B0C10]",
     image: CATEGORY_IMAGES.womensFootwear,
   },
   {
@@ -191,7 +192,6 @@ const FEATURED_CATEGORIES = [
     subtitle: "Smartwatches, Audio & Tech",
     filterKey: "gadget" as const,
     subFilter: "Gadgets",
-    gradientClass: "from-[#172544] via-[#111827] to-[#0B0C10]",
     image: CATEGORY_IMAGES.gadgets,
   },
   {
@@ -199,7 +199,6 @@ const FEATURED_CATEGORIES = [
     subtitle: "Skincare, Serums & Care",
     filterKey: "fashion" as const,
     subFilter: "Beauty Products",
-    gradientClass: "from-[#203057] via-[#151E36] to-[#0B0C10]",
     image: CATEGORY_IMAGES.beautyProducts,
   },
   {
@@ -207,7 +206,6 @@ const FEATURED_CATEGORIES = [
     subtitle: "Chargers, Powerbanks & Cases",
     filterKey: "gadget" as const,
     subFilter: "Mobile Accessories",
-    gradientClass: "from-[#1E2B4D] via-[#162038] to-[#0B0C10]",
     image: CATEGORY_IMAGES.mobileAccessories,
   },
 ];
@@ -362,13 +360,13 @@ function getDiscountPercent(price: number, oldPrice?: number): number | null {
 
 export default function HomeStore() {
   const [lang, setLang] = useState<Lang>("en");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("night");
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
 
   // Navigation & Catalog States
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [megaMenuOpen, setMegaMenuOpen] = useState(false);
   const [searchOverlayOpen, setSearchOverlayOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<
     "all" | "fashion" | "gadget"
@@ -402,14 +400,12 @@ export default function HomeStore() {
   );
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [authBannerImage, setAuthBannerImage] = useState<string>(
-    "/images/zavero-login-banner.png"
-  );
 
-  // Login / Register / Forgot states
+  // Email + Password Login & Sign Up (Create Password) States
   const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
   const [regName, setRegName] = useState("");
@@ -417,12 +413,6 @@ export default function HomeStore() {
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(true);
-
-  // Register Email OTP Verification States
-  const [regStep, setRegStep] = useState<"form" | "verify">("form");
-  const [regOtpCode, setRegOtpCode] = useState("");
-  const [regLoading, setRegLoading] = useState(false);
-  const [regOtpNotice, setRegOtpNotice] = useState("");
 
   const [forgotIdentifier, setForgotIdentifier] = useState("");
   const [forgotNotice, setForgotNotice] = useState("");
@@ -466,6 +456,50 @@ export default function HomeStore() {
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterStatus, setNewsletterStatus] = useState<string>("");
 
+  const isLight = themeMode === "light";
+
+  const t = {
+    pageBg: isLight
+      ? "bg-[#F4F4F6] text-[#111114] selection:bg-[#111114] selection:text-white"
+      : "bg-[#09090B] text-[#F4F4F5] selection:bg-[#E4E4E7] selection:text-[#09090B]",
+    headerBg: isLight
+      ? "bg-white/95 backdrop-blur-md border-b border-zinc-200"
+      : "bg-[#09090B]/95 backdrop-blur-md border-b border-zinc-800",
+    surface: isLight
+      ? "bg-white border border-zinc-200/90 shadow-2xs"
+      : "bg-[#121216] border border-zinc-800 shadow-sm",
+    surfaceAlt: isLight
+      ? "bg-zinc-100/90 border border-zinc-200"
+      : "bg-zinc-900/90 border border-zinc-800",
+    pillBtn: isLight
+      ? "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300/80"
+      : "bg-zinc-900 hover:bg-zinc-800 text-zinc-100 border border-zinc-700/80",
+    titleText: isLight ? "text-[#111114]" : "text-white",
+    headingGradient: isLight
+      ? "bg-gradient-to-r from-[#111114] via-[#27272A] to-[#52525B] bg-clip-text text-transparent"
+      : "bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent",
+    bodyText: isLight ? "text-zinc-700" : "text-zinc-300",
+    mutedText: isLight ? "text-zinc-500" : "text-zinc-400",
+    silverCta: isLight
+      ? "bg-gradient-to-b from-[#27272A] via-[#18181B] to-[#09090B] hover:opacity-95 text-white shadow-sm"
+      : "bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-400 hover:brightness-105 text-zinc-950 shadow-md",
+    chipActive: isLight
+      ? "bg-[#18181B] text-white border-[#18181B]"
+      : "bg-white text-zinc-950 border-white",
+    chipIdle: isLight
+      ? "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border-zinc-200"
+      : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800 border-zinc-800",
+    input: isLight
+      ? "bg-zinc-100 border border-zinc-300 text-[#111114] placeholder:text-zinc-500 focus:border-zinc-500"
+      : "bg-zinc-900 border border-zinc-700 text-white placeholder:text-zinc-500 focus:border-zinc-400",
+    footerBg: isLight
+      ? "bg-white text-zinc-700 border-t border-zinc-200"
+      : "bg-[#0E0E12] text-zinc-300 border-t border-zinc-800",
+    navBg: isLight
+      ? "bg-white/95 backdrop-blur-md border border-zinc-200 shadow-xl"
+      : "bg-[#121216]/95 backdrop-blur-md border border-zinc-800 shadow-2xl",
+  };
+
   const catLabelText = (label: string) =>
     lang === "bn" ? CATEGORY_BN[label] || label : label;
 
@@ -486,17 +520,17 @@ export default function HomeStore() {
       behavior: "instant" as ScrollBehavior,
     });
 
-    const savedLang = localStorage.getItem("zavero_store_lang");
+    const savedLang = localStorage.getItem("maveron_store_lang");
     if (savedLang === "en" || savedLang === "bn") {
       setLang(savedLang);
     }
 
-    const savedBanner = localStorage.getItem("zavero_login_banner");
-    if (savedBanner) {
-      setAuthBannerImage(savedBanner);
+    const savedTheme = localStorage.getItem("maveron_theme_mode");
+    if (savedTheme === "night" || savedTheme === "light") {
+      setThemeMode(savedTheme);
     }
 
-    const savedReviews = localStorage.getItem("zavero_simple_reviews");
+    const savedReviews = localStorage.getItem("maveron_simple_reviews");
     if (savedReviews) {
       try {
         const parsed = JSON.parse(savedReviews);
@@ -513,7 +547,17 @@ export default function HomeStore() {
     const next: Lang = lang === "en" ? "bn" : "en";
     setLang(next);
     try {
-      localStorage.setItem("zavero_store_lang", next);
+      localStorage.setItem("maveron_store_lang", next);
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleThemeMode = () => {
+    const next: ThemeMode = themeMode === "night" ? "light" : "night";
+    setThemeMode(next);
+    try {
+      localStorage.setItem("maveron_theme_mode", next);
     } catch {
       // ignore
     }
@@ -532,9 +576,9 @@ export default function HomeStore() {
             parsed.outsideMymensinghCharge ?? parsed.outsideDhakaCharge ?? 130
           ),
           freeThreshold: Number(parsed.freeDeliveryThreshold ?? 0),
-          bkashNumber: String(parsed.bkashNumber || "01533919648"),
-          nagadNumber: String(parsed.nagadNumber || "01533919648"),
-          rocketNumber: String(parsed.rocketNumber || "01533919648"),
+          bkashNumber: String(parsed.bkashNumber || "01782141520"),
+          nagadNumber: String(parsed.nagadNumber || "01782141520"),
+          rocketNumber: String(parsed.rocketNumber || "015339196489"),
         });
       }
     } catch (err) {
@@ -543,24 +587,26 @@ export default function HomeStore() {
 
     try {
       const savedUser =
-        localStorage.getItem("zavero_user") ||
-        sessionStorage.getItem("zavero_user");
+        localStorage.getItem("maveron_user") ||
+        sessionStorage.getItem("maveron_user");
       if (savedUser) {
         const parsed: CustomerProfile = JSON.parse(savedUser);
-        setCustomerUser(parsed);
-        setCustomerName(parsed.name || "");
-        setCustomerPhone(parsed.phone || "");
-        if (parsed.district) {
-          setCustomerDistrict(parsed.district);
-          setDeliveryLocation(parsed.district);
-          setDeliveryZone(
-            parsed.district.toLowerCase().includes("mymensingh")
-              ? "mymensingh"
-              : "outside"
-          );
-        }
-        if (parsed.address) {
-          setCustomerAddress(parsed.address);
+        if (parsed?.email && parsed?.verified) {
+          setCustomerUser(parsed);
+          setCustomerName(parsed.name || "");
+          setCustomerPhone(parsed.phone || "");
+          if (parsed.district) {
+            setCustomerDistrict(parsed.district);
+            setDeliveryLocation(parsed.district);
+            setDeliveryZone(
+              parsed.district.toLowerCase().includes("mymensingh")
+                ? "mymensingh"
+                : "outside"
+            );
+          }
+          if (parsed.address) {
+            setCustomerAddress(parsed.address);
+          }
         }
       }
     } catch (err) {
@@ -570,13 +616,13 @@ export default function HomeStore() {
 
   useEffect(() => {
     try {
-      const savedCart = localStorage.getItem("zavero_cart");
+      const savedCart = localStorage.getItem("maveron_cart");
       const initialCart: CartItem[] = savedCart ? JSON.parse(savedCart) : [];
 
-      const pendingRaw = sessionStorage.getItem("zavero_pending_checkout");
+      const pendingRaw = sessionStorage.getItem("maveron_pending_checkout");
       if (pendingRaw) {
         const pending = JSON.parse(pendingRaw);
-        sessionStorage.removeItem("zavero_pending_checkout");
+        sessionStorage.removeItem("maveron_pending_checkout");
         if (pending?.product) {
           const idx = initialCart.findIndex(
             (i) =>
@@ -611,7 +657,7 @@ export default function HomeStore() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("zavero_cart", JSON.stringify(cart));
+      localStorage.setItem("maveron_cart", JSON.stringify(cart));
     } catch (err) {
       console.error("Failed to save cart:", err);
     }
@@ -649,7 +695,7 @@ export default function HomeStore() {
 
               return {
                 id: String(item._id || item.id || idx),
-                name: String(item.name || "ZAVERO Product"),
+                name: String(item.name || "MAVÉRON Product"),
                 category: cat,
                 subCategory: subCat,
                 price: Number(item.price) || 0,
@@ -719,7 +765,29 @@ export default function HomeStore() {
   const isValidEmail = (email: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
+  const syncUserToBackend = async (profile: CustomerProfile) => {
+    if (!profile.email || !profile.verified) return;
+    try {
+      await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: profile.name,
+          email: profile.email,
+          district: profile.district,
+          address: profile.address,
+          provider: profile.provider || "email",
+          verified: true,
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to sync user to /api/users:", err);
+    }
+  };
+
   const persistCustomerProfile = (profile: CustomerProfile) => {
+    if (!profile.email || !profile.verified) return;
+
     setCustomerUser(profile);
     setCustomerName(profile.name || "");
     if (profile.phone) setCustomerPhone(profile.phone);
@@ -736,37 +804,130 @@ export default function HomeStore() {
 
     try {
       if (rememberMe) {
-        localStorage.setItem("zavero_user", JSON.stringify(profile));
+        localStorage.setItem("maveron_user", JSON.stringify(profile));
       } else {
-        sessionStorage.setItem("zavero_user", JSON.stringify(profile));
-        localStorage.removeItem("zavero_user");
+        sessionStorage.setItem("maveron_user", JSON.stringify(profile));
+        localStorage.removeItem("maveron_user");
       }
     } catch (err) {
       console.error("Failed to save user:", err);
     }
+
+    void syncUserToBackend(profile);
   };
+useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth_success") !== "google") return;
+
+    let cancelled = false;
+
+    const finishGoogleLogin = async () => {
+      const paramEmail = (params.get("email") || "").trim().toLowerCase();
+      const paramName = (params.get("name") || "").trim();
+
+      const cleanUrl = () => {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete("auth_success");
+        nextUrl.searchParams.delete("email");
+        nextUrl.searchParams.delete("name");
+        window.history.replaceState({}, "", nextUrl.pathname + nextUrl.search);
+      };
+
+      if (paramEmail && isValidEmail(paramEmail)) {
+        if (cancelled) return;
+        persistCustomerProfile({
+          name: paramName || paramEmail.split("@")[0] || `${BRAND_NAME} Member`,
+          email: paramEmail,
+          district: customerDistrict || "Mymensingh",
+          address: customerAddress || "",
+          provider: "google",
+          verified: true,
+        });
+        cleanUrl();
+        setIsAccountModalOpen(false);
+        setActiveBottomTab("home");
+        notify(
+          lang === "bn"
+            ? "Google দিয়ে লগইন সফল হয়েছে!"
+            : "Signed in with Google!"
+        );
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const u = data?.user;
+          if (!cancelled && u?.email) {
+            persistCustomerProfile({
+              name:
+                String(u.name || "").trim() ||
+                String(u.email).split("@")[0] ||
+                `${BRAND_NAME} Member`,
+              email: String(u.email).trim().toLowerCase(),
+              district: String(u.district || customerDistrict || "Mymensingh"),
+              address: String(u.address || customerAddress || ""),
+              provider: "google",
+              verified: true,
+            });
+            cleanUrl();
+            setIsAccountModalOpen(false);
+            setActiveBottomTab("home");
+            notify(
+              lang === "bn"
+                ? "Google দিয়ে লগইন সফল হয়েছে!"
+                : "Signed in with Google!"
+            );
+            return;
+          }
+        }
+      } catch {
+        // ignore if /api/auth/me is not present
+      }
+
+      if (!cancelled) {
+        cleanUrl();
+        setAuthMode("login");
+        setIsAccountModalOpen(true);
+        setLoginError(
+          lang === "bn"
+            ? "Google কলব্যাক থেকে ইউজার তথ্য পাওয়া যায়নি। Callback রাউটে name/email প্যারামিটার বা সেশন কুকি যুক্ত করুন।"
+            : "Google callback returned without user session data. Pass user info or session cookie in your callback route."
+        );
+      }
+    };
+
+    void finishGoogleLogin();
+    return () => {
+      cancelled = true;
+    };
+  }, [lang, customerDistrict, customerAddress]);
 
   const openAccountModal = () => {
     setLoginError("");
     setForgotNotice("");
-    setRegOtpNotice("");
-    setRegStep("form");
-    setRegOtpCode("");
     setAuthMode("login");
     setLoginIdentifier(customerUser?.email || "");
+    setLoginPassword("");
     setActiveBottomTab("account");
     setIsAccountModalOpen(true);
   };
 
-  const handleStandardLogin = (e: React.FormEvent) => {
+  const handleStandardLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
+
     const idVal = loginIdentifier.trim().toLowerCase();
     if (!idVal || !loginPassword.trim()) {
       setLoginError(
         lang === "bn"
-          ? "আপনার Gmail এবং পাসওয়ার্ড দিন।"
-          : "Please enter your Gmail address and password."
+          ? "আপনার ইমেইল এবং পাসওয়ার্ড দিন।"
+          : "Please enter your email address and password."
       );
       return;
     }
@@ -774,82 +935,153 @@ export default function HomeStore() {
     if (!isValidEmail(idVal)) {
       setLoginError(
         lang === "bn"
-          ? "সঠিক Gmail ঠিকানা দিন।"
-          : "Please enter a valid Gmail address."
+          ? "সঠিক ইমেইল ঠিকানা দিন।"
+          : "Please enter a valid email address."
       );
       return;
     }
 
-    const derivedName = idVal.split("@")[0];
-    persistCustomerProfile({
-      name: derivedName,
-      email: idVal,
-      district: customerDistrict || "Mymensingh",
-      address: customerAddress || "",
-      provider: "email",
-      verified: true,
-    });
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: idVal, password: loginPassword }),
+      });
 
-    setIsAccountModalOpen(false);
-    setActiveBottomTab("home");
-    notify(
-      lang === "bn"
-        ? `${BRAND_NAME}-এ লগইন সফল হয়েছে!`
-        : `Signed in to ${BRAND_NAME}!`
-    );
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        setLoginError(
+          lang === "bn"
+            ? "সার্ভারে /api/auth/login রাউট পাওয়া যায়নি। আগে অ্যাকাউন্ট/পাসওয়ার্ড সেটআপ করুন বা Google দিয়ে লগইন করুন।"
+            : "Login service (/api/auth/login) is not configured yet. Create an account or sign in with Google."
+        );
+        return;
+      }
+
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.user?.email) {
+        setLoginError(
+          data.message ||
+            (lang === "bn"
+              ? "ইমেইল বা পাসওয়ার্ড সঠিক নয়।"
+              : "Invalid email or password.")
+        );
+        return;
+      }
+
+      persistCustomerProfile({
+        name:
+          String(data.user.name || "").trim() ||
+          idVal.split("@")[0] ||
+          `${BRAND_NAME} Member`,
+        email: String(data.user.email).trim().toLowerCase(),
+        district: String(data.user.district || customerDistrict || "Mymensingh"),
+        address: String(data.user.address || customerAddress || ""),
+        provider: "email",
+        verified: true,
+      });
+
+      setLoginPassword("");
+      setIsAccountModalOpen(false);
+      setActiveBottomTab("home");
+      notify(
+        lang === "bn"
+          ? `${BRAND_NAME}-এ লগইন সফল হয়েছে!`
+          : `Signed in to ${BRAND_NAME}!`
+      );
+    } catch {
+      setLoginError(
+        lang === "bn"
+          ? "লগইন সার্ভারে সংযোগ করা যায়নি। আবার চেষ্টা করুন।"
+          : "Could not reach login service. Please try again."
+      );
+    } finally {
+      setAuthSubmitting(false);
+    }
   };
 
   const handleGoogleAuth = (isRegister = false) => {
-    persistCustomerProfile({
-      name: "ZAVERO Member",
-      email: "member.zavero@gmail.com",
-      district: customerDistrict || "Mymensingh",
-      address: customerAddress || "",
-      provider: "google",
-      verified: true,
-    });
-    setIsAccountModalOpen(false);
-    setActiveBottomTab("home");
-    notify(
-      lang === "bn"
-        ? isRegister
-          ? "Google দিয়ে অ্যাকাউন্ট তৈরি হয়েছে!"
-          : "Google দিয়ে লগইন সম্পন্ন হয়েছে!"
-        : isRegister
-        ? "Account created with Google!"
-        : "Signed in with Google!"
-    );
+    const nextPath =
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : "/";
+    const modeQuery = isRegister ? "&mode=register" : "&mode=login";
+    window.location.href = `/api/auth/google?next=${encodeURIComponent(
+      nextPath
+    )}${modeQuery}`;
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleFacebookAuth = (isRegister = false) => {
+    const nextPath =
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : "/";
+    const modeQuery = isRegister ? "&mode=register" : "&mode=login";
+    window.location.href = `/api/auth/facebook?next=${encodeURIComponent(
+      nextPath
+    )}${modeQuery}`;
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
+    setForgotNotice("");
+
     const cleanEmail = forgotIdentifier.trim().toLowerCase();
     if (!cleanEmail || !isValidEmail(cleanEmail)) {
       setLoginError(
         lang === "bn"
-          ? "সঠিক Gmail ঠিকানা দিন।"
-          : "Please enter a valid Gmail address."
+          ? "সঠিক ইমেইল ঠিকানা দিন।"
+          : "Please enter a valid email address."
       );
       return;
     }
-    setForgotNotice(
-      lang === "bn"
-        ? `${cleanEmail}-এ পাসওয়ার্ড রিসেট নির্দেশনা পাঠানো হয়েছে।`
-        : `Password reset instructions sent to ${cleanEmail}.`
-    );
+
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setLoginError(
+            data.message ||
+              (lang === "bn"
+                ? "রিসেট রিকোয়েস্ট পাঠানো যায়নি।"
+                : "Could not send password reset request.")
+          );
+          return;
+        }
+      }
+
+      setForgotNotice(
+        lang === "bn"
+          ? `${cleanEmail}-এ পাসওয়ার্ড রিসেট নির্দেশনা পাঠানো হয়েছে।`
+          : `Password reset instructions sent to ${cleanEmail}.`
+      );
+    } catch {
+      setLoginError(
+        lang === "bn" ? "নেটওয়ার্ক সমস্যা হয়েছে।" : "Network error occurred."
+      );
+    } finally {
+      setAuthSubmitting(false);
+    }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
-    setRegOtpNotice("");
 
     if (!regName.trim() || !regEmail.trim() || !regPassword) {
       setLoginError(
         lang === "bn"
-          ? "নাম, Gmail এবং পাসওয়ার্ড পূরণ করুন।"
-          : "Please fill in your name, Gmail address, and password."
+          ? "নাম, ইমেইল এবং পাসওয়ার্ড পূরণ করুন।"
+          : "Please fill in your name, email address, and password."
       );
       return;
     }
@@ -857,8 +1089,8 @@ export default function HomeStore() {
     if (!isValidEmail(regEmail)) {
       setLoginError(
         lang === "bn"
-          ? "সঠিক Gmail ঠিকানা দিন।"
-          : "Please enter a valid Gmail address."
+          ? "সঠিক ইমেইল ঠিকানা দিন।"
+          : "Please enter a valid email address."
       );
       return;
     }
@@ -891,82 +1123,43 @@ export default function HomeStore() {
     }
 
     const cleanEmail = regEmail.trim().toLowerCase();
-    setRegLoading(true);
+    const cleanName = regName.trim();
 
+    setAuthSubmitting(true);
     try {
-      const res = await fetch("/api/auth/send-code", {
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail }),
+        body: JSON.stringify({
+          name: cleanName,
+          email: cleanEmail,
+          password: regPassword,
+        }),
       });
-      const data = await res.json();
 
-      if (!res.ok || !data.success) {
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
         setLoginError(
-          data.message ||
-            (lang === "bn"
-              ? "Gmail-এ ভেরিফিকেশন কোড পাঠানো যায়নি।"
-              : "Could not send verification code to Gmail.")
+          lang === "bn"
+            ? "সার্ভারে /api/auth/register রাউট পাওয়া যায়নি। Google দিয়ে সাইন-আপ/লগইন করুন অথবা /api/auth/register তৈরি করুন।"
+            : "Registration service (/api/auth/register) is not configured yet. Sign in with Google or configure /api/auth/register."
         );
         return;
       }
 
-      setRegOtpNotice(
-        data.message ||
-          (lang === "bn"
-            ? `${cleanEmail} ঠিকানায় ৬ ডিজিটের ভেরিফিকেশন কোড পাঠানো হয়েছে।`
-            : `A 6-digit verification code has been sent to ${cleanEmail}.`)
-      );
-      setRegStep("verify");
-    } catch {
-      setLoginError(
-        lang === "bn"
-          ? "নেটওয়ার্ক সমস্যা হয়েছে, আবার চেষ্টা করুন।"
-          : "Network error while sending verification code."
-      );
-    } finally {
-      setRegLoading(false);
-    }
-  };
-
-  const handleVerifyRegistrationOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError("");
-
-    const cleanEmail = regEmail.trim().toLowerCase();
-    const cleanCode = regOtpCode.trim();
-
-    if (cleanCode.length < 6) {
-      setLoginError(
-        lang === "bn"
-          ? "Gmail-এ আসা ৬ ডিজিটের কোডটি লিখুন।"
-          : "Please enter the 6-digit verification code sent to your Gmail."
-      );
-      return;
-    }
-
-    setRegLoading(true);
-
-    try {
-      const res = await fetch("/api/auth/verify-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail, code: cleanCode }),
-      });
       const data = await res.json();
-
       if (!res.ok || !data.success) {
         setLoginError(
           data.message ||
             (lang === "bn"
-              ? "ভুল কোড অথবা মেয়াদ শেষ হয়ে গেছে।"
-              : "Invalid or expired verification code.")
+              ? "অ্যাকাউন্ট তৈরি করা যায়নি।"
+              : "Could not create account.")
         );
         return;
       }
 
       persistCustomerProfile({
-        name: regName.trim(),
+        name: String(data.user?.name || cleanName),
         email: cleanEmail,
         district: customerDistrict || "Mymensingh",
         address: customerAddress || "",
@@ -978,32 +1171,29 @@ export default function HomeStore() {
       setRegEmail("");
       setRegPassword("");
       setRegConfirmPassword("");
-      setRegOtpCode("");
-      setRegOtpNotice("");
-      setRegStep("form");
       setIsAccountModalOpen(false);
       setActiveBottomTab("home");
       notify(
         lang === "bn"
-          ? "Gmail ভেরিফাই হয়ে অ্যাকাউন্ট তৈরি ও লগইন সম্পন্ন হয়েছে!"
-          : "Gmail verified! Account created and logged in."
+          ? "পাসওয়ার্ড সেট হয়ে অ্যাকাউন্ট তৈরি ও লগইন সম্পন্ন হয়েছে!"
+          : "Password created! Account registered and signed in."
       );
     } catch {
       setLoginError(
         lang === "bn"
           ? "নেটওয়ার্ক সমস্যা হয়েছে, আবার চেষ্টা করুন।"
-          : "Network error while verifying code."
+          : "Network error while creating account."
       );
     } finally {
-      setRegLoading(false);
+      setAuthSubmitting(false);
     }
   };
 
   const handleCustomerLogout = () => {
     setCustomerUser(null);
     try {
-      localStorage.removeItem("zavero_user");
-      sessionStorage.removeItem("zavero_user");
+      localStorage.removeItem("maveron_user");
+      sessionStorage.removeItem("maveron_user");
     } catch (err) {
       console.error("Failed to remove user:", err);
     }
@@ -1062,7 +1252,7 @@ export default function HomeStore() {
     const updated = [item, ...reviews];
     setReviews(updated);
     try {
-      localStorage.setItem("zavero_simple_reviews", JSON.stringify(updated));
+      localStorage.setItem("maveron_simple_reviews", JSON.stringify(updated));
     } catch {
       notify(
         lang === "bn"
@@ -1349,7 +1539,7 @@ export default function HomeStore() {
       const generatedId =
         data.order?._id ||
         data.orderId ||
-        `ZAV-${Date.now().toString().slice(-6)}`;
+        `MVR-${Date.now().toString().slice(-6)}`;
       setConfirmedOrderId(String(generatedId));
       setCart([]);
       if (!customerUser) {
@@ -1391,7 +1581,6 @@ export default function HomeStore() {
     setShowWishlistOnly(opts?.wishlistOnly ?? false);
     setFlashSaleOnly(opts?.flashOnly ?? false);
     setMobileMenuOpen(false);
-    setMegaMenuOpen(false);
     const targetId = opts?.scrollToId || "catalog-section";
     const el = document.getElementById(targetId);
     if (el) el.scrollIntoView({ behavior: "smooth" });
@@ -1411,30 +1600,47 @@ export default function HomeStore() {
     }
     setNewsletterStatus(
       lang === "bn"
-        ? "সাবস্ক্রাইব সম্পন্ন হয়েছে! ZAVERO-এর নতুন কালেকশন ও অফারের আপডেট পাবেন।"
-        : "Subscribed! You will receive ZAVERO updates on new arrivals and offers."
+        ? `সাবস্ক্রাইব সম্পন্ন হয়েছে! ${BRAND_NAME}-এর নতুন কালেকশন ও অফারের আপডেট পাবেন।`
+        : `Subscribed! You will receive ${BRAND_NAME} updates on new arrivals and offers.`
     );
     setNewsletterEmail("");
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F6F9] text-[#111827] pb-24 lg:pb-20 selection:bg-[#0077E6] selection:text-white">
+    <div
+      suppressHydrationWarning
+      className={`min-h-screen transition-colors duration-200 pb-24 lg:pb-20 ${t.pageBg}`}
+    >
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-24 lg:bottom-20 left-1/2 -translate-x-1/2 z-[60] bg-[#1E2B4D] text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg border border-white/15">
+        <div
+          className={`fixed bottom-24 lg:bottom-20 left-1/2 -translate-x-1/2 z-[60] text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg ${
+            isLight
+              ? "bg-[#18181B] text-white border border-zinc-700"
+              : "bg-[#18181B] text-[#F4F4F5] border border-zinc-600/70"
+          }`}
+        >
           {toastMessage}
         </div>
       )}
 
-      {/* Sticky Navigation Bar + Mega Menu (Clean Mobile Brand + Right Search & Language Switch) */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E3E6EB] transition-all">
+      {/* Clean Single-Row Sticky Navigation Bar */}
+      <header
+        suppressHydrationWarning
+        className={`sticky top-0 z-30 transition-all ${t.headerBg}`}
+      >
         <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
+              suppressHydrationWarning
               onClick={() => setMobileMenuOpen((v) => !v)}
               aria-label="Toggle Menu"
-              className="lg:hidden p-2 rounded-lg hover:bg-[#F4F6F9] text-[#111827] cursor-pointer shrink-0"
+              className={`lg:hidden p-2 rounded-lg cursor-pointer shrink-0 ${
+                isLight
+                  ? "hover:bg-zinc-100 text-zinc-900"
+                  : "hover:bg-zinc-900 text-zinc-200"
+              }`}
             >
               {mobileMenuOpen ? (
                 <X className="w-5 h-5" />
@@ -1453,30 +1659,28 @@ export default function HomeStore() {
               className="flex items-center gap-2 shrink-0 min-w-0"
             >
               <img
-                src="/images/zavero-logo.png"
-                alt={`${BRAND_NAME} — ${BRAND_TAGLINE}`}
-                className="h-8 sm:h-10 w-auto object-contain shrink-0"
+                src={LOGO_SRC}
+                alt={BRAND_NAME}
+                className="h-8 sm:h-9 w-auto object-contain rounded-md shrink-0"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = "none";
                 }}
               />
-              <div className="leading-none">
-                <span className="font-black text-base sm:text-xl tracking-tight text-[#111827] block">
-                  {BRAND_NAME}
-                </span>
-                <span className="text-[10px] font-semibold text-[#1E2B4D] tracking-wider hidden sm:block">
-                  {BRAND_TAGLINE}
-                </span>
-              </div>
+              <span
+                className={`font-black text-base sm:text-xl tracking-wider whitespace-nowrap ${t.headingGradient}`}
+              >
+                {BRAND_NAME}
+              </span>
             </a>
 
             <button
               type="button"
+              suppressHydrationWarning
               onClick={() => setIsLocationModalOpen(true)}
-              className="hidden md:inline-flex items-center gap-1.5 bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] border border-[#E3E6EB] px-3 py-1.5 rounded-full text-xs font-medium transition cursor-pointer shrink-0"
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
             >
-              <MapPin className="w-3.5 h-3.5 text-[#0077E6] shrink-0" />
-              <span className="truncate max-w-[120px]">
+              <MapPin className={`w-3.5 h-3.5 shrink-0 ${t.mutedText}`} />
+              <span>
                 {lang === "bn"
                   ? `ডেলিভারি: ${deliveryLocation}`
                   : `Deliver to ${deliveryLocation}`}
@@ -1484,101 +1688,16 @@ export default function HomeStore() {
             </button>
           </div>
 
-          <nav className="hidden xl:flex items-center gap-5 text-sm font-medium text-[#4B5563]">
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                jumpToCatalog();
-              }}
-              className="hover:text-[#0077E6] transition"
-            >
-              {lang === "bn" ? "হোম" : "Home"}
-            </a>
-
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setMegaMenuOpen((v) => !v)}
-                className="inline-flex items-center gap-1 hover:text-[#0077E6] transition cursor-pointer"
-              >
-                <span>{lang === "bn" ? "ক্যাটাগরি" : "Mega Menu"}</span>
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-
-              {megaMenuOpen && (
-                <div className="fixed inset-x-0 top-16 bg-[#1E2B4D] text-white border-b border-[#E3E6EB]/20 shadow-2xl z-40">
-                  <div className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-4 gap-5">
-                    {FEATURED_CATEGORIES.map((cat) => (
-                      <button
-                        key={`mega-${cat.title}`}
-                        type="button"
-                        onClick={() =>
-                          jumpToCatalog({
-                            cat: cat.filterKey,
-                            sub: cat.subFilter,
-                          })
-                        }
-                        className="text-left p-3 rounded-2xl bg-[#111827]/70 hover:bg-[#0077E6]/20 border border-white/10 hover:border-[#0077E6] transition cursor-pointer space-y-1"
-                      >
-                        <p className="text-xs font-extrabold text-white">
-                          {catLabelText(cat.title)}
-                        </p>
-                        <p className="text-[11px] text-white/75">
-                          {cat.subtitle}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
-              className="hover:text-[#0077E6] transition cursor-pointer"
-            >
-              {lang === "bn" ? "সব প্রোডাক্ট" : "All Products"}
-            </button>
-            <button
-              type="button"
-              onClick={() => jumpToCatalog({ sub: "Men's Fashion" })}
-              className="hover:text-[#0077E6] transition cursor-pointer"
-            >
-              {lang === "bn" ? "মেনস ফ্যাশন" : "Men's Fashion"}
-            </button>
-            <button
-              type="button"
-              onClick={() => jumpToCatalog({ sub: "Women's Fashion" })}
-              className="hover:text-[#0077E6] transition cursor-pointer"
-            >
-              {lang === "bn" ? "উইমেনস ফ্যাশন" : "Women's Fashion"}
-            </button>
-            <button
-              type="button"
-              onClick={() => jumpToCatalog({ sub: "Gadgets" })}
-              className="hover:text-[#0077E6] transition cursor-pointer"
-            >
-              {lang === "bn" ? "গ্যাজেটস" : "Gadgets"}
-            </button>
-            <Link
-              href="/track-order"
-              className="hover:text-[#0077E6] transition font-semibold text-[#111827]"
-            >
-              {lang === "bn" ? "অর্ডার ট্র্যাক" : "Track Order"}
-            </Link>
-          </nav>
-
-          {/* Right Side: Only Search Icon + Language Switch */}
+          {/* Right Side: Search + Light/Night Mode + Language Switch */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
+              suppressHydrationWarning
               onClick={() => setSearchOverlayOpen(true)}
               aria-label="Open Search Overlay"
-              className="w-9 h-9 sm:w-auto sm:h-10 sm:px-3.5 rounded-full bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] border border-[#E3E6EB] flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer shrink-0"
+              className={`w-9 h-9 sm:w-auto sm:h-10 sm:px-3.5 rounded-full flex items-center justify-center gap-1.5 text-xs font-semibold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
             >
-              <Search className="w-4 h-4 text-[#1E2B4D] shrink-0" />
+              <Search className={`w-4 h-4 shrink-0 ${t.mutedText}`} />
               <span className="hidden md:inline">
                 {lang === "bn" ? "সার্চ" : "Search"}
               </span>
@@ -1586,11 +1705,41 @@ export default function HomeStore() {
 
             <button
               type="button"
+              suppressHydrationWarning
+              onClick={toggleThemeMode}
+              aria-label="Toggle Light or Night Mode"
+              title={
+                themeMode === "night"
+                  ? "Switch to Light Mode"
+                  : "Switch to Night Mode"
+              }
+              className={`h-9 sm:h-10 px-2.5 sm:px-3 rounded-full flex items-center gap-1.5 text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
+            >
+              {themeMode === "night" ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-zinc-200 shrink-0" />
+                  <span className="hidden sm:inline">
+                    {lang === "bn" ? "লাইট" : "Light"}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-zinc-800 shrink-0" />
+                  <span className="hidden sm:inline">
+                    {lang === "bn" ? "নাইট" : "Night"}
+                  </span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              suppressHydrationWarning
               onClick={toggleLanguage}
               title="Switch Language (English / বাংলা)"
-              className="h-9 sm:h-10 px-2.5 sm:px-3.5 rounded-full border border-[#E3E6EB] bg-white hover:bg-[#F4F6F9] text-[#111827] flex items-center gap-1 text-xs font-bold transition cursor-pointer shrink-0"
+              className={`h-9 sm:h-10 px-2.5 sm:px-3.5 rounded-full flex items-center gap-1 text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
             >
-              <Globe className="w-3.5 h-3.5 text-[#1E2B4D] shrink-0" />
+              <Globe className={`w-3.5 h-3.5 shrink-0 ${t.mutedText}`} />
               <span>{lang === "en" ? "বাংলা" : "EN"}</span>
             </button>
           </div>
@@ -1598,7 +1747,13 @@ export default function HomeStore() {
 
         {/* Mobile Dropdown Menu */}
         {mobileMenuOpen && (
-          <div className="lg:hidden bg-white border-t border-[#E3E6EB] px-4 py-4 space-y-3">
+          <div
+            className={`lg:hidden border-t px-4 py-4 space-y-3 ${
+              isLight
+                ? "bg-white border-zinc-200"
+                : "bg-[#111115] border-zinc-800"
+            }`}
+          >
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <button
                 type="button"
@@ -1606,9 +1761,9 @@ export default function HomeStore() {
                   setMobileMenuOpen(false);
                   setIsLocationModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 bg-[#F4F6F9] text-[#111827] border border-[#E3E6EB] px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer ${t.pillBtn}`}
               >
-                <MapPin className="w-3.5 h-3.5 text-[#0077E6]" />
+                <MapPin className={`w-3.5 h-3.5 ${t.mutedText}`} />
                 <span>
                   {lang === "bn"
                     ? `ডেলিভারি: ${deliveryLocation}`
@@ -1622,22 +1777,24 @@ export default function HomeStore() {
                   setMobileMenuOpen(false);
                   jumpToCatalog({ wishlistOnly: !showWishlistOnly });
                 }}
-                className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${t.pillBtn}`}
               >
-                <Heart className="w-3.5 h-3.5" />
+                <Heart className="w-3.5 h-3.5 text-rose-500" />
                 <span>
                   {lang === "bn" ? "উইশলিস্ট" : "Wishlist"} ({wishlist.length})
                 </span>
               </button>
             </div>
 
-            <div className="flex flex-col gap-1.5 text-sm font-medium text-[#111827]">
+            <div className={`flex flex-col gap-1.5 text-sm font-medium ${t.bodyText}`}>
               {STORE_CATEGORIES.map((catName) => (
                 <button
                   key={catName}
                   type="button"
                   onClick={() => jumpToCatalog({ sub: catName })}
-                  className="text-left py-1.5 cursor-pointer hover:text-[#0077E6]"
+                  className={`text-left py-1.5 cursor-pointer ${
+                    isLight ? "hover:text-zinc-950" : "hover:text-white"
+                  }`}
                 >
                   {catLabelText(catName)}
                 </button>
@@ -1645,14 +1802,14 @@ export default function HomeStore() {
               <Link
                 href="/track-order"
                 onClick={() => setMobileMenuOpen(false)}
-                className="py-1.5 font-semibold text-[#0077E6] block"
+                className={`py-1.5 font-semibold block ${t.titleText}`}
               >
                 {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track Order"}
               </Link>
               <Link
                 href="/policies"
                 onClick={() => setMobileMenuOpen(false)}
-                className="py-1.5 block text-[#4B5563]"
+                className={`py-1.5 block ${t.mutedText}`}
               >
                 {lang === "bn"
                   ? "রিটার্ন, এক্সচেঞ্জ ও ডেলিভারি পলিসি"
@@ -1665,11 +1822,17 @@ export default function HomeStore() {
 
       {/* Modern Search Overlay */}
       {searchOverlayOpen && (
-        <div className="fixed inset-0 z-50 bg-[#0B0C10]/85 backdrop-blur-md p-4 sm:p-8 flex flex-col items-center">
-          <div className="max-w-2xl w-full bg-white rounded-3xl p-5 sm:p-6 shadow-2xl border border-[#E3E6EB] space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E3E6EB] pb-3">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md p-4 sm:p-8 flex flex-col items-center">
+          <div
+            className={`max-w-2xl w-full rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 ${t.surface}`}
+          >
+            <div
+              className={`flex items-center justify-between border-b pb-3 ${
+                isLight ? "border-zinc-200" : "border-zinc-800"
+              }`}
+            >
               <div className="flex items-center gap-2.5 flex-1">
-                <Search className="w-5 h-5 text-[#0077E6]" />
+                <Search className={`w-5 h-5 ${t.mutedText}`} />
                 <input
                   type="text"
                   autoFocus
@@ -1680,49 +1843,55 @@ export default function HomeStore() {
                       ? "ফ্যাশন, জুতা, বিউটি বা গ্যাজেট খুঁজুন..."
                       : "Search fashion, footwear, beauty, gadgets..."
                   }
-                  className="w-full text-sm sm:text-base outline-none text-[#111827]"
+                  className={`w-full text-sm sm:text-base outline-none bg-transparent ${t.titleText}`}
                 />
               </div>
               <button
                 type="button"
                 onClick={() => setSearchOverlayOpen(false)}
-                className="p-2 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
+                className={`p-2 rounded-full cursor-pointer ${t.pillBtn}`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {searchQuery.trim() && (
-              <div className="max-h-72 overflow-y-auto divide-y divide-[#E3E6EB]">
+              <div
+                className={`max-h-72 overflow-y-auto divide-y ${
+                  isLight ? "divide-zinc-200" : "divide-zinc-800"
+                }`}
+              >
                 {filteredProducts.slice(0, 6).map((item) => (
                   <Link
                     key={`sr-${item.id}`}
                     href={`/products/${item.id}`}
                     onClick={() => setSearchOverlayOpen(false)}
-                    className="py-2.5 flex items-center justify-between gap-3 hover:bg-[#F4F6F9] px-2 rounded-xl"
+                    className={`py-2.5 flex items-center justify-between gap-3 px-2 rounded-xl ${
+                      isLight ? "hover:bg-zinc-100" : "hover:bg-zinc-900"
+                    }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <img
                         src={item.image}
                         alt={item.name}
-                        className="w-11 h-11 rounded-lg object-cover bg-[#F4F6F9]"
+                        className="w-11 h-11 rounded-lg object-cover bg-zinc-800"
                       />
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-[#111827] truncate">
+                        <p className={`text-sm font-bold truncate ${t.titleText}`}>
                           {item.name}
                         </p>
-                        <p className="text-xs text-[#4B5563]">
+                        <p className={`text-xs ${t.mutedText}`}>
                           {catLabelText(item.subCategory)}
                         </p>
                       </div>
                     </div>
-                    <span className="text-sm font-extrabold text-[#111827] shrink-0">
+                    <span className={`text-sm font-extrabold shrink-0 ${t.bodyText}`}>
                       ৳{item.price}
                     </span>
                   </Link>
                 ))}
                 {filteredProducts.length === 0 && (
-                  <p className="py-6 text-center text-xs text-[#4B5563]">
+                  <p className={`py-6 text-center text-xs ${t.mutedText}`}>
                     {lang === "bn"
                       ? "কোনো প্রোডাক্ট পাওয়া যায়নি।"
                       : "No matching products found."}
@@ -1738,7 +1907,7 @@ export default function HomeStore() {
                   setSearchOverlayOpen(false);
                   jumpToCatalog();
                 }}
-                className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-bold px-4 py-2 rounded-xl cursor-pointer"
+                className={`text-xs font-extrabold px-4 py-2 rounded-xl cursor-pointer ${t.silverCta}`}
               >
                 {lang === "bn" ? "ক্যাটালগে দেখুন" : "View in Catalog"}
               </button>
@@ -1747,80 +1916,73 @@ export default function HomeStore() {
         </div>
       )}
 
-      {/* C. Hero Section */}
-      <section className="max-w-7xl mx-auto px-3 sm:px-4 pt-4 sm:pt-5 pb-8">
-        <div className="bg-gradient-to-br from-[#1E2B4D] via-[#15203B] to-[#0B0C10] text-white rounded-3xl overflow-hidden border border-[#E3E6EB]/20 shadow-lg">
-          <div className="grid lg:grid-cols-12 gap-6 sm:gap-7 p-5 sm:p-10 items-center">
-            <div className="lg:col-span-5 space-y-4 sm:space-y-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-[#FFB020] font-bold">
-                {lang === "bn"
-                  ? `${BRAND_NAME} • ${BRAND_TAGLINE}`
-                  : `${BRAND_NAME} • ${BRAND_TAGLINE}`}
-              </p>
-              <h1 className="text-2xl sm:text-5xl font-bold leading-[1.15] tracking-tight">
-                {lang === "bn" ? (
-                  <>
-                    ট্রেন্ডের বাইরে গিয়ে
-                    <br />
-                    নিজের স্টাইল গড়ুন।
-                  </>
-                ) : (
-                  <>
-                    Explore Beyond Trends.
-                    <br />
-                    Elevated Daily Style.
-                  </>
-                )}
-              </h1>
-              <p className="text-xs sm:text-sm text-white/80 max-w-md leading-relaxed">
-                {lang === "bn"
-                  ? "মেনস ও উইমেনস ফ্যাশন, ফুটওয়্যার, বিউটি প্রোডাক্টস, গ্যাজেটস এবং মোবাইল অ্যাক্সেসরিজ অর্ডার করুন COD, bKash, Nagad বা Rocket-এ।"
-                  : "Discover curated Fashion, Footwear, Beauty Products, Gadgets, and Mobile Accessories with COD, bKash, Nagad & Rocket across Bangladesh."}
-              </p>
+      {/* Responsive Hero Banner */}
+      <section className="max-w-7xl mx-auto px-3 sm:px-4 pt-3 sm:pt-4 pb-8">
+        <div
+          className={`relative w-full h-[185px] sm:h-[260px] md:h-[330px] lg:h-[390px] rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl border ${
+            isLight
+              ? "bg-[#09090B] border-zinc-300"
+              : "bg-[#09090B] border-zinc-800"
+          }`}
+        >
+          <img
+            src={HERO_BANNER_SRC}
+            alt="MAVÉRON Hero Banner"
+            className="w-full h-full object-cover object-[72%_20%] sm:object-[68%_22%] md:object-center"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = LOGIN_SILK_BG_SRC;
+            }}
+          />
 
-              <div className="pt-1 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
-                  className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm sm:text-base font-bold px-6 sm:px-7 py-3 sm:py-3.5 rounded-xl transition cursor-pointer shadow-sm"
-                >
-                  {lang === "bn" ? "এখনই কিনুন (Shop Now)" : "Shop Now"}
-                </button>
-              </div>
-            </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/15 pointer-events-none" />
 
-            <div className="lg:col-span-7">
-              <div className="aspect-[16/10] w-full rounded-2xl overflow-hidden border border-white/15 bg-[#111827] shadow-md">
-                <img
-                  src="/hero-banner.jpg"
-                  alt="ZAVERO — Explore Beyond Trends Showcase"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
+          <div className="absolute bottom-3.5 left-4 sm:bottom-6 sm:left-8 md:left-10 z-10">
+            <button
+              type="button"
+              suppressHydrationWarning
+              onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
+              className="inline-flex items-center gap-1.5 bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-400 hover:brightness-105 active:scale-[0.99] text-zinc-950 text-xs sm:text-sm font-extrabold px-4 sm:px-6 py-1.5 sm:py-2.5 rounded-full shadow-lg border border-white/60 transition cursor-pointer"
+            >
+              <span>{lang === "bn" ? "এখনই কিনুন" : "Shop Now"}</span>
+              <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
           </div>
         </div>
       </section>
 
       {/* Flash Sale Banner */}
       <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-10">
-        <div className="rounded-2xl bg-gradient-to-r from-[#1E2B4D] via-[#17223D] to-[#0B0C10] text-white p-4 sm:p-5 border border-[#E3E6EB]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div
+          className={`rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${t.surface}`}
+        >
           <div className="flex items-start sm:items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#FFB020] text-[#111827] flex items-center justify-center shrink-0">
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                isLight
+                  ? "bg-zinc-900 text-white"
+                  : "bg-gradient-to-br from-zinc-200 to-zinc-400 text-zinc-950"
+              }`}
+            >
               <Flame className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#FFB020] text-[#111827]">
+                <span
+                  className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                    isLight
+                      ? "bg-zinc-900 text-white"
+                      : "bg-zinc-200 text-zinc-950"
+                  }`}
+                >
                   {lang === "bn" ? "ফ্ল্যাশ সেল" : "Flash Sale"}
                 </span>
-                <span className="text-xs text-white/80">
+                <span className={`text-xs ${t.mutedText}`}>
                   {lang === "bn"
                     ? `${flashSaleCount}টি ডিসকাউন্টেড প্রোডাক্ট রয়েছে`
                     : `${flashSaleCount} discounted items available`}
                 </span>
               </div>
-              <h2 className="text-sm sm:text-lg font-bold mt-0.5">
+              <h2 className={`text-sm sm:text-lg font-bold mt-0.5 ${t.titleText}`}>
                 {lang === "bn"
                   ? "বিশেষ ছাড়ে ফ্যাশন, ফুটওয়্যার, বিউটি, গ্যাজেটস ও মোবাইল অ্যাক্সেসরিজ অফার"
                   : "Special Discounts on Fashion, Footwear, Beauty, Gadgets & Mobile Accessories"}
@@ -1830,6 +1992,7 @@ export default function HomeStore() {
 
           <button
             type="button"
+            suppressHydrationWarning
             onClick={() => {
               const nextFlash = !flashSaleOnly;
               setFlashSaleOnly(nextFlash);
@@ -1841,9 +2004,7 @@ export default function HomeStore() {
               }
             }}
             className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer shrink-0 ${
-              flashSaleOnly
-                ? "bg-[#FFB020] text-[#111827]"
-                : "bg-[#0077E6] text-white hover:bg-[#0062BE]"
+              flashSaleOnly ? t.chipActive : t.pillBtn
             }`}
           >
             {flashSaleOnly
@@ -1857,24 +2018,30 @@ export default function HomeStore() {
         </div>
       </section>
 
-      {/* D. Attractive Category Cards */}
+      {/* Attractive Category Cards */}
       <section
         id="categories-section"
         className="max-w-7xl mx-auto px-3 sm:px-4 pb-12"
       >
         <div className="flex items-center justify-between mb-5">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-[#0077E6]">
+            <p
+              className={`text-[11px] font-bold uppercase tracking-widest ${t.mutedText}`}
+            >
               {BRAND_NAME} Collections
             </p>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111827]">
+            <h2
+              className={`text-xl sm:text-2xl font-bold tracking-tight ${t.titleText}`}
+            >
               {lang === "bn" ? "ক্যাটাগরি অনুযায়ী কিনুন" : "Shop by Category"}
             </h2>
           </div>
           <button
             type="button"
             onClick={() => jumpToCatalog({ cat: "all", sub: "all" })}
-            className="text-xs sm:text-sm font-semibold text-[#1E2B4D] hover:text-[#0077E6] cursor-pointer"
+            className={`text-xs sm:text-sm font-semibold cursor-pointer ${t.bodyText} ${
+              isLight ? "hover:text-zinc-950" : "hover:text-white"
+            }`}
           >
             {lang === "bn" ? "সব দেখুন →" : "View All →"}
           </button>
@@ -1893,38 +2060,55 @@ export default function HomeStore() {
               <button
                 key={catItem.title}
                 type="button"
+                suppressHydrationWarning
                 onClick={() =>
                   jumpToCatalog({
                     cat: catItem.filterKey,
                     sub: isSelected ? "all" : catItem.subFilter,
                   })
                 }
-                className={`group text-left rounded-2xl bg-gradient-to-br ${catItem.gradientClass} text-white overflow-hidden border transition-all duration-200 cursor-pointer ${
+                className={`group text-left rounded-2xl overflow-hidden transition-all duration-200 cursor-pointer ${
+                  t.surface
+                } ${
                   isSelected
-                    ? "border-[#0077E6] ring-2 ring-[#0077E6]/50"
-                    : "border-[#E3E6EB]/20 hover:border-[#0077E6] hover:-translate-y-0.5"
+                    ? isLight
+                      ? "border-zinc-900 ring-2 ring-zinc-900/20"
+                      : "border-zinc-200 ring-2 ring-zinc-300/40"
+                    : isLight
+                    ? "hover:border-zinc-400 hover:-translate-y-0.5"
+                    : "hover:border-zinc-500 hover:-translate-y-0.5"
                 }`}
               >
-                <div className="relative h-28 sm:h-32 w-full bg-[#111827] overflow-hidden">
+                <div className="relative h-28 sm:h-32 w-full bg-zinc-900 overflow-hidden">
                   <img
                     src={catItem.image}
                     alt={catItem.title}
-                    className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition duration-300"
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                   />
-                  <span className="absolute top-2.5 right-2.5 bg-[#1E2B4D]/90 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-white/15">
+                  <span
+                    className={`absolute top-2.5 right-2.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-xs ${
+                      isLight
+                        ? "bg-white/90 text-zinc-900 border border-zinc-200"
+                        : "bg-black/80 text-zinc-100 border border-zinc-700"
+                    }`}
+                  >
                     {count} {lang === "bn" ? "আইটেম" : "Items"}
                   </span>
                 </div>
                 <div className="p-3 sm:p-3.5 flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-extrabold text-white truncate">
+                    <p
+                      className={`text-xs sm:text-sm font-extrabold truncate ${t.titleText}`}
+                    >
                       {catLabelText(catItem.title)}
                     </p>
-                    <p className="text-[11px] text-white/75 truncate mt-0.5">
+                    <p className={`text-[11px] truncate mt-0.5 ${t.mutedText}`}>
                       {catItem.subtitle}
                     </p>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-[#FFB020] shrink-0 group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight
+                    className={`w-4 h-4 shrink-0 group-hover:translate-x-1 transition-transform ${t.mutedText}`}
+                  />
                 </div>
               </button>
             );
@@ -1932,15 +2116,17 @@ export default function HomeStore() {
         </div>
       </section>
 
-      {/* E & G. Enhanced Product Cards + Catalog Controls */}
+      {/* Enhanced Product Cards + Catalog Controls */}
       <section
         id="catalog-section"
         className="max-w-7xl mx-auto px-3 sm:px-4 pb-14"
       >
-        <div className="bg-white rounded-3xl border border-[#E3E6EB] p-4 sm:p-6 mb-7 space-y-4">
+        <div className={`rounded-3xl p-4 sm:p-6 mb-7 space-y-4 ${t.surface}`}>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111827] mr-2">
+              <h2
+                className={`text-xl sm:text-2xl font-bold tracking-tight mr-2 ${t.titleText}`}
+              >
                 {showWishlistOnly
                   ? lang === "bn"
                     ? "সেভ করা উইশলিস্ট"
@@ -1958,19 +2144,20 @@ export default function HomeStore() {
 
               <button
                 type="button"
+                suppressHydrationWarning
                 onClick={() => {
                   setShowWishlistOnly(false);
                   setFlashSaleOnly(false);
                   setSelectedCategory("all");
                   setSelectedSubCategory("all");
                 }}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wide transition cursor-pointer ${
+                className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wide border transition cursor-pointer ${
                   !showWishlistOnly &&
                   !flashSaleOnly &&
                   selectedSubCategory === "all" &&
                   selectedCategory === "all"
-                    ? "bg-[#0077E6] text-white"
-                    : "bg-[#F4F6F9] text-[#4B5563] hover:bg-[#E3E6EB]"
+                    ? t.chipActive
+                    : t.chipIdle
                 }`}
               >
                 {lang === "bn" ? "সব" : "ALL"}
@@ -1980,18 +2167,19 @@ export default function HomeStore() {
                 <button
                   key={catLabel}
                   type="button"
+                  suppressHydrationWarning
                   onClick={() => {
                     setShowWishlistOnly(false);
                     setFlashSaleOnly(false);
                     setSelectedSubCategory(catLabel);
                     setSelectedCategory(normalizeCategory(catLabel));
                   }}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide transition cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide border transition cursor-pointer ${
                     !showWishlistOnly &&
                     !flashSaleOnly &&
                     selectedSubCategory === catLabel
-                      ? "bg-[#0077E6] text-white"
-                      : "bg-[#F4F6F9] text-[#4B5563] hover:bg-[#E3E6EB]"
+                      ? t.chipActive
+                      : t.chipIdle
                   }`}
                 >
                   {catLabelText(catLabel)}
@@ -2002,9 +2190,10 @@ export default function HomeStore() {
             <div className="flex flex-wrap items-center gap-2.5">
               <select
                 value={sortBy}
+                suppressHydrationWarning
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
                 aria-label="Sort products"
-                className="bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-[#111827] outline-none cursor-pointer"
+                className={`rounded-xl px-3 py-2 text-xs sm:text-sm font-medium outline-none cursor-pointer ${t.input}`}
               >
                 <option value="featured">
                   {lang === "bn" ? "সাজান: ফিচার্ড" : "Sort: Featured"}
@@ -2020,27 +2209,25 @@ export default function HomeStore() {
                 </option>
               </select>
 
-              <div className="flex items-center bg-[#F4F6F9] p-1 rounded-xl border border-[#E3E6EB]">
+              <div className={`flex items-center p-1 rounded-xl ${t.surfaceAlt}`}>
                 <button
                   type="button"
+                  suppressHydrationWarning
                   onClick={() => setViewMode("grid")}
                   aria-label="Grid view"
                   className={`p-1.5 rounded-lg cursor-pointer ${
-                    viewMode === "grid"
-                      ? "bg-white text-[#0077E6] shadow-2xs"
-                      : "text-[#4B5563]"
+                    viewMode === "grid" ? t.chipActive : t.mutedText
                   }`}
                 >
                   <LayoutGrid className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
+                  suppressHydrationWarning
                   onClick={() => setViewMode("list")}
                   aria-label="List view"
                   className={`p-1.5 rounded-lg cursor-pointer ${
-                    viewMode === "list"
-                      ? "bg-white text-[#0077E6] shadow-2xs"
-                      : "text-[#4B5563]"
+                    viewMode === "list" ? t.chipActive : t.mutedText
                   }`}
                 >
                   <List className="w-4 h-4" />
@@ -2050,24 +2237,40 @@ export default function HomeStore() {
           </div>
         </div>
 
-        {/* Professional Loading Skeleton */}
+        {/* Loading Skeleton */}
         {loadingProducts ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
-                className="bg-white rounded-3xl border border-[#E3E6EB] p-3 space-y-3 animate-pulse"
+                className={`rounded-3xl p-3 space-y-3 animate-pulse ${t.surface}`}
               >
-                <div className="aspect-square rounded-2xl bg-[#E3E6EB]" />
-                <div className="h-4 w-24 bg-[#E3E6EB] rounded" />
-                <div className="h-5 w-3/4 bg-[#E3E6EB] rounded" />
-                <div className="h-10 w-full bg-[#E3E6EB] rounded-xl" />
+                <div
+                  className={`aspect-square rounded-2xl ${
+                    isLight ? "bg-zinc-200" : "bg-zinc-800"
+                  }`}
+                />
+                <div
+                  className={`h-4 w-24 rounded ${
+                    isLight ? "bg-zinc-200" : "bg-zinc-800"
+                  }`}
+                />
+                <div
+                  className={`h-5 w-3/4 rounded ${
+                    isLight ? "bg-zinc-200" : "bg-zinc-800"
+                  }`}
+                />
+                <div
+                  className={`h-10 w-full rounded-xl ${
+                    isLight ? "bg-zinc-200" : "bg-zinc-800"
+                  }`}
+                />
               </div>
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="bg-white rounded-3xl p-10 text-center border border-[#E3E6EB] space-y-3">
-            <p className="text-sm text-[#111827] font-semibold">
+          <div className={`rounded-3xl p-10 text-center space-y-3 ${t.surface}`}>
+            <p className={`text-sm font-semibold ${t.titleText}`}>
               {products.length === 0
                 ? lang === "bn"
                   ? "বর্তমানে স্টোরে কোনো প্রোডাক্ট তালিকাভুক্ত নেই।"
@@ -2083,7 +2286,7 @@ export default function HomeStore() {
                   setSearchQuery("");
                   jumpToCatalog();
                 }}
-                className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
+                className={`text-xs font-extrabold px-4 py-2 rounded-xl cursor-pointer ${t.silverCta}`}
               >
                 {lang === "bn" ? "সব প্রোডাক্ট দেখুন" : "Show All Products"}
               </button>
@@ -2123,15 +2326,23 @@ export default function HomeStore() {
                   onMouseLeave={() => setHoveredProductId(null)}
                   className={
                     viewMode === "grid"
-                      ? "group flex flex-col justify-between bg-white rounded-3xl border border-[#E3E6EB] p-3 shadow-2xs hover:shadow-md transition"
-                      : "group flex flex-col sm:flex-row items-center gap-5 bg-white rounded-3xl border border-[#E3E6EB] p-4 shadow-2xs hover:shadow-md transition"
+                      ? `group flex flex-col justify-between rounded-3xl p-3 transition ${t.surface} ${
+                          isLight ? "hover:border-zinc-400" : "hover:border-zinc-600"
+                        }`
+                      : `group flex flex-col sm:flex-row items-center gap-5 rounded-3xl p-4 transition ${t.surface} ${
+                          isLight ? "hover:border-zinc-400" : "hover:border-zinc-600"
+                        }`
                   }
                 >
                   <div
                     className={
                       viewMode === "grid"
-                        ? "relative aspect-square rounded-2xl bg-[#F4F6F9] overflow-hidden w-full"
-                        : "relative w-full sm:w-44 aspect-square rounded-2xl bg-[#F4F6F9] overflow-hidden shrink-0"
+                        ? `relative aspect-square rounded-2xl overflow-hidden w-full ${
+                            isLight ? "bg-zinc-100" : "bg-zinc-900"
+                          }`
+                        : `relative w-full sm:w-44 aspect-square rounded-2xl overflow-hidden shrink-0 ${
+                            isLight ? "bg-zinc-100" : "bg-zinc-900"
+                          }`
                     }
                   >
                     <Link
@@ -2147,12 +2358,18 @@ export default function HomeStore() {
 
                     <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
                       {product.badge && (
-                        <span className="bg-[#1E2B4D]/90 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full">
+                        <span className="bg-black/80 text-zinc-100 text-[11px] font-semibold px-2.5 py-1 rounded-full">
                           {product.badge}
                         </span>
                       )}
                       {discountPct && (
-                        <span className="bg-[#0077E6] text-white text-[11px] font-bold px-2 py-1 rounded-full">
+                        <span
+                          className={`text-[11px] font-extrabold px-2 py-1 rounded-full ${
+                            isLight
+                              ? "bg-zinc-900 text-white"
+                              : "bg-zinc-200 text-zinc-950"
+                          }`}
+                        >
                           -{discountPct}%
                         </span>
                       )}
@@ -2160,7 +2377,9 @@ export default function HomeStore() {
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                           isOutOfStock
                             ? "bg-rose-600 text-white"
-                            : "bg-white/90 text-[#1E2B4D] border border-[#E3E6EB]"
+                            : isLight
+                            ? "bg-white/90 text-zinc-900 border border-zinc-200"
+                            : "bg-zinc-900/90 text-zinc-200 border border-zinc-700"
                         }`}
                       >
                         {isOutOfStock
@@ -2178,13 +2397,17 @@ export default function HomeStore() {
                         type="button"
                         onClick={() => toggleWishlist(product)}
                         aria-label="Wishlist"
-                        className="w-9 h-9 rounded-full bg-white/95 border border-[#E3E6EB] flex items-center justify-center shadow-2xs hover:bg-white transition cursor-pointer"
+                        className={`w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer ${
+                          isLight
+                            ? "bg-white/95 border border-zinc-200 hover:bg-zinc-100"
+                            : "bg-zinc-900/95 border border-zinc-700 hover:bg-zinc-800"
+                        }`}
                       >
                         <Heart
                           className={`w-4 h-4 ${
                             isLiked
                               ? "fill-rose-500 text-rose-500"
-                              : "text-[#4B5563]"
+                              : t.mutedText
                           }`}
                         />
                       </button>
@@ -2193,9 +2416,13 @@ export default function HomeStore() {
                         type="button"
                         onClick={() => setQuickViewProduct(product)}
                         aria-label="Quick View"
-                        className="w-9 h-9 rounded-full bg-white/95 border border-[#E3E6EB] flex items-center justify-center shadow-2xs hover:bg-white transition cursor-pointer"
+                        className={`w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer ${
+                          isLight
+                            ? "bg-white/95 border border-zinc-200 hover:bg-zinc-100"
+                            : "bg-zinc-900/95 border border-zinc-700 hover:bg-zinc-800"
+                        }`}
                       >
-                        <Eye className="w-4 h-4 text-[#4B5563]" />
+                        <Eye className={`w-4 h-4 ${t.mutedText}`} />
                       </button>
                     </div>
                   </div>
@@ -2203,12 +2430,16 @@ export default function HomeStore() {
                   <div className="flex-1 flex flex-col justify-between w-full pt-3 sm:pt-0 px-1 sm:px-2">
                     <div>
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#4B5563]">
+                        <span
+                          className={`text-[11px] font-bold uppercase tracking-wider ${t.mutedText}`}
+                        >
                           {catLabelText(product.subCategory)}
                         </span>
                         {productReviews.length > 0 && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#111827]">
-                            <Star className="w-3.5 h-3.5 fill-[#FFB020] text-[#FFB020]" />
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-bold ${t.titleText}`}
+                          >
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                             {(
                               productReviews.reduce(
                                 (acc, r) => acc + r.rating,
@@ -2222,17 +2453,19 @@ export default function HomeStore() {
 
                       <Link
                         href={`/products/${product.id}`}
-                        className="font-bold text-base sm:text-lg text-[#111827] hover:text-[#0077E6] mt-0.5 leading-snug block"
+                        className={`font-bold text-base sm:text-lg mt-0.5 leading-snug block ${t.titleText} ${
+                          isLight ? "hover:text-zinc-600" : "hover:text-zinc-300"
+                        }`}
                       >
                         {product.name}
                       </Link>
 
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-base font-extrabold text-[#111827]">
+                        <span className={`text-base font-extrabold ${t.titleText}`}>
                           ৳{product.price}
                         </span>
                         {product.oldPrice && product.oldPrice > product.price && (
-                          <span className="text-xs text-[#4B5563]/70 line-through">
+                          <span className={`text-xs line-through ${t.mutedText}`}>
                             ৳{product.oldPrice}
                           </span>
                         )}
@@ -2242,7 +2475,7 @@ export default function HomeStore() {
                         product.sizes &&
                         product.sizes.length > 0 && (
                           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                            <span className="text-xs text-[#4B5563] mr-1">
+                            <span className={`text-xs mr-1 ${t.mutedText}`}>
                               {lang === "bn" ? "সাইজ:" : "Size:"}
                             </span>
                             {product.sizes.map((size) => (
@@ -2258,8 +2491,8 @@ export default function HomeStore() {
                                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                                   (selectedSizes[product.id] ||
                                     product.sizes?.[0]) === size
-                                    ? "bg-[#1E2B4D] text-white border-[#1E2B4D]"
-                                    : "bg-white text-[#4B5563] border-[#E3E6EB] hover:border-[#0077E6]"
+                                    ? t.chipActive
+                                    : t.chipIdle
                                 }`}
                               >
                                 {size}
@@ -2270,7 +2503,7 @@ export default function HomeStore() {
 
                       {product.colors && product.colors.length > 0 && (
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <span className="text-xs text-[#4B5563] mr-1">
+                          <span className={`text-xs mr-1 ${t.mutedText}`}>
                             {lang === "bn" ? "কালার:" : "Color:"}
                           </span>
                           {product.colors.map((col) => (
@@ -2286,8 +2519,8 @@ export default function HomeStore() {
                               className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border transition cursor-pointer ${
                                 (selectedColors[product.id] ||
                                   product.colors?.[0]) === col
-                                  ? "bg-[#FFB020]/25 text-[#111827] border-[#FFB020]"
-                                  : "bg-[#F4F6F9] text-[#4B5563] border-[#E3E6EB]"
+                                  ? t.chipActive
+                                  : t.chipIdle
                               }`}
                             >
                               {col}
@@ -2297,7 +2530,9 @@ export default function HomeStore() {
                       )}
 
                       {product.specs && (
-                        <p className="mt-2 text-xs text-[#4B5563] bg-[#F4F6F9] px-3 py-1.5 rounded-lg font-medium truncate">
+                        <p
+                          className={`mt-2 text-xs px-3 py-1.5 rounded-lg font-medium truncate ${t.surfaceAlt} ${t.mutedText}`}
+                        >
                           {product.specs}
                         </p>
                       )}
@@ -2308,7 +2543,7 @@ export default function HomeStore() {
                         type="button"
                         disabled={isOutOfStock}
                         onClick={() => addToCart(product)}
-                        className="flex-1 bg-[#0077E6] hover:bg-[#0062BE] disabled:bg-[#E3E6EB] text-white disabled:text-[#4B5563] text-xs sm:text-sm font-semibold py-2.5 px-4 rounded-xl transition cursor-pointer disabled:cursor-not-allowed"
+                        className={`flex-1 disabled:opacity-45 text-xs sm:text-sm font-extrabold py-2.5 px-4 rounded-xl transition cursor-pointer disabled:cursor-not-allowed ${t.silverCta}`}
                       >
                         {isOutOfStock
                           ? lang === "bn"
@@ -2320,7 +2555,7 @@ export default function HomeStore() {
                       </button>
                       <Link
                         href={`/products/${product.id}`}
-                        className="border border-[#E3E6EB] hover:border-[#0077E6] text-[#111827] text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center"
+                        className={`text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center ${t.pillBtn}`}
                       >
                         {lang === "bn" ? "বিস্তারিত" : "Details"}
                       </Link>
@@ -2334,12 +2569,12 @@ export default function HomeStore() {
 
         {/* Related Products Strip */}
         {relatedProducts.length > 0 && (
-          <div className="mt-10 bg-white rounded-3xl border border-[#E3E6EB] p-5 sm:p-6 space-y-4">
+          <div className={`mt-10 rounded-3xl p-5 sm:p-6 space-y-4 ${t.surface}`}>
             <div className="flex items-center justify-between">
-              <h3 className="text-base sm:text-lg font-bold text-[#111827]">
+              <h3 className={`text-base sm:text-lg font-bold ${t.titleText}`}>
                 {lang === "bn" ? "রিলেটেড প্রোডাক্টস" : "Related Products"}
               </h3>
-              <span className="text-xs text-[#4B5563]">
+              <span className={`text-xs ${t.mutedText}`}>
                 {lang === "bn" ? "আপনার জন্য বাছাইকৃত" : "Curated picks"}
               </span>
             </div>
@@ -2348,18 +2583,22 @@ export default function HomeStore() {
                 <Link
                   key={`rel-${rel.id}`}
                   href={`/products/${rel.id}`}
-                  className="flex items-center gap-3 p-2.5 rounded-2xl border border-[#E3E6EB] hover:border-[#0077E6] bg-[#F4F6F9]/60 transition"
+                  className={`flex items-center gap-3 p-2.5 rounded-2xl transition ${t.surfaceAlt} ${
+                    isLight ? "hover:border-zinc-400" : "hover:border-zinc-500"
+                  }`}
                 >
                   <img
                     src={rel.image}
                     alt={rel.name}
-                    className="w-14 h-14 rounded-xl object-cover bg-[#E3E6EB] shrink-0"
+                    className="w-14 h-14 rounded-xl object-cover bg-zinc-800 shrink-0"
                   />
                   <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-bold text-[#111827] truncate">
+                    <p
+                      className={`text-xs sm:text-sm font-bold truncate ${t.titleText}`}
+                    >
                       {rel.name}
                     </p>
-                    <p className="text-xs font-extrabold text-[#0077E6] mt-0.5">
+                    <p className={`text-xs font-extrabold mt-0.5 ${t.bodyText}`}>
                       ৳{rel.price}
                     </p>
                   </div>
@@ -2370,21 +2609,18 @@ export default function HomeStore() {
         )}
       </section>
 
-      {/* F. Promotional Banner */}
+      {/* Promotional Banner */}
       <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-12">
-        <div className="bg-[#1E2B4D] text-white rounded-3xl p-6 sm:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-[#E3E6EB]/20">
+        <div
+          className={`rounded-3xl p-6 sm:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 ${t.surface}`}
+        >
           <div className="space-y-2 max-w-xl">
-            <span className="text-xs uppercase tracking-widest text-[#FFB020] font-bold">
-              {lang === "bn"
-                ? `${BRAND_NAME} • ${BRAND_TAGLINE}`
-                : `${BRAND_NAME} • ${BRAND_TAGLINE}`}
-            </span>
-            <h3 className="text-2xl sm:text-3xl font-bold">
+            <h3 className={`text-2xl sm:text-3xl font-bold ${t.titleText}`}>
               {lang === "bn"
                 ? "আপনার স্টাইল, ফুটওয়্যার, বিউটি ও স্মার্ট টেক আপগ্রেড করুন"
                 : "Upgrade Your Style, Footwear, Beauty & Tech"}
             </h3>
-            <p className="text-sm text-white/80">
+            <p className={`text-sm ${t.mutedText}`}>
               {lang === "bn"
                 ? "পার্সেল হাতে পেয়ে চেক করে মূল্য পরিশোধ করার সুবিধাসহ দ্রুত হোম ডেলিভারি।"
                 : "Fast doorstep delivery across Bangladesh with COD, bKash, Nagad & Rocket."}
@@ -2393,30 +2629,32 @@ export default function HomeStore() {
           <button
             type="button"
             onClick={() => jumpToCatalog({ sort: "discount" })}
-            className="bg-[#0077E6] text-white hover:bg-[#0062BE] text-sm font-semibold px-6 py-3 rounded-xl shrink-0 transition cursor-pointer"
+            className={`text-sm font-extrabold px-6 py-3 rounded-xl shrink-0 transition cursor-pointer ${t.silverCta}`}
           >
             {lang === "bn" ? "অফার দেখুন" : "Explore Deals"}
           </button>
         </div>
       </section>
 
-      {/* H. Why Choose Us */}
+      {/* Why Choose Us */}
       <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-12">
-        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111827] mb-5">
+        <h2
+          className={`text-xl sm:text-2xl font-bold tracking-tight mb-5 ${t.titleText}`}
+        >
           {lang === "bn"
             ? `কেন ${BRAND_NAME} বেছে নেবেন`
             : `Why Choose ${BRAND_NAME}`}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-[#E3E6EB] flex items-start gap-3.5">
-            <ShieldCheck className="w-6 h-6 text-[#0077E6] shrink-0 mt-0.5" />
+          <div className={`p-5 rounded-2xl flex items-start gap-3.5 ${t.surface}`}>
+            <ShieldCheck className={`w-6 h-6 shrink-0 mt-0.5 ${t.titleText}`} />
             <div>
-              <h4 className="font-bold text-sm text-[#111827]">
+              <h4 className={`font-bold text-sm ${t.titleText}`}>
                 {lang === "bn"
                   ? "১০০% অরিজিনাল ও যাচাইকৃত পণ্য"
                   : "100% Authentic Products"}
               </h4>
-              <p className="text-xs text-[#4B5563] mt-1">
+              <p className={`text-xs mt-1 ${t.mutedText}`}>
                 {lang === "bn"
                   ? "মান যাচাইকৃত ফ্যাশন, ফুটওয়্যার, বিউটি, গ্যাজেট ও মোবাইল অ্যাক্সেসরিজ।"
                   : "Verified Men's & Women's Fashion, Footwear, Beauty, Gadgets & Mobile Accessories."}
@@ -2424,15 +2662,15 @@ export default function HomeStore() {
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-[#E3E6EB] flex items-start gap-3.5">
-            <Truck className="w-6 h-6 text-[#0077E6] shrink-0 mt-0.5" />
+          <div className={`p-5 rounded-2xl flex items-start gap-3.5 ${t.surface}`}>
+            <Truck className={`w-6 h-6 shrink-0 mt-0.5 ${t.titleText}`} />
             <div>
-              <h4 className="font-bold text-sm text-[#111827]">
+              <h4 className={`font-bold text-sm ${t.titleText}`}>
                 {lang === "bn"
                   ? "সারা দেশে ক্যাশ অন ডেলিভারি"
                   : "Nationwide Cash on Delivery"}
               </h4>
-              <p className="text-xs text-[#4B5563] mt-1">
+              <p className={`text-xs mt-1 ${t.mutedText}`}>
                 {lang === "bn"
                   ? "ময়মনসিংহ থেকে সারা বাংলাদেশে নির্ভরযোগ্য কুরিয়ার ডেলিভারি সুবিধা।"
                   : "Reliable courier dispatch from Mymensingh to every district in Bangladesh."}
@@ -2440,15 +2678,15 @@ export default function HomeStore() {
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-[#E3E6EB] flex items-start gap-3.5">
-            <Sparkles className="w-6 h-6 text-[#0077E6] shrink-0 mt-0.5" />
+          <div className={`p-5 rounded-2xl flex items-start gap-3.5 ${t.surface}`}>
+            <Sparkles className={`w-6 h-6 shrink-0 mt-0.5 ${t.titleText}`} />
             <div>
-              <h4 className="font-bold text-sm text-[#111827]">
+              <h4 className={`font-bold text-sm ${t.titleText}`}>
                 {lang === "bn"
                   ? "ওপেন পার্সেল চেক ও এক্সচেঞ্জ"
                   : "Open Parcel Check & Easy Exchange"}
               </h4>
-              <p className="text-xs text-[#4B5563] mt-1">
+              <p className={`text-xs mt-1 ${t.mutedText}`}>
                 {lang === "bn"
                   ? "ডেলিভারি রাইডারের সামনে পার্সেল দেখে বুঝে নেওয়ার সুবিধা।"
                   : "Quick doorstep delivery with parcel inspection and easy size exchange."}
@@ -2460,12 +2698,12 @@ export default function HomeStore() {
 
       {/* Real Customer Reviews */}
       <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-12">
-        <div className="bg-white rounded-3xl border border-[#E3E6EB] p-5 sm:p-8 space-y-6">
+        <div className={`rounded-3xl p-5 sm:p-8 space-y-6 ${t.surface}`}>
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-[#111827]">
+            <h2 className={`text-xl font-bold ${t.titleText}`}>
               {lang === "bn" ? "কাস্টমার রিভিউ" : "Customer Reviews"}
             </h2>
-            <span className="text-xs text-[#4B5563]">
+            <span className={`text-xs ${t.mutedText}`}>
               {reviews.length}{" "}
               {lang === "bn"
                 ? "টি রিভিউ"
@@ -2483,13 +2721,13 @@ export default function HomeStore() {
                 placeholder={lang === "bn" ? "আপনার নাম *" : "Your name *"}
                 value={reviewName}
                 onChange={(e) => setReviewName(e.target.value)}
-                className="sm:col-span-3 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-[#0077E6]"
+                className={`sm:col-span-3 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none ${t.input}`}
               />
               <select
                 value={reviewRating}
                 onChange={(e) => setReviewRating(Number(e.target.value))}
                 aria-label="Rating"
-                className="sm:col-span-2 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs sm:text-sm outline-none cursor-pointer"
+                className={`sm:col-span-2 rounded-xl px-3 py-2 text-xs sm:text-sm outline-none cursor-pointer ${t.input}`}
               >
                 <option value={5}>5 ★</option>
                 <option value={4}>4 ★</option>
@@ -2507,19 +2745,21 @@ export default function HomeStore() {
                 }
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
-                className="sm:col-span-5 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none focus:border-[#0077E6]"
+                className={`sm:col-span-5 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none ${t.input}`}
               />
               <button
                 type="submit"
-                className="sm:col-span-2 bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs sm:text-sm font-semibold py-2 px-4 rounded-xl transition cursor-pointer"
+                className={`sm:col-span-2 text-xs sm:text-sm font-extrabold py-2 px-4 rounded-xl transition cursor-pointer ${t.silverCta}`}
               >
                 {lang === "bn" ? "রিভিউ দিন" : "Post"}
               </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <label className="inline-flex items-center gap-2 bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] border border-[#E3E6EB] text-xs font-semibold px-3.5 py-2 rounded-xl cursor-pointer transition">
-                <Sparkles className="w-3.5 h-3.5 text-[#0077E6]" />
+              <label
+                className={`inline-flex items-center gap-2 text-xs font-semibold px-3.5 py-2 rounded-xl cursor-pointer transition ${t.pillBtn}`}
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${t.mutedText}`} />
                 <span>
                   {lang === "bn"
                     ? "প্রোডাক্টের ছবি তুলুন / যোগ করুন"
@@ -2535,19 +2775,21 @@ export default function HomeStore() {
               </label>
 
               {reviewPhoto && (
-                <div className="flex items-center gap-2 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-1.5 pr-2.5">
+                <div
+                  className={`flex items-center gap-2 rounded-xl p-1.5 pr-2.5 ${t.surfaceAlt}`}
+                >
                   <img
                     src={reviewPhoto}
                     alt="Preview"
                     className="w-10 h-10 rounded-lg object-cover"
                   />
-                  <span className="text-xs text-[#4B5563]">
+                  <span className={`text-xs ${t.bodyText}`}>
                     {lang === "bn" ? "ছবি যুক্ত হয়েছে" : "Photo attached"}
                   </span>
                   <button
                     type="button"
                     onClick={() => setReviewPhoto("")}
-                    className="text-xs text-rose-600 font-semibold hover:underline cursor-pointer"
+                    className="text-xs text-rose-500 font-semibold hover:underline cursor-pointer"
                   >
                     {lang === "bn" ? "সরান" : "Remove"}
                   </button>
@@ -2557,7 +2799,7 @@ export default function HomeStore() {
           </form>
 
           {reviews.length === 0 ? (
-            <p className="text-xs sm:text-sm text-[#4B5563] py-4">
+            <p className={`text-xs sm:text-sm py-4 ${t.mutedText}`}>
               {lang === "bn"
                 ? "এখনো কোনো রিভিউ দেওয়া হয়নি। পণ্য রিসিভ করার পর প্রথম রিভিউ ও ছবি দিন।"
                 : "No reviews yet. Be the first to post a review with a photo of your received product."}
@@ -2567,26 +2809,26 @@ export default function HomeStore() {
               {reviews.map((rev) => (
                 <div
                   key={rev.id}
-                  className="p-4 rounded-2xl bg-[#F4F6F9] border border-[#E3E6EB] space-y-2.5"
+                  className={`p-4 rounded-2xl space-y-2.5 ${t.surfaceAlt}`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#111827]">
+                    <span className={`text-xs font-bold ${t.titleText}`}>
                       {rev.name}
                     </span>
-                    <span className="flex items-center gap-0.5 text-[#FFB020]">
+                    <span className="flex items-center gap-0.5 text-amber-400">
                       {Array.from({ length: rev.rating }).map((_, i) => (
                         <Star
                           key={i}
-                          className="w-3.5 h-3.5 fill-[#FFB020] text-[#FFB020]"
+                          className="w-3.5 h-3.5 fill-amber-400 text-amber-400"
                         />
                       ))}
                     </span>
                   </div>
-                  <p className="text-xs text-[#4B5563] leading-relaxed">
+                  <p className={`text-xs leading-relaxed ${t.bodyText}`}>
                     {rev.comment}
                   </p>
                   {rev.photo && (
-                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-[#E3E6EB] border border-[#E3E6EB]">
+                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700/50">
                       <img
                         src={rev.photo}
                         alt={`${rev.name} product review`}
@@ -2601,16 +2843,18 @@ export default function HomeStore() {
         </div>
       </section>
 
-      {/* J. Newsletter Subscription */}
+      {/* Newsletter Subscription */}
       <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-14">
-        <div className="bg-white rounded-3xl border border-[#E3E6EB] p-5 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div
+          className={`rounded-3xl p-5 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 ${t.surface}`}
+        >
           <div className="space-y-1 max-w-md">
-            <h3 className="text-lg sm:text-xl font-bold text-[#111827]">
+            <h3 className={`text-lg sm:text-xl font-bold ${t.titleText}`}>
               {lang === "bn"
                 ? `নতুন কালেকশন ও অফারের আপডেট পান (${BRAND_NAME})`
                 : `Stay Updated with ${BRAND_NAME}`}
             </h3>
-            <p className="text-xs sm:text-sm text-[#4B5563]">
+            <p className={`text-xs sm:text-sm ${t.mutedText}`}>
               {lang === "bn"
                 ? "নতুন ফ্যাশন, ফুটওয়্যার, বিউটি ও গ্যাজেট অফারের খবর সবার আগে পেতে ইমেইল দিন।"
                 : "Get notified about new fashion, footwear, beauty, gadgets, and mobile accessories offers."}
@@ -2631,66 +2875,66 @@ export default function HomeStore() {
                   ? "আপনার ইমেইল লিখুন"
                   : "Enter your email address"
               }
-              className="bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-4 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6] sm:w-64"
+              className={`rounded-xl px-4 py-2.5 text-sm outline-none sm:w-64 ${t.input}`}
             />
             <button
               type="submit"
-              className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition cursor-pointer"
+              className={`text-sm font-extrabold px-5 py-2.5 rounded-xl transition cursor-pointer ${t.silverCta}`}
             >
               {lang === "bn" ? "সাবস্ক্রাইব" : "Subscribe"}
             </button>
           </form>
         </div>
         {newsletterStatus && (
-          <p className="text-xs text-emerald-700 font-medium mt-2 px-2">
+          <p className="text-xs text-emerald-500 font-medium mt-2 px-2">
             {newsletterStatus}
           </p>
         )}
       </section>
 
-      {/* K. Professional Footer */}
-      <footer
-        id="footer-section"
-        className="bg-[#1E2B4D] text-white/85 pt-12 pb-8 border-t border-[#E3E6EB]/20"
-      >
-        <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 pb-10 border-b border-white/10">
+      {/* Professional Footer */}
+      <footer id="footer-section" className={`pt-12 pb-8 ${t.footerBg}`}>
+        <div
+          className={`max-w-7xl mx-auto px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 pb-10 border-b ${
+            isLight ? "border-zinc-200" : "border-zinc-800"
+          }`}
+        >
           <div className="space-y-3">
             <div className="flex items-center gap-2.5">
               <img
-                src="/images/zavero-logo.png"
-                alt={`${BRAND_NAME} Logo`}
-                className="h-9 w-auto object-contain"
+                src={LOGO_SRC}
+                alt={BRAND_NAME}
+                className="h-9 w-auto object-contain rounded-md"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = "none";
                 }}
               />
-              <div>
-                <h3 className="text-white font-black text-lg tracking-tight leading-none">
-                  {BRAND_NAME}
-                </h3>
-                <span className="text-[11px] text-[#FFB020]">
-                  {BRAND_TAGLINE}
-                </span>
-              </div>
+              <h3
+                className={`font-black text-lg tracking-wider leading-none ${t.titleText}`}
+              >
+                {BRAND_NAME}
+              </h3>
             </div>
-            <p className="text-xs text-white/70 leading-relaxed">
+            <p className={`text-xs leading-relaxed ${t.mutedText}`}>
               {lang === "bn"
-                ? `${BRAND_NAME} (${BRAND_TAGLINE})—মেনস ও উইমেনস ফ্যাশন, ফুটওয়্যার, গ্যাজেটস, বিউটি প্রোডাক্টস এবং মোবাইল অ্যাক্সেসরিজের অনলাইন স্টোর।`
-                : `${BRAND_NAME} — ${BRAND_TAGLINE}. Serving Men's Fashion, Women's Fashion, Men's Footwear, Women's Footwear, Gadgets, Beauty Products, and Mobile Accessories.`}
+                ? `${BRAND_NAME}—মেনস ও উইমেনস ফ্যাশন, ফুটওয়্যার, গ্যাজেটস, বিউটি প্রোডাক্টস এবং মোবাইল অ্যাক্সেসরিজের অনলাইন স্টোর।`
+                : `${BRAND_NAME} online store serving Men's Fashion, Women's Fashion, Men's Footwear, Women's Footwear, Gadgets, Beauty Products, and Mobile Accessories.`}
             </p>
           </div>
 
           <div className="space-y-2.5 text-xs">
-            <h4 className="text-white font-bold text-sm">
+            <h4 className={`font-bold text-sm ${t.titleText}`}>
               {lang === "bn" ? "ক্যাটাগরি" : "Categories"}
             </h4>
-            <ul className="space-y-2 text-white/75">
+            <ul className={`space-y-2 ${t.mutedText}`}>
               {STORE_CATEGORIES.map((catName) => (
                 <li key={catName}>
                   <button
                     type="button"
                     onClick={() => jumpToCatalog({ sub: catName })}
-                    className="hover:text-white cursor-pointer"
+                    className={`cursor-pointer ${
+                      isLight ? "hover:text-zinc-950" : "hover:text-white"
+                    }`}
                   >
                     {catLabelText(catName)}
                   </button>
@@ -2700,10 +2944,10 @@ export default function HomeStore() {
           </div>
 
           <div className="space-y-2.5 text-xs">
-            <h4 className="text-white font-bold text-sm">
+            <h4 className={`font-bold text-sm ${t.titleText}`}>
               {lang === "bn" ? "পলিসি ও সাপোর্ট" : "Policies & Support"}
             </h4>
-            <ul className="space-y-2 text-white/75">
+            <ul className={`space-y-2 ${t.mutedText}`}>
               <li>
                 {lang === "bn"
                   ? `ময়মনসিংহের ভেতরে ৳${deliveryConfig.insideMymensingh} / বাইরে ৳${deliveryConfig.outsideMymensingh}`
@@ -2712,7 +2956,9 @@ export default function HomeStore() {
               <li>
                 <Link
                   href="/policies"
-                  className="hover:text-white underline underline-offset-4"
+                  className={`underline underline-offset-4 ${
+                    isLight ? "hover:text-zinc-950" : "hover:text-white"
+                  }`}
                 >
                   {lang === "bn"
                     ? "রিটার্ন, এক্সচেঞ্জ ও ডেলিভারি পলিসি"
@@ -2722,7 +2968,9 @@ export default function HomeStore() {
               <li>
                 <Link
                   href="/privacy"
-                  className="hover:text-white underline underline-offset-4"
+                  className={`underline underline-offset-4 ${
+                    isLight ? "hover:text-zinc-950" : "hover:text-white"
+                  }`}
                 >
                   {lang === "bn"
                     ? "প্রাইভেসি পলিসি ও ডেটা ব্যবহার"
@@ -2730,7 +2978,10 @@ export default function HomeStore() {
                 </Link>
               </li>
               <li>
-                <Link href="/track-order" className="hover:text-white">
+                <Link
+                  href="/track-order"
+                  className={isLight ? "hover:text-zinc-950" : "hover:text-white"}
+                >
                   {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track Your Order"}
                 </Link>
               </li>
@@ -2738,12 +2989,12 @@ export default function HomeStore() {
           </div>
 
           <div className="space-y-2.5 text-xs">
-            <h4 className="text-white font-bold text-sm">
+            <h4 className={`font-bold text-sm ${t.titleText}`}>
               {lang === "bn" ? "যোগাযোগ" : "Contact"}
             </h4>
-            <ul className="space-y-2 text-white/75">
+            <ul className={`space-y-2 ${t.mutedText}`}>
               <li className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 shrink-0 text-[#FFB020]" />
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
                 <span>Mymensingh, Bangladesh</span>
               </li>
               <li className="flex items-center gap-2">
@@ -2752,15 +3003,20 @@ export default function HomeStore() {
                   target="_blank"
                   rel="noreferrer"
                   aria-label="WhatsApp Support"
-                  className="hover:text-white inline-flex items-center gap-1.5 text-emerald-300"
+                  className="hover:underline inline-flex items-center gap-1.5 text-emerald-500 font-medium"
                 >
-                  <MessageCircle className="w-4 h-4 text-emerald-400" />
+                  <MessageCircle className="w-4 h-4" />
                   <span>WhatsApp Chat</span>
                 </a>
               </li>
               <li className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 shrink-0 text-[#FFB020]" />
-                <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-white">
+                <Mail className="w-3.5 h-3.5 shrink-0" />
+                <a
+                  href={`mailto:${SUPPORT_EMAIL}`}
+                  className={`font-medium ${
+                    isLight ? "hover:text-zinc-950" : "hover:text-white"
+                  }`}
+                >
                   {SUPPORT_EMAIL}
                 </a>
               </li>
@@ -2768,10 +3024,10 @@ export default function HomeStore() {
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-white/60">
-          <p>
-            © 2026 {BRAND_NAME} — {BRAND_TAGLINE}. All rights reserved.
-          </p>
+        <div
+          className={`max-w-7xl mx-auto px-4 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs ${t.mutedText}`}
+        >
+          <p>© 2026 {BRAND_NAME}. All rights reserved.</p>
           <p>{SUPPORT_EMAIL}</p>
         </div>
       </footer>
@@ -2783,7 +3039,7 @@ export default function HomeStore() {
             type="button"
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             aria-label="Scroll to top"
-            className="w-10 h-10 rounded-full bg-white text-[#111827] border border-[#E3E6EB] shadow-md flex items-center justify-center hover:bg-[#F4F6F9] cursor-pointer"
+            className={`w-10 h-10 rounded-full shadow-md flex items-center justify-center cursor-pointer ${t.pillBtn}`}
           >
             <ArrowUp className="w-4 h-4" />
           </button>
@@ -2799,8 +3055,10 @@ export default function HomeStore() {
         </a>
       </div>
 
-      {/* Floating Bottom Navigation Bar (Cart & Login live here) */}
-      <nav className="fixed bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-xl z-40 bg-white/95 backdrop-blur-md border border-[#E3E6EB] rounded-full shadow-xl px-2 sm:px-3 py-1.5">
+      {/* Floating Bottom Navigation Bar */}
+      <nav
+        className={`fixed bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-xl z-40 rounded-full px-2 sm:px-3 py-1.5 ${t.navBg}`}
+      >
         <div className="grid grid-cols-5 items-center text-[11px] sm:text-xs font-semibold">
           <button
             type="button"
@@ -2813,8 +3071,10 @@ export default function HomeStore() {
             <span
               className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "home"
-                  ? "bg-[#0077E6] text-white shadow-xs"
-                  : "text-[#4B5563] hover:text-[#111827]"
+                  ? isLight
+                    ? "bg-[#18181B] text-white"
+                    : "bg-white text-zinc-950"
+                  : t.mutedText
               }`}
             >
               <Home className="w-4 h-4" />
@@ -2822,8 +3082,8 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "home"
-                  ? "text-[#0077E6] font-bold"
-                  : "text-[#4B5563]"
+                  ? `font-bold ${t.titleText}`
+                  : t.mutedText
               }`}
             >
               {lang === "bn" ? "হোম" : "Home"}
@@ -2841,8 +3101,10 @@ export default function HomeStore() {
             <span
               className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "categories"
-                  ? "bg-[#0077E6] text-white shadow-xs"
-                  : "text-[#4B5563] hover:text-[#111827]"
+                  ? isLight
+                    ? "bg-[#18181B] text-white"
+                    : "bg-white text-zinc-950"
+                  : t.mutedText
               }`}
             >
               <LayoutGrid className="w-4 h-4" />
@@ -2850,8 +3112,8 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "categories"
-                  ? "text-[#0077E6] font-bold"
-                  : "text-[#4B5563]"
+                  ? `font-bold ${t.titleText}`
+                  : t.mutedText
               }`}
             >
               {lang === "bn" ? "ক্যাটাগরি" : "Categories"}
@@ -2869,13 +3131,21 @@ export default function HomeStore() {
             <span
               className={`relative w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "cart"
-                  ? "bg-[#0077E6] text-white shadow-xs"
-                  : "text-[#4B5563] hover:text-[#111827]"
+                  ? isLight
+                    ? "bg-[#18181B] text-white"
+                    : "bg-white text-zinc-950"
+                  : t.mutedText
               }`}
             >
               <ShoppingBag className="w-4 h-4" />
               {totalCartCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-[#FFB020] text-[#111827] text-[9px] font-extrabold min-w-[15px] h-[15px] px-1 rounded-full flex items-center justify-center">
+                <span
+                  className={`absolute -top-1 -right-1 text-[9px] font-extrabold min-w-[15px] h-[15px] px-1 rounded-full flex items-center justify-center ${
+                    isLight
+                      ? "bg-[#18181B] text-white border border-white"
+                      : "bg-zinc-200 text-zinc-950 border border-zinc-950"
+                  }`}
+                >
                   {totalCartCount}
                 </span>
               )}
@@ -2883,8 +3153,8 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "cart"
-                  ? "text-[#0077E6] font-bold"
-                  : "text-[#4B5563]"
+                  ? `font-bold ${t.titleText}`
+                  : t.mutedText
               }`}
             >
               {lang === "bn" ? "কার্ট" : "Cart"}
@@ -2899,8 +3169,10 @@ export default function HomeStore() {
             <span
               className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "orders"
-                  ? "bg-[#0077E6] text-white shadow-xs"
-                  : "text-[#4B5563] hover:text-[#111827]"
+                  ? isLight
+                    ? "bg-[#18181B] text-white"
+                    : "bg-white text-zinc-950"
+                  : t.mutedText
               }`}
             >
               <Package className="w-4 h-4" />
@@ -2908,8 +3180,8 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "orders"
-                  ? "text-[#0077E6] font-bold"
-                  : "text-[#4B5563]"
+                  ? `font-bold ${t.titleText}`
+                  : t.mutedText
               }`}
             >
               {lang === "bn" ? "অর্ডার" : "Track Order"}
@@ -2924,8 +3196,10 @@ export default function HomeStore() {
             <span
               className={`w-9 h-7 rounded-full flex items-center justify-center transition ${
                 activeBottomTab === "account"
-                  ? "bg-[#0077E6] text-white shadow-xs"
-                  : "text-[#4B5563] hover:text-[#111827]"
+                  ? isLight
+                    ? "bg-[#18181B] text-white"
+                    : "bg-white text-zinc-950"
+                  : t.mutedText
               }`}
             >
               <User className="w-4 h-4" />
@@ -2933,8 +3207,8 @@ export default function HomeStore() {
             <span
               className={`mt-0.5 ${
                 activeBottomTab === "account"
-                  ? "text-[#0077E6] font-bold"
-                  : "text-[#4B5563]"
+                  ? `font-bold ${t.titleText}`
+                  : t.mutedText
               }`}
             >
               {customerUser
@@ -2951,12 +3225,14 @@ export default function HomeStore() {
 
       {/* Delivery Location Modal */}
       {isLocationModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-[#E3E6EB] space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+          <div
+            className={`rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4 ${t.surface}`}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-[#0077E6]" />
-                <h3 className="text-base font-bold text-[#111827]">
+                <MapPin className={`w-4 h-4 ${t.mutedText}`} />
+                <h3 className={`text-base font-bold ${t.titleText}`}>
                   {lang === "bn"
                     ? "ডেলিভারি এলাকা নির্বাচন করুন"
                     : "Select Delivery Location"}
@@ -2965,7 +3241,7 @@ export default function HomeStore() {
               <button
                 type="button"
                 onClick={() => setIsLocationModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
+                className={`p-1.5 rounded-full cursor-pointer ${t.pillBtn}`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2980,15 +3256,13 @@ export default function HomeStore() {
                     type="button"
                     onClick={() => handleSelectLocation(loc)}
                     className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
-                      active
-                        ? "bg-[#0077E6] text-white border-[#0077E6]"
-                        : "bg-[#F4F6F9] text-[#111827] border-[#E3E6EB] hover:border-[#0077E6]"
+                      active ? t.chipActive : t.chipIdle
                     }`}
                   >
                     <p className="text-xs font-bold">{loc.label}</p>
                     <p
                       className={`text-[11px] mt-0.5 ${
-                        active ? "text-white/85" : "text-[#4B5563]"
+                        active ? "opacity-80" : t.mutedText
                       }`}
                     >
                       {loc.zone === "mymensingh"
@@ -3003,43 +3277,65 @@ export default function HomeStore() {
         </div>
       )}
 
-      {/* Login / Register (with Gmail OTP) / Forgot Password Modal */}
+      {/* Email + Password Login / Password Create (Register) / Forgot Password Modal */}
       {isAccountModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/75 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-[#1E2B4D] text-white rounded-3xl max-w-5xl w-full overflow-hidden shadow-2xl border border-[#E3E6EB]/20 my-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+          <div
+            className="relative w-full max-w-[440px] rounded-[28px] overflow-hidden border border-zinc-700/70 shadow-[0_25px_80px_rgba(0,0,0,0.9)] my-auto text-white"
+            style={{
+              backgroundColor: "#09090B",
+              backgroundImage: `
+                radial-gradient(ellipse 85% 55% at 88% 12%, rgba(228,228,231,0.28), transparent 60%),
+                radial-gradient(ellipse 75% 50% at 12% 38%, rgba(161,161,170,0.18), transparent 65%),
+                radial-gradient(ellipse 90% 60% at 78% 92%, rgba(212,212,216,0.22), transparent 65%),
+                url('${LOGIN_SILK_BG_SRC}')
+              `,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/45 to-black/75 pointer-events-none" />
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsAccountModalOpen(false);
+                setActiveBottomTab("home");
+              }}
+              aria-label="Close modal"
+              className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/80 text-zinc-200 flex items-center justify-center transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
             {customerUser ? (
-              <div className="p-6 sm:p-8 max-w-md mx-auto space-y-5">
-                <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-[#FFB020]">
-                      {BRAND_NAME} • {BRAND_TAGLINE}
-                    </p>
-                    <h3 className="text-xl font-bold text-white">
-                      {lang === "bn" ? "আমার অ্যাকাউন্ট" : "My Account"}
-                    </h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAccountModalOpen(false);
-                      setActiveBottomTab("home");
+              <div className="relative z-10 p-6 sm:p-7 space-y-5">
+                <div className="text-center pt-1 space-y-1">
+                  <img
+                    src={LOGO_SRC}
+                    alt={BRAND_NAME}
+                    className="h-11 w-auto mx-auto object-contain"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display =
+                        "none";
                     }}
-                    className="p-2 rounded-full bg-white/10 hover:bg-white/20 cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  />
+                  <h3 className="text-2xl font-serif tracking-[0.2em] text-white">
+                    {BRAND_NAME}
+                  </h3>
+                  <p className="text-[10px] tracking-[0.28em] text-zinc-300 uppercase">
+                    {BRAND_TAGLINE}
+                  </p>
                 </div>
 
-                <div className="bg-[#111827]/70 border border-white/10 rounded-2xl p-4 space-y-1.5">
+                <div className="rounded-2xl bg-black/65 backdrop-blur-md border border-zinc-700/70 p-4 space-y-1.5 text-center">
                   <p className="text-base font-bold text-white">
                     {customerUser.name}
                   </p>
                   {customerUser.email && (
-                    <p className="text-xs text-white/80">
-                      {customerUser.email}
-                    </p>
+                    <p className="text-xs text-zinc-300">{customerUser.email}</p>
                   )}
-                  <p className="text-xs text-white/60">
+                  <p className="text-xs text-zinc-400">
                     District: {customerUser.district}
                   </p>
                 </div>
@@ -3048,14 +3344,14 @@ export default function HomeStore() {
                   <Link
                     href="/track-order"
                     onClick={() => setIsAccountModalOpen(false)}
-                    className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-extrabold py-3 px-4 rounded-xl text-center transition"
+                    className="bg-gradient-to-b from-zinc-200 via-zinc-300 to-zinc-500 hover:brightness-105 text-zinc-950 text-xs font-extrabold py-3 px-4 rounded-xl text-center transition shadow-md"
                   >
                     {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track My Orders"}
                   </Link>
                   <button
                     type="button"
                     onClick={handleCustomerLogout}
-                    className="inline-flex items-center justify-center gap-1.5 bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-500/30 text-xs font-semibold py-3 px-4 rounded-xl transition cursor-pointer"
+                    className="inline-flex items-center justify-center gap-1.5 bg-zinc-900/90 hover:bg-rose-950/80 text-rose-200 border border-zinc-700 text-xs font-semibold py-3 px-4 rounded-xl transition cursor-pointer"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     {lang === "bn" ? "সাইন আউট" : "Sign Out"}
@@ -3068,156 +3364,130 @@ export default function HomeStore() {
                     setIsAccountModalOpen(false);
                     setActiveBottomTab("home");
                   }}
-                  className="w-full bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-semibold py-2.5 rounded-xl cursor-pointer"
+                  className="w-full bg-black/55 hover:bg-zinc-900/80 border border-zinc-700/80 text-zinc-200 text-xs font-semibold py-2.5 rounded-xl cursor-pointer transition"
                 >
                   {lang === "bn"
-                    ? "লগইন ছাড়াই শপিং চালিয়ে যান (Guest Shopping)"
+                    ? "গেস্ট হিসেবে শপিং চালিয়ে যান"
                     : "Continue Guest Shopping"}
                 </button>
               </div>
             ) : (
-              <div className="grid lg:grid-cols-12">
-                {/* Left Auth Form Column */}
-                <div className="lg:col-span-6 p-6 sm:p-8 space-y-4 border-b lg:border-b-0 lg:border-r border-white/10">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <img
-                        src="/images/zavero-logo.png"
-                        alt={BRAND_NAME}
-                        className="h-8 w-auto object-contain"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display =
-                            "none";
-                        }}
-                      />
-                      <div>
-                        <span className="text-sm font-black tracking-wide text-white block leading-none">
-                          {BRAND_NAME}
-                        </span>
-                        <span className="text-[10px] text-[#FFB020] font-medium">
-                          {BRAND_TAGLINE}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAccountModalOpen(false);
-                        setActiveBottomTab("home");
-                      }}
-                      aria-label="Close modal"
-                      className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+              <div className="relative z-10 px-5 sm:px-7 pt-7 pb-6">
+                <div className="flex flex-col items-center text-center mb-5">
+                  <img
+                    src={LOGO_SRC}
+                    alt={BRAND_NAME}
+                    className="h-12 w-auto object-contain mb-1.5 drop-shadow-[0_2px_10px_rgba(255,255,255,0.2)]"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display =
+                        "none";
+                    }}
+                  />
+                  <h2 className="text-2xl sm:text-[26px] font-serif tracking-[0.22em] bg-gradient-to-b from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent leading-tight">
+                    {BRAND_NAME}
+                  </h2>
+                  <div className="w-full max-w-[240px] flex items-center gap-2 mt-1">
+                    <span className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-zinc-500/70 to-zinc-400/70" />
+                    <span className="text-[9px] sm:text-[10px] tracking-[0.24em] text-zinc-300 font-medium uppercase whitespace-nowrap">
+                      {BRAND_TAGLINE}
+                    </span>
+                    <span className="h-[1px] flex-1 bg-gradient-to-l from-transparent via-zinc-500/70 to-zinc-400/70" />
                   </div>
+                </div>
 
-                  {/* Mode Switcher Tabs (Login & Register only) */}
-                  <div className="grid grid-cols-2 gap-1.5 bg-[#111827]/75 p-1 rounded-xl border border-white/10 text-xs font-bold">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode("login");
-                        setLoginError("");
-                      }}
-                      className={`py-2 rounded-lg cursor-pointer transition ${
-                        authMode === "login"
-                          ? "bg-[#0077E6] text-white shadow-xs"
-                          : "text-white/75 hover:text-white"
-                      }`}
-                    >
-                      {lang === "bn" ? "লগইন" : "Login"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode("register");
-                        setRegStep("form");
-                        setRegOtpNotice("");
-                        setLoginError("");
-                      }}
-                      className={`py-2 rounded-lg cursor-pointer transition ${
-                        authMode === "register"
-                          ? "bg-[#0077E6] text-white shadow-xs"
-                          : "text-white/75 hover:text-white"
-                      }`}
-                    >
-                      {lang === "bn" ? "রেজিস্টার" : "Register"}
-                    </button>
-                  </div>
+                <div className="text-center mb-5">
+                  {authMode === "login" && (
+                    <>
+                      <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                        {lang === "bn" ? "স্বাগতম" : "Welcome Back"}
+                      </h3>
+                      <p className="text-xs text-zinc-300/85 mt-1">
+                        {lang === "bn"
+                          ? "ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন করুন"
+                          : "Sign in with your email and password"}
+                      </p>
+                    </>
+                  )}
 
+                  {authMode === "register" && (
+                    <>
+                      <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                        {lang === "bn"
+                          ? "নতুন অ্যাকাউন্ট ও পাসওয়ার্ড তৈরি করুন"
+                          : "Create Account & Password"}
+                      </h3>
+                      <p className="text-xs text-zinc-300/85 mt-1">
+                        {lang === "bn"
+                          ? "আপনার ইমেইল ও পছন্দের পাসওয়ার্ড দিয়ে রেজিস্টার করুন"
+                          : "Register with your email and create a password"}
+                      </p>
+                    </>
+                  )}
+
+                  {authMode === "forgot" && (
+                    <>
+                      <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                        {lang === "bn" ? "পাসওয়ার্ড রিসেট" : "Forgot Password"}
+                      </h3>
+                      <p className="text-xs text-zinc-300/85 mt-1">
+                        {lang === "bn"
+                          ? "রিসেট লিংক পেতে আপনার ইমেইল ঠিকানা দিন"
+                          : "Enter your email address to receive reset steps"}
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <div className="rounded-[22px] bg-[#0B0B0E]/72 backdrop-blur-md border border-zinc-700/65 p-4 sm:p-5 shadow-inner space-y-3.5">
                   {authMode === "login" && (
                     <form onSubmit={handleStandardLogin} className="space-y-3">
-                      <span className="inline-flex items-center gap-1.5 bg-[#0077E6]/20 text-[#FFB020] border border-[#0077E6]/40 text-[11px] font-bold px-3 py-0.5 rounded-full">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        {lang === "bn"
-                          ? "Gmail অ্যাকাউন্ট লগইন"
-                          : "Gmail Account Sign-In"}
-                      </span>
-                      <h3 className="text-2xl font-black text-white leading-tight">
-                        {lang === "bn" ? (
-                          <>
-                            আপনার{" "}
-                            <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
-                            অ্যাকাউন্টে লগইন করুন
-                          </>
-                        ) : (
-                          <>
-                            Login to Your{" "}
-                            <span className="text-[#FFB020]">{BRAND_NAME}</span>{" "}
-                            Account
-                          </>
-                        )}
-                      </h3>
+                      <div className="relative flex items-center bg-zinc-950/75 border border-zinc-700/80 focus-within:border-zinc-400 rounded-xl px-3.5 h-11 transition">
+                        <Mail className="w-4 h-4 text-zinc-400 mr-3 shrink-0" />
+                        <input
+                          type="email"
+                          required
+                          placeholder={
+                            lang === "bn" ? "ইমেইল ঠিকানা" : "Email Address"
+                          }
+                          value={loginIdentifier}
+                          onChange={(e) => setLoginIdentifier(e.target.value)}
+                          className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-zinc-400 outline-none"
+                        />
+                      </div>
 
-                      <input
-                        type="email"
-                        required
-                        placeholder={
-                          lang === "bn"
-                            ? "আপনার Gmail ঠিকানা দিন *"
-                            : "Enter your Gmail address *"
-                        }
-                        value={loginIdentifier}
-                        onChange={(e) => setLoginIdentifier(e.target.value)}
-                        className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/45 outline-none"
-                      />
-
-                      <div className="relative">
+                      <div className="relative flex items-center bg-zinc-950/75 border border-zinc-700/80 focus-within:border-zinc-400 rounded-xl px-3.5 h-11 transition">
+                        <KeyRound className="w-4 h-4 text-zinc-400 mr-3 shrink-0" />
                         <input
                           type={showPassword ? "text" : "password"}
                           required
                           placeholder={
-                            lang === "bn"
-                              ? "আপনার পাসওয়ার্ড দিন *"
-                              : "Enter your password *"
+                            lang === "bn" ? "পাসওয়ার্ড" : "Password"
                           }
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
-                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-white/45 outline-none"
+                          className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-zinc-400 outline-none pr-2"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword((s) => !s)}
-                          aria-label="Toggle password"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white cursor-pointer"
+                          aria-label="Toggle password visibility"
+                          className="text-zinc-400 hover:text-zinc-200 cursor-pointer shrink-0"
                         >
                           {showPassword ? (
-                            <EyeOff className="w-4 h-4" />
-                          ) : (
                             <Eye className="w-4 h-4" />
+                          ) : (
+                            <EyeOff className="w-4 h-4" />
                           )}
                         </button>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs">
-                        <label className="inline-flex items-center gap-2 text-white/80 cursor-pointer">
+                      <div className="flex items-center justify-between text-[11px] sm:text-xs pt-0.5">
+                        <label className="inline-flex items-center gap-2 text-zinc-300 cursor-pointer select-none">
                           <input
                             type="checkbox"
                             checked={rememberMe}
                             onChange={(e) => setRememberMe(e.target.checked)}
-                            className="accent-[#0077E6] rounded"
+                            className="w-3.5 h-3.5 rounded border-zinc-600 bg-zinc-900 accent-zinc-300 cursor-pointer"
                           />
                           <span>
                             {lang === "bn" ? "মনে রাখুন" : "Remember Me"}
@@ -3231,7 +3501,7 @@ export default function HomeStore() {
                             setForgotIdentifier(loginIdentifier);
                             setLoginError("");
                           }}
-                          className="text-[#FFB020] hover:underline font-semibold cursor-pointer"
+                          className="text-zinc-200 hover:text-white transition font-medium cursor-pointer"
                         >
                           {lang === "bn"
                             ? "পাসওয়ার্ড ভুলে গেছেন?"
@@ -3240,287 +3510,225 @@ export default function HomeStore() {
                       </div>
 
                       {loginError && (
-                        <p className="text-xs text-rose-300 font-medium">
+                        <p className="text-xs text-rose-400 font-medium">
                           {loginError}
                         </p>
                       )}
 
                       <button
                         type="submit"
-                        className="w-full bg-[#0077E6] hover:bg-[#0062BE] text-white font-extrabold py-3 rounded-xl text-sm transition cursor-pointer shadow-sm"
+                        disabled={authSubmitting}
+                        className="w-full h-11 rounded-xl bg-gradient-to-b from-zinc-200 via-zinc-300 to-zinc-500 hover:brightness-105 active:scale-[0.99] disabled:opacity-50 text-zinc-950 font-bold text-sm flex items-center justify-center gap-1.5 shadow-[0_6px_20px_rgba(255,255,255,0.14)] transition cursor-pointer"
                       >
-                        {lang === "bn" ? "লগইন করুন →" : "Login →"}
+                        <span>
+                          {authSubmitting
+                            ? lang === "bn"
+                              ? "লগইন হচ্ছে..."
+                              : "Signing In..."
+                            : lang === "bn"
+                            ? "লগইন"
+                            : "Login"}
+                        </span>
+                        <ArrowRight className="w-4 h-4" />
                       </button>
 
-                      <div className="text-center text-[11px] text-white/50">
-                        {lang === "bn" ? "অথবা" : "OR"}
+                      <div className="flex items-center gap-3 py-0.5">
+                        <span className="h-[1px] flex-1 bg-zinc-700/80" />
+                        <span className="text-[11px] text-zinc-400">
+                          {lang === "bn" ? "অথবা" : "or"}
+                        </span>
+                        <span className="h-[1px] flex-1 bg-zinc-700/80" />
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleGoogleAuth(false)}
-                        className="w-full bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold py-2.5 rounded-xl text-xs sm:text-sm transition cursor-pointer"
-                      >
-                        {lang === "bn"
-                          ? "Google দিয়ে চালিয়ে যান"
-                          : "Continue with Google"}
-                      </button>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => handleGoogleAuth(false)}
+                          className="h-10 rounded-xl bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer"
+                        >
+                          <span className="w-4 h-4 rounded-full bg-white text-[10px] font-black flex items-center justify-center text-[#EA4335]">
+                            G
+                          </span>
+                          <span>Google</span>
+                        </button>
 
-                      <div className="flex items-center justify-between pt-1 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => handleFacebookAuth(false)}
+                          className="h-10 rounded-xl bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer"
+                        >
+                          <span className="w-4 h-4 rounded-full bg-[#1877F2] text-white text-[10px] font-black flex items-center justify-center">
+                            f
+                          </span>
+                          <span>Facebook</span>
+                        </button>
+                      </div>
+
+                      <p className="text-center text-xs text-zinc-400 pt-1">
+                        {lang === "bn"
+                          ? "অ্যাকাউন্ট নেই? "
+                          : "Don't have an account? "}
                         <button
                           type="button"
                           onClick={() => {
                             setAuthMode("register");
-                            setRegStep("form");
-                            setRegOtpNotice("");
                             setLoginError("");
                           }}
-                          className="text-[#FFB020] hover:underline font-semibold cursor-pointer"
+                          className="text-white font-bold underline underline-offset-4 hover:text-zinc-200 cursor-pointer"
                         >
-                          {lang === "bn"
-                            ? "Gmail দিয়ে অ্যাকাউন্ট খুলুন →"
-                            : "Create Account with Gmail →"}
+                          {lang === "bn" ? "সাইন আপ" : "Sign Up"}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAccountModalOpen(false);
-                            setActiveBottomTab("home");
-                          }}
-                          className="text-white/75 hover:text-white cursor-pointer"
-                        >
-                          {lang === "bn"
-                            ? "গেস্ট হিসেবে কিনুন →"
-                            : "Guest Shopping →"}
-                        </button>
-                      </div>
+                      </p>
                     </form>
                   )}
 
-                  {authMode === "register" &&
-                    (regStep === "form" ? (
-                      <form
-                        onSubmit={handleRegisterSubmit}
-                        className="space-y-2.5"
-                      >
-                        <h3 className="text-xl font-black text-white">
-                          {lang === "bn" ? (
-                            <>
-                              Gmail দিয়ে{" "}
-                              <span className="text-[#FFB020]">
-                                {BRAND_NAME}
-                              </span>{" "}
-                              অ্যাকাউন্ট তৈরি করুন
-                            </>
-                          ) : (
-                            <>
-                              Create{" "}
-                              <span className="text-[#FFB020]">
-                                {BRAND_NAME}
-                              </span>{" "}
-                              Account via Gmail
-                            </>
-                          )}
-                        </h3>
-
+                  {authMode === "register" && (
+                    <form onSubmit={handleRegisterSubmit} className="space-y-2.5">
+                      <div className="flex items-center bg-zinc-950/75 border border-zinc-700/80 focus-within:border-zinc-400 rounded-xl px-3.5 h-10">
+                        <User className="w-4 h-4 text-zinc-400 mr-3 shrink-0" />
                         <input
                           type="text"
                           required
-                          placeholder={
-                            lang === "bn" ? "পুরো নাম *" : "Full Name *"
-                          }
+                          placeholder={lang === "bn" ? "পুরো নাম" : "Full Name"}
                           value={regName}
                           onChange={(e) => setRegName(e.target.value)}
-                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
+                          className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-zinc-400 outline-none"
                         />
+                      </div>
 
+                      <div className="flex items-center bg-zinc-950/75 border border-zinc-700/80 focus-within:border-zinc-400 rounded-xl px-3.5 h-10">
+                        <Mail className="w-4 h-4 text-zinc-400 mr-3 shrink-0" />
                         <input
                           type="email"
                           required
                           placeholder={
                             lang === "bn"
-                              ? "Gmail ঠিকানা (example@gmail.com) *"
-                              : "Gmail Address (example@gmail.com) *"
+                              ? "ইমেইল ঠিকানা (example@gmail.com)"
+                              : "Email Address (example@gmail.com)"
                           }
                           value={regEmail}
                           onChange={(e) => setRegEmail(e.target.value)}
-                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
+                          className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-zinc-400 outline-none"
                         />
+                      </div>
 
-                        <div className="grid sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex items-center bg-zinc-950/75 border border-zinc-700/80 focus-within:border-zinc-400 rounded-xl px-3 h-10">
                           <input
                             type="password"
                             required
                             placeholder={
-                              lang === "bn" ? "পাসওয়ার্ড *" : "Password *"
+                              lang === "bn" ? "পাসওয়ার্ড" : "Create Password"
                             }
                             value={regPassword}
                             onChange={(e) => setRegPassword(e.target.value)}
-                            className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
+                            className="w-full bg-transparent text-xs text-white placeholder:text-zinc-400 outline-none"
                           />
+                        </div>
+                        <div className="flex items-center bg-zinc-950/75 border border-zinc-700/80 focus-within:border-zinc-400 rounded-xl px-3 h-10">
                           <input
                             type="password"
                             required
-                            placeholder={
-                              lang === "bn"
-                                ? "কনফার্ম পাসওয়ার্ড *"
-                                : "Confirm Password *"
-                            }
+                            placeholder={lang === "bn" ? "কনফার্ম" : "Confirm"}
                             value={regConfirmPassword}
                             onChange={(e) =>
                               setRegConfirmPassword(e.target.value)
                             }
-                            className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white outline-none"
+                            className="w-full bg-transparent text-xs text-white placeholder:text-zinc-400 outline-none"
                           />
                         </div>
+                      </div>
 
-                        <label className="inline-flex items-center gap-2 text-xs text-white/80 cursor-pointer pt-0.5">
-                          <input
-                            type="checkbox"
-                            checked={agreeTerms}
-                            onChange={(e) => setAgreeTerms(e.target.checked)}
-                            className="accent-[#0077E6] rounded"
-                          />
-                          <span>
-                            {lang === "bn"
-                              ? "Terms & Conditions-এ সম্মত আছি"
-                              : "Agree to Terms & Conditions"}
-                          </span>
-                        </label>
-
-                        {loginError && (
-                          <p className="text-xs text-rose-300 font-medium">
-                            {loginError}
-                          </p>
-                        )}
-
-                        <button
-                          type="submit"
-                          disabled={regLoading}
-                          className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:opacity-50 text-white font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
-                        >
-                          {regLoading
-                            ? lang === "bn"
-                              ? "Gmail-এ কোড পাঠানো হচ্ছে..."
-                              : "Sending Code to Gmail..."
-                            : lang === "bn"
-                            ? "ভেরিফিকেশন কোড পাঠান"
-                            : "Send Verification Code"}
-                        </button>
-                      </form>
-                    ) : (
-                      <form
-                        onSubmit={handleVerifyRegistrationOtp}
-                        className="space-y-3"
-                      >
-                        <h3 className="text-xl font-black text-white">
-                          {lang === "bn"
-                            ? "আপনার Gmail ভেরিফাই করুন"
-                            : "Verify Your Gmail"}
-                        </h3>
-
-                        {regOtpNotice && (
-                          <p className="text-xs text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 rounded-xl p-2.5">
-                            {regOtpNotice}
-                          </p>
-                        )}
-
+                      <label className="inline-flex items-center gap-2 text-[11px] text-zinc-300 cursor-pointer pt-0.5">
                         <input
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={6}
-                          required
-                          placeholder={
-                            lang === "bn"
-                              ? "৬ ডিজিটের ভেরিফিকেশন কোড লিখুন *"
-                              : "Enter 6-digit verification code *"
-                          }
-                          value={regOtpCode}
-                          onChange={(e) =>
-                            setRegOtpCode(e.target.value.replace(/\D/g, ""))
-                          }
-                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 text-center text-base tracking-widest text-white font-mono outline-none"
+                          type="checkbox"
+                          checked={agreeTerms}
+                          onChange={(e) => setAgreeTerms(e.target.checked)}
+                          className="accent-zinc-300 rounded"
                         />
+                        <span>
+                          {lang === "bn"
+                            ? "Terms & Conditions-এ সম্মত আছি"
+                            : "Agree to Terms & Conditions"}
+                        </span>
+                      </label>
 
-                        {loginError && (
-                          <p className="text-xs text-rose-300 font-medium">
-                            {loginError}
-                          </p>
-                        )}
+                      {loginError && (
+                        <p className="text-xs text-rose-400 font-medium">
+                          {loginError}
+                        </p>
+                      )}
 
+                      <button
+                        type="submit"
+                        disabled={authSubmitting}
+                        className="w-full h-11 rounded-xl bg-gradient-to-b from-zinc-200 via-zinc-300 to-zinc-500 hover:brightness-105 disabled:opacity-50 text-zinc-950 font-bold text-xs sm:text-sm transition cursor-pointer"
+                      >
+                        {authSubmitting
+                          ? lang === "bn"
+                            ? "তৈরি হচ্ছে..."
+                            : "Creating..."
+                          : lang === "bn"
+                          ? "পাসওয়ার্ড তৈরি ও সাইন আপ"
+                          : "Create Account"}
+                      </button>
+
+                      <p className="text-center text-xs text-zinc-400 pt-1">
+                        {lang === "bn"
+                          ? "ইতোমধ্যে অ্যাকাউন্ট আছে? "
+                          : "Already have an account? "}
                         <button
-                          type="submit"
-                          disabled={regLoading}
-                          className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:opacity-50 text-white font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
+                          type="button"
+                          onClick={() => {
+                            setAuthMode("login");
+                            setLoginError("");
+                          }}
+                          className="text-white font-bold underline underline-offset-4 cursor-pointer"
                         >
-                          {regLoading
-                            ? lang === "bn"
-                              ? "যাচাই ও লগইন হচ্ছে..."
-                              : "Verifying & Logging In..."
-                            : lang === "bn"
-                            ? "কোড ভেরিফাই করে লগইন করুন"
-                            : "Verify Code & Login"}
+                          {lang === "bn" ? "লগইন" : "Login"}
                         </button>
-
-                        <div className="flex items-center justify-between text-xs pt-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRegStep("form");
-                              setRegOtpCode("");
-                              setLoginError("");
-                            }}
-                            className="text-white/70 hover:text-white cursor-pointer"
-                          >
-                            {lang === "bn" ? "← তথ্য বদলান" : "← Edit Details"}
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={regLoading}
-                            onClick={handleRegisterSubmit}
-                            className="text-[#FFB020] hover:underline font-semibold cursor-pointer"
-                          >
-                            {lang === "bn" ? "আবার কোড পাঠান" : "Resend Code"}
-                          </button>
-                        </div>
-                      </form>
-                    ))}
+                      </p>
+                    </form>
+                  )}
 
                   {authMode === "forgot" && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-[#FFB020]">
-                        <KeyRound className="w-4 h-4" />
-                        <h3 className="text-lg font-black text-white">
-                          Forgot Password
-                        </h3>
-                      </div>
                       <form
                         onSubmit={handleForgotPassword}
-                        className="space-y-2.5"
+                        className="space-y-3"
                       >
-                        <input
-                          type="email"
-                          required
-                          placeholder="Enter your Gmail address *"
-                          value={forgotIdentifier}
-                          onChange={(e) => setForgotIdentifier(e.target.value)}
-                          className="w-full bg-[#111827]/75 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white outline-none"
-                        />
+                        <div className="flex items-center bg-zinc-950/75 border border-zinc-700/80 focus-within:border-zinc-400 rounded-xl px-3.5 h-11">
+                          <Mail className="w-4 h-4 text-zinc-400 mr-3 shrink-0" />
+                          <input
+                            type="email"
+                            required
+                            placeholder="Email Address"
+                            value={forgotIdentifier}
+                            onChange={(e) => setForgotIdentifier(e.target.value)}
+                            className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-zinc-400 outline-none"
+                          />
+                        </div>
                         {loginError && (
-                          <p className="text-xs text-rose-300 font-medium">
+                          <p className="text-xs text-rose-400 font-medium">
                             {loginError}
                           </p>
                         )}
                         <button
                           type="submit"
-                          className="w-full bg-[#0077E6] hover:bg-[#0062BE] text-white font-extrabold py-2.5 rounded-xl text-sm transition cursor-pointer"
+                          disabled={authSubmitting}
+                          className="w-full h-11 rounded-xl bg-gradient-to-b from-zinc-200 via-zinc-300 to-zinc-500 hover:brightness-105 disabled:opacity-50 text-zinc-950 font-bold text-sm transition cursor-pointer"
                         >
-                          Send Reset Link
+                          {authSubmitting
+                            ? lang === "bn"
+                              ? "পাঠানো হচ্ছে..."
+                              : "Sending..."
+                            : lang === "bn"
+                            ? "রিসেট লিংক পাঠান"
+                            : "Send Reset Link"}
                         </button>
                       </form>
                       {forgotNotice && (
-                        <p className="text-xs text-emerald-300">
+                        <p className="text-xs text-emerald-400">
                           {forgotNotice}
                         </p>
                       )}
@@ -3530,83 +3738,12 @@ export default function HomeStore() {
                           setAuthMode("login");
                           setLoginError("");
                         }}
-                        className="text-xs text-[#FFB020] hover:underline cursor-pointer"
+                        className="w-full text-center text-xs text-zinc-300 hover:text-white underline underline-offset-4 cursor-pointer"
                       >
-                        ← Back to Login
+                        {lang === "bn" ? "← লগইনে ফিরুন" : "← Back to Login"}
                       </button>
                     </div>
                   )}
-                </div>
-
-                {/* Right Trusted Brand Showcase Column */}
-                <div className="lg:col-span-6 relative min-h-[280px] lg:min-h-full bg-[#111827] flex flex-col justify-between p-6 sm:p-8 overflow-hidden">
-                  <img
-                    src={authBannerImage}
-                    alt={`${BRAND_NAME} Showcase`}
-                    className="absolute inset-0 w-full h-full object-cover opacity-55"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src =
-                        "/hero-banner.jpg";
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#0B0C10]/95 via-[#0B0C10]/65 to-[#1E2B4D]/80" />
-
-                  <div className="relative z-10 flex items-center justify-between gap-2">
-                    <span className="text-xs font-extrabold uppercase tracking-widest text-white bg-[#1E2B4D]/90 px-3 py-1 rounded-full border border-white/15">
-                      {BRAND_NAME} • {BRAND_TAGLINE}
-                    </span>
-                  </div>
-
-                  <div className="relative z-10 space-y-4 pt-12">
-                    <div className="space-y-1.5">
-                      <p className="text-xl sm:text-2xl font-black text-white leading-snug">
-                        {lang === "bn"
-                          ? "নিশ্চিন্তে কেনাকাটা করুন বিশ্বস্ত কালেকশনের সাথে"
-                          : "Shop Confidently with Curated Style & Tech"}
-                      </p>
-                      <p className="text-xs sm:text-sm text-white/80">
-                        {lang === "bn"
-                          ? "অর্ডার ট্র্যাকিং, সেভড ঠিকানা এবং দ্রুত ডেলিভারি সুবিধা এক জায়গায়।"
-                          : "Track live orders, manage saved delivery details, and check out faster across Bangladesh."}
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                      <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl p-3">
-                        <ShieldCheck className="w-4 h-4 text-[#FFB020] mb-1.5" />
-                        <p className="text-xs font-bold text-white">
-                          {lang === "bn" ? "১০০% অরিজিনাল" : "100% Authentic"}
-                        </p>
-                        <p className="text-[11px] text-white/70 mt-0.5">
-                          {lang === "bn"
-                            ? "যাচাইকৃত কোয়ালিটি"
-                            : "Quality checked"}
-                        </p>
-                      </div>
-
-                      <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl p-3">
-                        <Truck className="w-4 h-4 text-[#FFB020] mb-1.5" />
-                        <p className="text-xs font-bold text-white">
-                          {lang === "bn" ? "COD ও ওয়ালেট" : "COD & Wallets"}
-                        </p>
-                        <p className="text-[11px] text-white/70 mt-0.5">
-                          bKash, Nagad, Rocket
-                        </p>
-                      </div>
-
-                      <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl p-3">
-                        <Package className="w-4 h-4 text-[#FFB020] mb-1.5" />
-                        <p className="text-xs font-bold text-white">
-                          {lang === "bn" ? "লাইভ ট্র্যাকিং" : "Live Tracking"}
-                        </p>
-                        <p className="text-[11px] text-white/70 mt-0.5">
-                          {lang === "bn"
-                            ? "রিয়েল-টাইম আপডেট"
-                            : "Real-time status"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             )}
@@ -3616,10 +3753,16 @@ export default function HomeStore() {
 
       {/* Quick View Modal + Related Products */}
       {quickViewProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-[#E3E6EB] my-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
+          <div
+            className={`rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl my-auto ${t.surface}`}
+          >
             <div className="grid sm:grid-cols-2">
-              <div className="aspect-square bg-[#F4F6F9]">
+              <div
+                className={`aspect-square ${
+                  isLight ? "bg-zinc-100" : "bg-zinc-900"
+                }`}
+              >
                 <img
                   src={quickViewProduct.image}
                   alt={quickViewProduct.name}
@@ -3629,35 +3772,37 @@ export default function HomeStore() {
               <div className="p-6 flex flex-col justify-between space-y-4">
                 <div>
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#4B5563]">
+                    <span
+                      className={`text-[11px] font-bold uppercase tracking-wider ${t.mutedText}`}
+                    >
                       {catLabelText(quickViewProduct.subCategory)}
                     </span>
                     <button
                       type="button"
                       onClick={() => setQuickViewProduct(null)}
-                      className="p-1 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
+                      className={`p-1 rounded-full cursor-pointer ${t.pillBtn}`}
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
 
-                  <h3 className="text-lg font-bold text-[#111827] mt-1">
+                  <h3 className={`text-lg font-bold mt-1 ${t.titleText}`}>
                     {quickViewProduct.name}
                   </h3>
 
                   <div className="flex items-center gap-2 mt-1.5">
-                    <span className="text-lg font-extrabold text-[#111827]">
+                    <span className={`text-lg font-extrabold ${t.titleText}`}>
                       ৳{quickViewProduct.price}
                     </span>
                     {quickViewProduct.oldPrice && (
-                      <span className="text-xs text-[#4B5563]/70 line-through">
+                      <span className={`text-xs line-through ${t.mutedText}`}>
                         ৳{quickViewProduct.oldPrice}
                       </span>
                     )}
                   </div>
 
                   {quickViewProduct.description && (
-                    <p className="text-xs text-[#4B5563] mt-3 leading-relaxed">
+                    <p className={`text-xs mt-3 leading-relaxed ${t.mutedText}`}>
                       {quickViewProduct.description}
                     </p>
                   )}
@@ -3666,7 +3811,7 @@ export default function HomeStore() {
                     quickViewProduct.sizes &&
                     quickViewProduct.sizes.length > 0 && (
                       <div className="mt-4">
-                        <span className="text-xs text-[#4B5563] block mb-1.5">
+                        <span className={`text-xs block mb-1.5 ${t.mutedText}`}>
                           {lang === "bn" ? "সাইজ নির্বাচন করুন:" : "Select Size:"}
                         </span>
                         <div className="flex flex-wrap gap-2">
@@ -3683,8 +3828,8 @@ export default function HomeStore() {
                               className={`px-3 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
                                 (selectedSizes[quickViewProduct.id] ||
                                   quickViewProduct.sizes?.[0]) === sz
-                                  ? "bg-[#1E2B4D] text-white border-[#1E2B4D]"
-                                  : "bg-white text-[#4B5563] border-[#E3E6EB]"
+                                  ? t.chipActive
+                                  : t.chipIdle
                               }`}
                             >
                               {sz}
@@ -3697,7 +3842,7 @@ export default function HomeStore() {
                   {quickViewProduct.colors &&
                     quickViewProduct.colors.length > 0 && (
                       <div className="mt-3">
-                        <span className="text-xs text-[#4B5563] block mb-1.5">
+                        <span className={`text-xs block mb-1.5 ${t.mutedText}`}>
                           {lang === "bn"
                             ? "কালার নির্বাচন করুন:"
                             : "Select Color:"}
@@ -3716,8 +3861,8 @@ export default function HomeStore() {
                               className={`px-2.5 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
                                 (selectedColors[quickViewProduct.id] ||
                                   quickViewProduct.colors?.[0]) === col
-                                  ? "bg-[#FFB020]/25 text-[#111827] border-[#FFB020]"
-                                  : "bg-white text-[#4B5563] border-[#E3E6EB]"
+                                  ? t.chipActive
+                                  : t.chipIdle
                               }`}
                             >
                               {col}
@@ -3735,7 +3880,7 @@ export default function HomeStore() {
                     setQuickViewProduct(null);
                     addToCart(target, true);
                   }}
-                  className="w-full bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-semibold py-3 rounded-xl transition cursor-pointer"
+                  className={`w-full text-sm font-extrabold py-3 rounded-xl transition cursor-pointer ${t.silverCta}`}
                 >
                   {lang === "bn"
                     ? `কার্টে যোগ করুন — ৳${quickViewProduct.price}`
@@ -3745,8 +3890,14 @@ export default function HomeStore() {
             </div>
 
             {relatedProducts.length > 0 && (
-              <div className="p-5 bg-[#F4F6F9] border-t border-[#E3E6EB] space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
+              <div
+                className={`p-5 border-t space-y-3 ${t.surfaceAlt} ${
+                  isLight ? "border-zinc-200" : "border-zinc-800"
+                }`}
+              >
+                <p
+                  className={`text-xs font-bold uppercase tracking-wider ${t.mutedText}`}
+                >
                   {lang === "bn" ? "রিলেটেড প্রোডাক্টস" : "Related Products"}
                 </p>
                 <div className="grid grid-cols-3 gap-3">
@@ -3755,19 +3906,21 @@ export default function HomeStore() {
                       key={rel.id}
                       type="button"
                       onClick={() => setQuickViewProduct(rel)}
-                      className="text-left bg-white p-2 rounded-2xl border border-[#E3E6EB] hover:border-[#0077E6] transition cursor-pointer"
+                      className={`text-left p-2 rounded-2xl transition cursor-pointer ${t.surface} ${
+                        isLight ? "hover:border-zinc-400" : "hover:border-zinc-600"
+                      }`}
                     >
-                      <div className="aspect-square rounded-xl overflow-hidden bg-[#F4F6F9] mb-1.5">
+                      <div className="aspect-square rounded-xl overflow-hidden bg-zinc-800 mb-1.5">
                         <img
                           src={rel.image}
                           alt={rel.name}
                           className="w-full h-full object-cover"
                         />
                       </div>
-                      <p className="text-xs font-semibold text-[#111827] truncate">
+                      <p className={`text-xs font-semibold truncate ${t.titleText}`}>
                         {rel.name}
                       </p>
-                      <p className="text-xs font-extrabold text-[#0077E6]">
+                      <p className={`text-xs font-extrabold ${t.bodyText}`}>
                         ৳{rel.price}
                       </p>
                     </button>
@@ -3781,11 +3934,21 @@ export default function HomeStore() {
 
       {/* Mobile-First Cart & Checkout Drawer */}
       {isCartOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-[#0B0C10]/55 backdrop-blur-xs">
-          <div className="bg-[#F4F6F9] w-full max-w-md h-full flex flex-col justify-between overflow-y-auto p-5 sm:p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/75 backdrop-blur-xs">
+          <div
+            className={`w-full max-w-md h-full flex flex-col justify-between overflow-y-auto p-5 sm:p-6 shadow-2xl border-l ${
+              isLight
+                ? "bg-[#F4F4F6] text-zinc-900 border-zinc-200"
+                : "bg-[#0E0E12] text-zinc-100 border-zinc-800"
+            }`}
+          >
             <div>
-              <div className="flex items-center justify-between pb-4 border-b border-[#E3E6EB]">
-                <h2 className="text-lg font-bold text-[#111827]">
+              <div
+                className={`flex items-center justify-between pb-4 border-b ${
+                  isLight ? "border-zinc-200" : "border-zinc-800"
+                }`}
+              >
+                <h2 className={`text-lg font-bold ${t.titleText}`}>
                   {orderSuccess
                     ? lang === "bn"
                       ? "অর্ডার নিশ্চিত হয়েছে"
@@ -3800,27 +3963,33 @@ export default function HomeStore() {
                     setIsCartOpen(false);
                     setActiveBottomTab("home");
                   }}
-                  className="p-2 rounded-full bg-white border border-[#E3E6EB] hover:bg-[#F4F6F9] cursor-pointer"
+                  className={`p-2 rounded-full cursor-pointer ${t.pillBtn}`}
                 >
-                  <X className="w-4 h-4 text-[#111827]" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
               {orderSuccess ? (
-                <div className="my-8 text-center bg-white border border-[#E3E6EB] p-6 rounded-3xl shadow-2xs space-y-3">
-                  <div className="w-14 h-14 rounded-full bg-[#0077E6]/10 flex items-center justify-center mx-auto">
-                    <CheckCircle2 className="w-8 h-8 text-[#0077E6]" />
+                <div
+                  className={`my-8 text-center p-6 rounded-3xl space-y-3 ${t.surface}`}
+                >
+                  <div
+                    className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${
+                      isLight ? "bg-zinc-100" : "bg-zinc-800"
+                    }`}
+                  >
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500" />
                   </div>
-                  <h3 className="text-xl font-bold text-[#111827]">
+                  <h3 className={`text-xl font-bold ${t.titleText}`}>
                     {lang === "bn" ? "অর্ডার কনফার্ম হয়েছে!" : "Order Confirmed!"}
                   </h3>
-                  <p className="text-xs text-[#4B5563]">
+                  <p className={`text-xs ${t.mutedText}`}>
                     {lang === "bn" ? "অর্ডার আইডি:" : "Order Reference:"}{" "}
-                    <span className="font-mono font-semibold text-[#111827]">
+                    <span className={`font-mono font-semibold ${t.titleText}`}>
                       {confirmedOrderId}
                     </span>
                   </p>
-                  <p className="text-sm text-[#4B5563] leading-relaxed">
+                  <p className={`text-sm leading-relaxed ${t.mutedText}`}>
                     {lang === "bn"
                       ? `${BRAND_NAME}-এ আপনার অর্ডারটি গৃহীত হয়েছে। ডেলিভারি নিশ্চিত করতে আমাদের টিম শীঘ্রই যোগাযোগ করবে।`
                       : `Your ${BRAND_NAME} order has been received. Our team will contact you shortly to confirm delivery.`}
@@ -3832,13 +4001,13 @@ export default function HomeStore() {
                       setIsCartOpen(false);
                       setActiveBottomTab("home");
                     }}
-                    className="mt-3 w-full bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-semibold py-3 rounded-2xl transition cursor-pointer"
+                    className={`mt-3 w-full text-sm font-extrabold py-3 rounded-2xl transition cursor-pointer ${t.silverCta}`}
                   >
                     {lang === "bn" ? "শপিং চালিয়ে যান" : "Continue Shopping"}
                   </button>
                 </div>
               ) : cart.length === 0 ? (
-                <div className="text-center text-[#4B5563] my-16 text-sm space-y-3">
+                <div className={`text-center my-16 text-sm space-y-3 ${t.mutedText}`}>
                   <p>
                     {lang === "bn"
                       ? "আপনার শপিং কার্ট বর্তমানে খালি।"
@@ -3850,24 +4019,30 @@ export default function HomeStore() {
                       setIsCartOpen(false);
                       setActiveBottomTab("home");
                     }}
-                    className="bg-[#0077E6] text-white text-xs font-semibold px-4 py-2.5 rounded-xl cursor-pointer"
+                    className={`text-xs font-extrabold px-4 py-2.5 rounded-xl cursor-pointer ${t.silverCta}`}
                   >
                     {lang === "bn" ? "প্রোডাক্ট দেখুন" : "Browse Products"}
                   </button>
                 </div>
               ) : (
                 <>
-                  <div className="bg-white rounded-2xl border border-[#E3E6EB] divide-y divide-[#E3E6EB] my-4 px-4">
+                  <div
+                    className={`rounded-2xl divide-y my-4 px-4 ${t.surface} ${
+                      isLight ? "divide-zinc-200" : "divide-zinc-800"
+                    }`}
+                  >
                     {cart.map((item, idx) => (
                       <div
                         key={`${item.product.id}-${item.selectedOption}-${item.selectedColor}`}
                         className="py-3.5 flex items-center justify-between gap-3"
                       >
                         <div className="min-w-0">
-                          <h4 className="font-semibold text-sm text-[#111827] truncate">
+                          <h4
+                            className={`font-semibold text-sm truncate ${t.titleText}`}
+                          >
                             {item.product.name}
                           </h4>
-                          <span className="text-xs text-[#4B5563] block">
+                          <span className={`text-xs block ${t.mutedText}`}>
                             {item.selectedOption
                               ? `${lang === "bn" ? "সাইজ:" : "Size:"} ${
                                   item.selectedOption
@@ -3877,7 +4052,7 @@ export default function HomeStore() {
                               ? `• ${item.selectedColor}`
                               : ""}
                           </span>
-                          <p className="text-sm font-bold text-[#111827] mt-0.5">
+                          <p className={`text-sm font-bold mt-0.5 ${t.bodyText}`}>
                             ৳{item.product.price * item.quantity}
                           </p>
                         </div>
@@ -3886,24 +4061,26 @@ export default function HomeStore() {
                           <button
                             type="button"
                             onClick={() => updateQty(idx, -1)}
-                            className="w-7 h-7 rounded-full bg-[#F4F6F9] hover:bg-[#E3E6EB] flex items-center justify-center cursor-pointer"
+                            className={`w-7 h-7 rounded-full flex items-center justify-center cursor-pointer ${t.pillBtn}`}
                           >
                             <Minus className="w-3.5 h-3.5" />
                           </button>
-                          <span className="text-sm font-bold w-5 text-center">
+                          <span
+                            className={`text-sm font-bold w-5 text-center ${t.titleText}`}
+                          >
                             {item.quantity}
                           </span>
                           <button
                             type="button"
                             onClick={() => updateQty(idx, 1)}
-                            className="w-7 h-7 rounded-full bg-[#F4F6F9] hover:bg-[#E3E6EB] flex items-center justify-center cursor-pointer"
+                            className={`w-7 h-7 rounded-full flex items-center justify-center cursor-pointer ${t.pillBtn}`}
                           >
                             <Plus className="w-3.5 h-3.5" />
                           </button>
                           <button
                             type="button"
                             onClick={() => removeItem(idx)}
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-full ml-1 cursor-pointer"
+                            className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-full ml-1 cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -3913,8 +4090,8 @@ export default function HomeStore() {
                   </div>
 
                   <form onSubmit={handlePlaceOrder} className="space-y-3">
-                    <div className="bg-white rounded-2xl border border-[#E3E6EB] p-4 space-y-3">
-                      <h3 className="font-bold text-sm text-[#111827]">
+                    <div className={`rounded-2xl p-4 space-y-3 ${t.surface}`}>
+                      <h3 className={`font-bold text-sm ${t.titleText}`}>
                         {lang === "bn" ? "ডেলিভারি তথ্য" : "Delivery Details"}
                       </h3>
 
@@ -3924,7 +4101,7 @@ export default function HomeStore() {
                         placeholder={lang === "bn" ? "পুরো নাম *" : "Full Name *"}
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
-                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                        className={`w-full rounded-xl px-3.5 py-2.5 text-sm outline-none ${t.input}`}
                       />
 
                       <input
@@ -3937,7 +4114,7 @@ export default function HomeStore() {
                         }
                         value={customerPhone}
                         onChange={(e) => setCustomerPhone(e.target.value)}
-                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                        className={`w-full rounded-xl px-3.5 py-2.5 text-sm outline-none ${t.input}`}
                       />
 
                       <input
@@ -3950,7 +4127,7 @@ export default function HomeStore() {
                         }
                         value={customerDistrict}
                         onChange={(e) => setCustomerDistrict(e.target.value)}
-                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                        className={`w-full rounded-xl px-3.5 py-2.5 text-sm outline-none ${t.input}`}
                       />
 
                       <textarea
@@ -3963,7 +4140,7 @@ export default function HomeStore() {
                         }
                         value={customerAddress}
                         onChange={(e) => setCustomerAddress(e.target.value)}
-                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                        className={`w-full rounded-xl px-3.5 py-2.5 text-sm outline-none ${t.input}`}
                       />
 
                       <input
@@ -3975,7 +4152,7 @@ export default function HomeStore() {
                         }
                         value={orderNotes}
                         onChange={(e) => setOrderNotes(e.target.value)}
-                        className="w-full bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3.5 py-2.5 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                        className={`w-full rounded-xl px-3.5 py-2.5 text-sm outline-none ${t.input}`}
                       />
 
                       <div className="grid grid-cols-2 gap-2 pt-1">
@@ -3984,8 +4161,8 @@ export default function HomeStore() {
                           onClick={() => setDeliveryZone("mymensingh")}
                           className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
                             deliveryZone === "mymensingh"
-                              ? "bg-[#1E2B4D] border-[#1E2B4D] text-white"
-                              : "bg-white border-[#E3E6EB] text-[#4B5563]"
+                              ? t.chipActive
+                              : t.chipIdle
                           }`}
                         >
                           {lang === "bn"
@@ -3997,8 +4174,8 @@ export default function HomeStore() {
                           onClick={() => setDeliveryZone("outside")}
                           className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
                             deliveryZone === "outside"
-                              ? "bg-[#1E2B4D] border-[#1E2B4D] text-white"
-                              : "bg-white border-[#E3E6EB] text-[#4B5563]"
+                              ? t.chipActive
+                              : t.chipIdle
                           }`}
                         >
                           {lang === "bn"
@@ -4008,7 +4185,9 @@ export default function HomeStore() {
                       </div>
 
                       <div className="pt-1">
-                        <span className="text-xs font-semibold text-[#4B5563] block mb-1.5">
+                        <span
+                          className={`text-xs font-semibold block mb-1.5 ${t.mutedText}`}
+                        >
                           {lang === "bn" ? "পেমেন্ট মেথড:" : "Payment Method:"}
                         </span>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -4026,8 +4205,8 @@ export default function HomeStore() {
                               onClick={() => setPaymentMethod(method)}
                               className={`py-2 px-2 rounded-xl text-[11px] font-bold border transition cursor-pointer ${
                                 paymentMethod === method
-                                  ? "bg-[#0077E6] border-[#0077E6] text-white"
-                                  : "bg-white border-[#E3E6EB] text-[#4B5563]"
+                                  ? t.chipActive
+                                  : t.chipIdle
                               }`}
                             >
                               {method === "Cash on Delivery" ? "COD" : method}
@@ -4037,10 +4216,12 @@ export default function HomeStore() {
                       </div>
 
                       {isMobileWalletPayment && (
-                        <div className="p-3 rounded-2xl bg-[#FFB020]/15 border border-[#FFB020]/50 space-y-2 text-xs">
-                          <p className="font-semibold text-[#111827]">
+                        <div
+                          className={`p-3 rounded-2xl space-y-2 text-xs ${t.surfaceAlt}`}
+                        >
+                          <p className={`font-semibold ${t.bodyText}`}>
                             {paymentMethod} Send Money Number:{" "}
-                            <span className="font-mono font-bold">
+                            <span className={`font-mono font-bold ${t.titleText}`}>
                               {activeWalletNumber}
                             </span>
                           </p>
@@ -4050,7 +4231,7 @@ export default function HomeStore() {
                             placeholder={`${paymentMethod} Sender Number (017XXXXXXXX) *`}
                             value={senderNumber}
                             onChange={(e) => setSenderNumber(e.target.value)}
-                            className="w-full bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs text-[#111827] outline-none"
+                            className={`w-full rounded-xl px-3 py-2 text-xs outline-none ${t.input}`}
                           />
                           <input
                             type="text"
@@ -4058,26 +4239,26 @@ export default function HomeStore() {
                             placeholder="Transaction ID (TrxID) *"
                             value={trxId}
                             onChange={(e) => setTrxId(e.target.value)}
-                            className="w-full bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs text-[#111827] outline-none"
+                            className={`w-full rounded-xl px-3 py-2 text-xs outline-none ${t.input}`}
                           />
                         </div>
                       )}
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-[#E3E6EB] p-4 space-y-2 text-sm">
-                      <div className="flex justify-between text-[#4B5563]">
+                    <div className={`rounded-2xl p-4 space-y-2 text-sm ${t.surface}`}>
+                      <div className={`flex justify-between ${t.mutedText}`}>
                         <span>{lang === "bn" ? "সাবটোটাল" : "Subtotal"}</span>
-                        <span className="font-semibold text-[#111827]">
+                        <span className={`font-semibold ${t.titleText}`}>
                           ৳{subtotal}
                         </span>
                       </div>
-                      <div className="flex justify-between text-[#4B5563]">
+                      <div className={`flex justify-between ${t.mutedText}`}>
                         <span>
                           {lang === "bn"
                             ? "ডেলিভারি চার্জ"
                             : "Delivery Charge"}
                         </span>
-                        <span className="font-semibold text-[#111827]">
+                        <span className={`font-semibold ${t.titleText}`}>
                           {deliveryCharge === 0
                             ? lang === "bn"
                               ? "ফ্রি (৳0)"
@@ -4085,7 +4266,11 @@ export default function HomeStore() {
                             : `৳${deliveryCharge}`}
                         </span>
                       </div>
-                      <div className="flex justify-between font-bold text-base text-[#111827] pt-2 border-t border-[#E3E6EB]">
+                      <div
+                        className={`flex justify-between font-bold text-base pt-2 border-t ${t.titleText} ${
+                          isLight ? "border-zinc-200" : "border-zinc-800"
+                        }`}
+                      >
                         <span>
                           {lang === "bn" ? "সর্বমোট বিল" : "Total Payable"}
                         </span>
@@ -4094,7 +4279,7 @@ export default function HomeStore() {
                     </div>
 
                     {orderError && (
-                      <p className="text-xs text-rose-600 font-medium px-1">
+                      <p className="text-xs text-rose-500 font-medium px-1">
                         {orderError}
                       </p>
                     )}
@@ -4102,7 +4287,7 @@ export default function HomeStore() {
                     <button
                       type="submit"
                       disabled={submittingOrder}
-                      className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:opacity-50 text-white font-semibold py-3.5 rounded-2xl transition shadow-md cursor-pointer"
+                      className={`w-full disabled:opacity-50 font-extrabold py-3.5 rounded-2xl transition shadow-md cursor-pointer ${t.silverCta}`}
                     >
                       {submittingOrder
                         ? lang === "bn"
