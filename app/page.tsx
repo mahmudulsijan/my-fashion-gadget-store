@@ -45,6 +45,8 @@ type Product = {
   oldPrice?: number;
   image: string;
   secondaryImage?: string;
+  images?: string[];
+  colorImages?: Record<string, string>;
   badge?: string;
   sizes?: string[];
   colors?: string[];
@@ -102,6 +104,7 @@ const SUPPORT_EMAIL = "maveron.store@gmail.com";
 const HERO_BANNER_SRC = "/hero-banner.jpg";
 const LOGIN_SILK_BG_SRC = "/images/maveron-silk-bg.jpg";
 const LOGO_SRC = "/images/maveron-logo.png";
+const SCROLL_STORAGE_KEY = "maveron_home_scroll_y";
 
 const DEFAULT_DELIVERY_CONFIG: DeliveryConfig = {
   insideMymensingh: 70,
@@ -151,11 +154,10 @@ const CATEGORY_IMAGES = {
   womensFootwear:
     "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=500&q=80",
   gadgets:
-    "https://images.unsplash.com/photo-1579586337278-3befd40fd17a?auto=format&fit=crop&w=500&q=80",
+    "/images/gadgets.jpg",
   beautyProducts:
     "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=500&q=80",
-  mobileAccessories:
-    "https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=500&q=80",
+  mobileAccessories: "/images/mobile-accessories.jpg",
 };
 
 const FEATURED_CATEGORIES = [
@@ -328,29 +330,195 @@ function resolveFashionSizes(
 }
 
 function resolveAdminColors(item: Record<string, unknown>): string[] {
+  const list: string[] = [];
+
   if (Array.isArray(item?.colors)) {
-    return item.colors.map((c) => String(c).trim()).filter(Boolean);
-  }
-  if (typeof item?.colors === "string" && item.colors.trim()) {
-    return item.colors
+    for (const c of item.colors) {
+      if (typeof c === "string") {
+        c.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .forEach((s) => {
+            if (!list.includes(s)) list.push(s);
+          });
+      } else if (c && typeof c === "object") {
+        const obj = c as Record<string, unknown>;
+        const name = String(obj.name || obj.color || obj.label || "").trim();
+        if (name && !list.includes(name)) list.push(name);
+      }
+    }
+  } else if (typeof item?.colors === "string" && item.colors.trim()) {
+    item.colors
       .split(",")
       .map((c) => c.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .forEach((c) => {
+        if (!list.includes(c)) list.push(c);
+      });
   }
-  return [];
+
+  if (Array.isArray(item?.variants)) {
+    for (const v of item.variants) {
+      if (v && typeof v === "object") {
+        const obj = v as Record<string, unknown>;
+        const name = String(obj.color || obj.name || "").trim();
+        if (name && !list.includes(name)) list.push(name);
+      }
+    }
+  }
+
+  return list;
 }
 
-function resolveAdminSecondaryImage(
-  item: Record<string, unknown>
-): string | undefined {
-  if (typeof item?.secondaryImage === "string" && item.secondaryImage.trim()) {
-    return item.secondaryImage.trim();
+function resolveAdminImages(
+  item: Record<string, unknown>,
+  primaryImage: string
+): string[] {
+  const list: string[] = [];
+  const pushUnique = (val: unknown) => {
+    const cleaned = String(val || "").trim();
+    if (cleaned && !list.includes(cleaned)) {
+      list.push(cleaned);
+    }
+  };
+
+  pushUnique(primaryImage);
+
+  const arrayFields = [
+    item?.images,
+    item?.gallery,
+    item?.productImages,
+    item?.extraImages,
+  ];
+  for (const field of arrayFields) {
+    if (Array.isArray(field)) {
+      for (const entry of field) {
+        if (typeof entry === "string") {
+          pushUnique(entry);
+        } else if (entry && typeof entry === "object") {
+          const obj = entry as Record<string, unknown>;
+          pushUnique(obj.url || obj.image || obj.src);
+        }
+      }
+    } else if (typeof field === "string" && field.trim()) {
+      field.split(",").forEach((part) => pushUnique(part));
+    }
   }
-  if (Array.isArray(item?.images) && item.images.length > 1) {
-    const second = String(item.images[1] || "").trim();
-    if (second) return second;
+
+  pushUnique(item?.secondaryImage);
+  pushUnique(item?.image2);
+  pushUnique(item?.image3);
+  pushUnique(item?.image4);
+
+  if (Array.isArray(item?.variants)) {
+    for (const v of item.variants) {
+      if (v && typeof v === "object") {
+        const obj = v as Record<string, unknown>;
+        pushUnique(obj.image || obj.url);
+      }
+    }
   }
-  return undefined;
+
+  return list;
+}
+
+function resolveAdminColorImages(
+  item: Record<string, unknown>,
+  colors: string[],
+  images: string[]
+): Record<string, string> {
+  const map: Record<string, string> = {};
+
+  if (item?.colorImages && typeof item.colorImages === "object") {
+    for (const [key, val] of Object.entries(
+      item.colorImages as Record<string, unknown>
+    )) {
+      const k = key.trim().toLowerCase();
+      if (k && typeof val === "string" && val.trim()) {
+        map[k] = val.trim();
+      }
+    }
+  }
+
+  if (Array.isArray(item?.colors)) {
+    for (const c of item.colors) {
+      if (c && typeof c === "object") {
+        const obj = c as Record<string, unknown>;
+        const name = String(obj.name || obj.color || obj.label || "")
+          .trim()
+          .toLowerCase();
+        const img = String(obj.image || obj.url || obj.src || "").trim();
+        if (name && img) {
+          map[name] = img;
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(item?.variants)) {
+    for (const v of item.variants) {
+      if (v && typeof v === "object") {
+        const obj = v as Record<string, unknown>;
+        const name = String(obj.color || obj.name || "")
+          .trim()
+          .toLowerCase();
+        const img = String(obj.image || obj.url || "").trim();
+        if (name && img) {
+          map[name] = img;
+        }
+      }
+    }
+  }
+
+  // Map colors by index to available gallery images when explicit map is missing
+  colors.forEach((col, idx) => {
+    const key = col.trim().toLowerCase();
+    if (!map[key] && images[idx]) {
+      map[key] = images[idx];
+    }
+  });
+
+  return map;
+}
+
+function getImageForColor(product: Product, color?: string): string {
+  if (!color) return product.image;
+  const key = color.trim().toLowerCase();
+
+  if (product.colorImages && product.colorImages[key]) {
+    return product.colorImages[key];
+  }
+
+  // Partial key match (e.g. "Midnight Blue" vs "blue")
+  if (product.colorImages) {
+    const matchedEntry = Object.entries(product.colorImages).find(
+      ([k, v]) =>
+        Boolean(v) && (k.includes(key) || key.includes(k))
+    );
+    if (matchedEntry) return matchedEntry[1];
+  }
+
+  if (product.colors && product.colors.length > 0 && product.images?.length) {
+    const colorIdx = product.colors.findIndex(
+      (c) => c.trim().toLowerCase() === key
+    );
+    if (colorIdx >= 0 && product.images[colorIdx]) {
+      return product.images[colorIdx];
+    }
+    if (colorIdx > 0 && product.images.length > 1) {
+      return product.images[colorIdx % product.images.length];
+    }
+  }
+
+  if (
+    product.colors &&
+    product.colors.length > 1 &&
+    product.colors[0].trim().toLowerCase() !== key
+  ) {
+    return product.secondaryImage || product.images?.[1] || product.image;
+  }
+
+  return product.image;
 }
 
 function getDiscountPercent(price: number, oldPrice?: number): number | null {
@@ -379,7 +547,7 @@ export default function HomeStore() {
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>("home");
 
-  // Real Customer Reviews State
+  // Real Customer Reviews State (No Demo Reviews)
   const [reviews, setReviews] = useState<SimpleReview[]>([]);
   const [reviewName, setReviewName] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
@@ -401,7 +569,6 @@ export default function HomeStore() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
 
-  // Email + Password Login & Sign Up (Create Password) States
   const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -510,16 +677,48 @@ export default function HomeStore() {
     }, 2600);
   };
 
+  // Preserve & restore previous scroll position when navigating to product details and coming back
   useEffect(() => {
     if ("scrollRestoration" in window.history) {
-      window.history.scrollRestoration = "manual";
+      window.history.scrollRestoration = "auto";
     }
-    window.scrollTo({
-      top: 0,
-      left: 0,
-      behavior: "instant" as ScrollBehavior,
-    });
 
+    const saveScrollPosition = () => {
+      try {
+        sessionStorage.setItem(SCROLL_STORAGE_KEY, String(window.scrollY));
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener("pagehide", saveScrollPosition);
+    window.addEventListener("beforeunload", saveScrollPosition);
+
+    return () => {
+      saveScrollPosition();
+      window.removeEventListener("pagehide", saveScrollPosition);
+      window.removeEventListener("beforeunload", saveScrollPosition);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loadingProducts) return;
+    try {
+      const savedY = sessionStorage.getItem(SCROLL_STORAGE_KEY);
+      if (savedY) {
+        const y = Number(savedY);
+        if (Number.isFinite(y) && y > 0) {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: y, left: 0, behavior: "auto" });
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [loadingProducts]);
+
+  useEffect(() => {
     const savedLang = localStorage.getItem("maveron_store_lang");
     if (savedLang === "en" || savedLang === "bn") {
       setLang(savedLang);
@@ -542,6 +741,14 @@ export default function HomeStore() {
       }
     }
   }, []);
+
+  const rememberCurrentScroll = () => {
+    try {
+      sessionStorage.setItem(SCROLL_STORAGE_KEY, String(window.scrollY));
+    } catch {
+      // ignore
+    }
+  };
 
   const toggleLanguage = () => {
     const next: Lang = lang === "en" ? "bn" : "en";
@@ -690,7 +897,15 @@ export default function HomeStore() {
                   ? resolveFashionSizes(item, subCat)
                   : undefined;
               const resolvedColors = resolveAdminColors(item);
-              const secondaryImg = resolveAdminSecondaryImage(item);
+              const primaryImg =
+                String(item.image || "").trim() || CATEGORY_IMAGES.mensFootwear;
+              const allImages = resolveAdminImages(item, primaryImg);
+              const secondaryImg = allImages[1];
+              const colorImgMap = resolveAdminColorImages(
+                item,
+                resolvedColors,
+                allImages
+              );
               const rawBadge = String(item.badge || "").trim();
 
               return {
@@ -700,8 +915,10 @@ export default function HomeStore() {
                 subCategory: subCat,
                 price: Number(item.price) || 0,
                 oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
-                image: String(item.image || "") || CATEGORY_IMAGES.mensFootwear,
+                image: primaryImg,
                 secondaryImage: secondaryImg,
+                images: allImages,
+                colorImages: colorImgMap,
                 badge: rawBadge || undefined,
                 sizes: resolvedSizes,
                 colors: resolvedColors,
@@ -815,7 +1032,8 @@ export default function HomeStore() {
 
     void syncUserToBackend(profile);
   };
-useEffect(() => {
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("auth_success") !== "google") return;
@@ -896,8 +1114,8 @@ useEffect(() => {
         setIsAccountModalOpen(true);
         setLoginError(
           lang === "bn"
-            ? "Google কলব্যাক থেকে ইউজার তথ্য পাওয়া যায়নি। Callback রাউটে name/email প্যারামিটার বা সেশন কুকি যুক্ত করুন।"
-            : "Google callback returned without user session data. Pass user info or session cookie in your callback route."
+            ? "Google কলব্যাক থেকে ইউজার তথ্য পাওয়া যায়নি।"
+            : "Google callback returned without user session data."
         );
       }
     };
@@ -953,8 +1171,8 @@ useEffect(() => {
       if (!contentType.includes("application/json")) {
         setLoginError(
           lang === "bn"
-            ? "সার্ভারে /api/auth/login রাউট পাওয়া যায়নি। আগে অ্যাকাউন্ট/পাসওয়ার্ড সেটআপ করুন বা Google দিয়ে লগইন করুন।"
-            : "Login service (/api/auth/login) is not configured yet. Create an account or sign in with Google."
+            ? "সার্ভারে /api/auth/login রাউট পাওয়া যায়নি।"
+            : "Login service (/api/auth/login) is not configured yet."
         );
         return;
       }
@@ -1141,8 +1359,8 @@ useEffect(() => {
       if (!contentType.includes("application/json")) {
         setLoginError(
           lang === "bn"
-            ? "সার্ভারে /api/auth/register রাউট পাওয়া যায়নি। Google দিয়ে সাইন-আপ/লগইন করুন অথবা /api/auth/register তৈরি করুন।"
-            : "Registration service (/api/auth/register) is not configured yet. Sign in with Google or configure /api/auth/register."
+            ? "সার্ভারে /api/auth/register রাউট পাওয়া যায়নি।"
+            : "Registration service (/api/auth/register) is not configured yet."
         );
         return;
       }
@@ -1519,7 +1737,7 @@ useEffect(() => {
           quantity: item.quantity,
           size: item.selectedOption || "",
           color: item.selectedColor || "",
-          image: item.product.image,
+          image: getImageForColor(item.product, item.selectedColor),
         })),
         totalAmount: grandTotal,
         status: "Pending",
@@ -1606,6 +1824,13 @@ useEffect(() => {
     setNewsletterEmail("");
   };
 
+  const isFilteredCollectionView =
+    showWishlistOnly ||
+    flashSaleOnly ||
+    selectedSubCategory !== "all" ||
+    selectedCategory !== "all" ||
+    searchQuery.trim().length > 0;
+
   return (
     <div
       suppressHydrationWarning
@@ -1629,14 +1854,14 @@ useEffect(() => {
         suppressHydrationWarning
         className={`sticky top-0 z-30 transition-all ${t.headerBg}`}
       >
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-4 h-15 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <button
               type="button"
               suppressHydrationWarning
               onClick={() => setMobileMenuOpen((v) => !v)}
               aria-label="Toggle Menu"
-              className={`lg:hidden p-2 rounded-lg cursor-pointer shrink-0 ${
+              className={`lg:hidden p-1.5 sm:p-2 rounded-lg cursor-pointer shrink-0 ${
                 isLight
                   ? "hover:bg-zinc-100 text-zinc-900"
                   : "hover:bg-zinc-900 text-zinc-200"
@@ -1656,18 +1881,18 @@ useEffect(() => {
                 setActiveBottomTab("home");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
-              className="flex items-center gap-2 shrink-0 min-w-0"
+              className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0"
             >
               <img
                 src={LOGO_SRC}
                 alt={BRAND_NAME}
-                className="h-8 sm:h-9 w-auto object-contain rounded-md shrink-0"
+                className="h-7 sm:h-9 w-auto max-w-[36px] sm:max-w-none object-contain rounded-md shrink-0"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = "none";
                 }}
               />
               <span
-                className={`font-black text-base sm:text-xl tracking-wider whitespace-nowrap ${t.headingGradient}`}
+                className={`font-black text-sm sm:text-xl tracking-wider whitespace-nowrap ${t.headingGradient}`}
               >
                 {BRAND_NAME}
               </span>
@@ -1689,15 +1914,15 @@ useEffect(() => {
           </div>
 
           {/* Right Side: Search + Light/Night Mode + Language Switch */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <button
               type="button"
               suppressHydrationWarning
               onClick={() => setSearchOverlayOpen(true)}
               aria-label="Open Search Overlay"
-              className={`w-9 h-9 sm:w-auto sm:h-10 sm:px-3.5 rounded-full flex items-center justify-center gap-1.5 text-xs font-semibold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
+              className={`w-8 h-8 sm:w-auto sm:h-10 sm:px-3.5 rounded-full flex items-center justify-center gap-1.5 text-xs font-semibold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
             >
-              <Search className={`w-4 h-4 shrink-0 ${t.mutedText}`} />
+              <Search className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${t.mutedText}`} />
               <span className="hidden md:inline">
                 {lang === "bn" ? "সার্চ" : "Search"}
               </span>
@@ -1713,7 +1938,7 @@ useEffect(() => {
                   ? "Switch to Light Mode"
                   : "Switch to Night Mode"
               }
-              className={`h-9 sm:h-10 px-2.5 sm:px-3 rounded-full flex items-center gap-1.5 text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
+              className={`h-8 sm:h-10 px-2 sm:px-3 rounded-full flex items-center justify-center gap-1 text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
             >
               {themeMode === "night" ? (
                 <>
@@ -1737,7 +1962,7 @@ useEffect(() => {
               suppressHydrationWarning
               onClick={toggleLanguage}
               title="Switch Language (English / বাংলা)"
-              className={`h-9 sm:h-10 px-2.5 sm:px-3.5 rounded-full flex items-center gap-1 text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
+              className={`h-8 sm:h-10 px-2 sm:px-3.5 rounded-full flex items-center justify-center gap-1 text-[11px] sm:text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
             >
               <Globe className={`w-3.5 h-3.5 shrink-0 ${t.mutedText}`} />
               <span>{lang === "en" ? "বাংলা" : "EN"}</span>
@@ -1801,14 +2026,20 @@ useEffect(() => {
               ))}
               <Link
                 href="/track-order"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={() => {
+                  rememberCurrentScroll();
+                  setMobileMenuOpen(false);
+                }}
                 className={`py-1.5 font-semibold block ${t.titleText}`}
               >
                 {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track Order"}
               </Link>
               <Link
                 href="/policies"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={() => {
+                  rememberCurrentScroll();
+                  setMobileMenuOpen(false);
+                }}
                 className={`py-1.5 block ${t.mutedText}`}
               >
                 {lang === "bn"
@@ -1865,17 +2096,22 @@ useEffect(() => {
                   <Link
                     key={`sr-${item.id}`}
                     href={`/products/${item.id}`}
-                    onClick={() => setSearchOverlayOpen(false)}
+                    onClick={() => {
+                      rememberCurrentScroll();
+                      setSearchOverlayOpen(false);
+                    }}
                     className={`py-2.5 flex items-center justify-between gap-3 px-2 rounded-xl ${
                       isLight ? "hover:bg-zinc-100" : "hover:bg-zinc-900"
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="w-11 h-11 rounded-lg object-cover bg-zinc-800"
-                      />
+                      <div className="w-11 h-11 rounded-lg overflow-hidden bg-zinc-800 shrink-0">
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                       <div className="min-w-0">
                         <p className={`text-sm font-bold truncate ${t.titleText}`}>
                           {item.name}
@@ -1919,7 +2155,7 @@ useEffect(() => {
       {/* Responsive Hero Banner */}
       <section className="max-w-7xl mx-auto px-3 sm:px-4 pt-3 sm:pt-4 pb-8">
         <div
-          className={`relative w-full h-[185px] sm:h-[260px] md:h-[330px] lg:h-[390px] rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl border ${
+          className={`relative w-full h-[210px] sm:h-[280px] md:h-[340px] lg:h-[390px] rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl border ${
             isLight
               ? "bg-[#09090B] border-zinc-300"
               : "bg-[#09090B] border-zinc-800"
@@ -1928,13 +2164,13 @@ useEffect(() => {
           <img
             src={HERO_BANNER_SRC}
             alt="MAVÉRON Hero Banner"
-            className="w-full h-full object-cover object-[72%_20%] sm:object-[68%_22%] md:object-center"
+            className="w-full h-full object-cover object-center"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).src = LOGIN_SILK_BG_SRC;
             }}
           />
 
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/15 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-black/10 pointer-events-none" />
 
           <div className="absolute bottom-3.5 left-4 sm:bottom-6 sm:left-8 md:left-10 z-10">
             <button
@@ -2079,14 +2315,14 @@ useEffect(() => {
                     : "hover:border-zinc-500 hover:-translate-y-0.5"
                 }`}
               >
-                <div className="relative h-28 sm:h-32 w-full bg-zinc-900 overflow-hidden">
+                <div className="relative h-28 sm:h-32 w-full bg-zinc-200 dark:bg-zinc-900 overflow-hidden">
                   <img
                     src={catItem.image}
                     alt={catItem.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                   />
                   <span
-                    className={`absolute top-2.5 right-2.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-xs ${
+                    className={`absolute top-2.5 right-2.5 z-10 text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-xs ${
                       isLight
                         ? "bg-white/90 text-zinc-900 border border-zinc-200"
                         : "bg-black/80 text-zinc-100 border border-zinc-700"
@@ -2237,10 +2473,10 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Loading Skeleton */}
+        {/* Products List / Grid */}
         {loadingProducts ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((n) => (
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-6">
+            {[1, 2, 3, 4].map((n) => (
               <div
                 key={n}
                 className={`rounded-3xl p-3 space-y-3 animate-pulse ${t.surface}`}
@@ -2251,17 +2487,17 @@ useEffect(() => {
                   }`}
                 />
                 <div
-                  className={`h-4 w-24 rounded ${
+                  className={`h-3.5 w-20 rounded ${
                     isLight ? "bg-zinc-200" : "bg-zinc-800"
                   }`}
                 />
                 <div
-                  className={`h-5 w-3/4 rounded ${
+                  className={`h-4 w-3/4 rounded ${
                     isLight ? "bg-zinc-200" : "bg-zinc-800"
                   }`}
                 />
                 <div
-                  className={`h-10 w-full rounded-xl ${
+                  className={`h-9 w-full rounded-xl ${
                     isLight ? "bg-zinc-200" : "bg-zinc-800"
                   }`}
                 />
@@ -2296,7 +2532,9 @@ useEffect(() => {
           <div
             className={
               viewMode === "grid"
-                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6"
+                ? isFilteredCollectionView
+                  ? "grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6"
+                  : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6"
                 : "space-y-4"
             }
           >
@@ -2310,10 +2548,17 @@ useEffect(() => {
                 typeof product.stock === "number" ? product.stock : 10;
               const isOutOfStock = stockNum <= 0;
 
+              const defaultColor = product.colors?.[0];
+              const chosenColor = selectedColors[product.id] || defaultColor;
+              const hasUserPickedNonDefaultColor =
+                Boolean(chosenColor) && chosenColor !== defaultColor;
+              const colorSelectedImage = getImageForColor(product, chosenColor);
               const activeImage =
-                hoveredProductId === product.id && product.secondaryImage
+                !hasUserPickedNonDefaultColor &&
+                hoveredProductId === product.id &&
+                product.secondaryImage
                   ? product.secondaryImage
-                  : product.image;
+                  : colorSelectedImage;
 
               const productReviews = reviews.filter(
                 (r) => r.productId === product.id
@@ -2326,7 +2571,7 @@ useEffect(() => {
                   onMouseLeave={() => setHoveredProductId(null)}
                   className={
                     viewMode === "grid"
-                      ? `group flex flex-col justify-between rounded-3xl p-3 transition ${t.surface} ${
+                      ? `group flex flex-col justify-between rounded-2xl sm:rounded-3xl p-2.5 sm:p-3 transition ${t.surface} ${
                           isLight ? "hover:border-zinc-400" : "hover:border-zinc-600"
                         }`
                       : `group flex flex-col sm:flex-row items-center gap-5 rounded-3xl p-4 transition ${t.surface} ${
@@ -2337,7 +2582,7 @@ useEffect(() => {
                   <div
                     className={
                       viewMode === "grid"
-                        ? `relative aspect-square rounded-2xl overflow-hidden w-full ${
+                        ? `relative aspect-square rounded-xl sm:rounded-2xl overflow-hidden w-full ${
                             isLight ? "bg-zinc-100" : "bg-zinc-900"
                           }`
                         : `relative w-full sm:w-44 aspect-square rounded-2xl overflow-hidden shrink-0 ${
@@ -2347,25 +2592,24 @@ useEffect(() => {
                   >
                     <Link
                       href={`/products/${product.id}`}
+                      onClick={rememberCurrentScroll}
                       className="block w-full h-full"
                     >
                       <img
+                        key={`${product.id}-${activeImage}`}
                         src={activeImage}
                         alt={product.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                       />
                     </Link>
 
-                    <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
-                      {product.badge && (
-                        <span className="bg-black/80 text-zinc-100 text-[11px] font-semibold px-2.5 py-1 rounded-full">
-                          {product.badge}
-                        </span>
-                      )}
+                    <div className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 flex flex-wrap items-center gap-1 sm:gap-1.5 max-w-[72%]">
                       {discountPct && (
                         <span
-                          className={`text-[11px] font-extrabold px-2 py-1 rounded-full ${
-                            isLight
+                          className={`text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 sm:py-1 rounded-full ${
+                            isFilteredCollectionView
+                              ? "bg-rose-600 text-white"
+                              : isLight
                               ? "bg-zinc-900 text-white"
                               : "bg-zinc-200 text-zinc-950"
                           }`}
@@ -2373,38 +2617,45 @@ useEffect(() => {
                           -{discountPct}%
                         </span>
                       )}
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isOutOfStock
-                            ? "bg-rose-600 text-white"
-                            : isLight
-                            ? "bg-white/90 text-zinc-900 border border-zinc-200"
-                            : "bg-zinc-900/90 text-zinc-200 border border-zinc-700"
-                        }`}
-                      >
-                        {isOutOfStock
-                          ? lang === "bn"
-                            ? "স্টক শেষ"
-                            : "Out of Stock"
-                          : lang === "bn"
-                          ? "স্টকে আছে"
-                          : "Stock Available"}
-                      </span>
+                      {product.badge && !isFilteredCollectionView && (
+                        <span className="bg-black/80 text-zinc-100 text-[11px] font-semibold px-2.5 py-1 rounded-full">
+                          {product.badge}
+                        </span>
+                      )}
+                      {!isFilteredCollectionView && (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isOutOfStock
+                              ? "bg-rose-600 text-white"
+                              : isLight
+                              ? "bg-white/90 text-zinc-900 border border-zinc-200"
+                              : "bg-zinc-900/90 text-zinc-200 border border-zinc-700"
+                          }`}
+                        >
+                          {isOutOfStock
+                            ? lang === "bn"
+                              ? "স্টক শেষ"
+                              : "Out of Stock"
+                            : lang === "bn"
+                            ? "স্টকে আছে"
+                            : "Stock Available"}
+                        </span>
+                      )}
                     </div>
 
-                    <div className="absolute top-3 right-3 flex flex-col gap-2">
+                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 flex flex-col gap-1.5 sm:gap-2">
                       <button
                         type="button"
                         onClick={() => toggleWishlist(product)}
                         aria-label="Wishlist"
-                        className={`w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer ${
+                        className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition cursor-pointer ${
                           isLight
-                            ? "bg-white/95 border border-zinc-200 hover:bg-zinc-100"
+                            ? "bg-white/95 border border-zinc-200 hover:bg-zinc-100 shadow-2xs"
                             : "bg-zinc-900/95 border border-zinc-700 hover:bg-zinc-800"
                         }`}
                       >
                         <Heart
-                          className={`w-4 h-4 ${
+                          className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
                             isLiked
                               ? "fill-rose-500 text-rose-500"
                               : t.mutedText
@@ -2412,34 +2663,36 @@ useEffect(() => {
                         />
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => setQuickViewProduct(product)}
-                        aria-label="Quick View"
-                        className={`w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer ${
-                          isLight
-                            ? "bg-white/95 border border-zinc-200 hover:bg-zinc-100"
-                            : "bg-zinc-900/95 border border-zinc-700 hover:bg-zinc-800"
-                        }`}
-                      >
-                        <Eye className={`w-4 h-4 ${t.mutedText}`} />
-                      </button>
+                      {!isFilteredCollectionView && (
+                        <button
+                          type="button"
+                          onClick={() => setQuickViewProduct(product)}
+                          aria-label="Quick View"
+                          className={`w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer ${
+                            isLight
+                              ? "bg-white/95 border border-zinc-200 hover:bg-zinc-100"
+                              : "bg-zinc-900/95 border border-zinc-700 hover:bg-zinc-800"
+                          }`}
+                        >
+                          <Eye className={`w-4 h-4 ${t.mutedText}`} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex-1 flex flex-col justify-between w-full pt-3 sm:pt-0 px-1 sm:px-2">
+                  <div className="flex-1 flex flex-col justify-between w-full pt-2.5 sm:pt-0 px-0.5 sm:px-2">
                     <div>
                       <div className="flex items-center justify-between gap-2">
                         <span
-                          className={`text-[11px] font-bold uppercase tracking-wider ${t.mutedText}`}
+                          className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider truncate ${t.mutedText}`}
                         >
                           {catLabelText(product.subCategory)}
                         </span>
                         {productReviews.length > 0 && (
                           <span
-                            className={`inline-flex items-center gap-1 text-[11px] font-bold ${t.titleText}`}
+                            className={`inline-flex items-center gap-0.5 text-[10px] sm:text-[11px] font-bold shrink-0 ${t.titleText}`}
                           >
-                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                             {(
                               productReviews.reduce(
                                 (acc, r) => acc + r.rating,
@@ -2453,25 +2706,50 @@ useEffect(() => {
 
                       <Link
                         href={`/products/${product.id}`}
-                        className={`font-bold text-base sm:text-lg mt-0.5 leading-snug block ${t.titleText} ${
+                        onClick={rememberCurrentScroll}
+                        className={`font-bold text-xs sm:text-base lg:text-lg mt-0.5 leading-snug line-clamp-2 block ${t.titleText} ${
                           isLight ? "hover:text-zinc-600" : "hover:text-zinc-300"
                         }`}
                       >
                         {product.name}
                       </Link>
 
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-base font-extrabold ${t.titleText}`}>
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1">
+                        <span
+                          className={`text-sm sm:text-base font-extrabold ${
+                            isFilteredCollectionView && isLight
+                              ? "text-rose-600"
+                              : t.titleText
+                          }`}
+                        >
                           ৳{product.price}
                         </span>
                         {product.oldPrice && product.oldPrice > product.price && (
-                          <span className={`text-xs line-through ${t.mutedText}`}>
+                          <span className={`text-[11px] sm:text-xs line-through ${t.mutedText}`}>
                             ৳{product.oldPrice}
                           </span>
                         )}
                       </div>
 
-                      {product.category === "fashion" &&
+                      {isFilteredCollectionView && (
+                        <div className="mt-1.5 flex items-center justify-between text-[10px] sm:text-[11px]">
+                          <span className="font-semibold text-emerald-500">
+                            {lang === "bn" ? "ক্যাশ অন ডেলিভারি" : "Cash on Delivery"}
+                          </span>
+                          <span className={t.mutedText}>
+                            {isOutOfStock
+                              ? lang === "bn"
+                                ? "স্টক শেষ"
+                                : "Out of stock"
+                              : lang === "bn"
+                              ? "২-৩ দিনে"
+                              : "In 2–3 days"}
+                          </span>
+                        </div>
+                      )}
+
+                      {!isFilteredCollectionView &&
+                        product.category === "fashion" &&
                         product.sizes &&
                         product.sizes.length > 0 && (
                           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -2502,8 +2780,8 @@ useEffect(() => {
                         )}
 
                       {product.colors && product.colors.length > 0 && (
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <span className={`text-xs mr-1 ${t.mutedText}`}>
+                        <div className="mt-2 flex flex-wrap items-center gap-1 sm:gap-1.5">
+                          <span className={`text-[11px] sm:text-xs mr-0.5 ${t.mutedText}`}>
                             {lang === "bn" ? "কালার:" : "Color:"}
                           </span>
                           {product.colors.map((col) => (
@@ -2511,12 +2789,12 @@ useEffect(() => {
                               key={col}
                               type="button"
                               onClick={() =>
-                                setSelectedColors({
-                                  ...selectedColors,
+                                setSelectedColors((prev) => ({
+                                  ...prev,
                                   [product.id]: col,
-                                })
+                                }))
                               }
-                              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border transition cursor-pointer ${
+                              className={`px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold border transition cursor-pointer ${
                                 (selectedColors[product.id] ||
                                   product.colors?.[0]) === col
                                   ? t.chipActive
@@ -2529,7 +2807,7 @@ useEffect(() => {
                         </div>
                       )}
 
-                      {product.specs && (
+                      {!isFilteredCollectionView && product.specs && (
                         <p
                           className={`mt-2 text-xs px-3 py-1.5 rounded-lg font-medium truncate ${t.surfaceAlt} ${t.mutedText}`}
                         >
@@ -2538,12 +2816,12 @@ useEffect(() => {
                       )}
                     </div>
 
-                    <div className="pt-4 flex items-center gap-2">
+                    <div className="pt-3 sm:pt-4 flex items-center gap-1.5 sm:gap-2">
                       <button
                         type="button"
                         disabled={isOutOfStock}
                         onClick={() => addToCart(product)}
-                        className={`flex-1 disabled:opacity-45 text-xs sm:text-sm font-extrabold py-2.5 px-4 rounded-xl transition cursor-pointer disabled:cursor-not-allowed ${t.silverCta}`}
+                        className={`flex-1 disabled:opacity-45 text-[11px] sm:text-sm font-extrabold py-2 sm:py-2.5 px-2.5 sm:px-4 rounded-xl transition cursor-pointer disabled:cursor-not-allowed ${t.silverCta}`}
                       >
                         {isOutOfStock
                           ? lang === "bn"
@@ -2553,12 +2831,15 @@ useEffect(() => {
                           ? "কার্টে যোগ করুন"
                           : "Add to Cart"}
                       </button>
-                      <Link
-                        href={`/products/${product.id}`}
-                        className={`text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center ${t.pillBtn}`}
-                      >
-                        {lang === "bn" ? "বিস্তারিত" : "Details"}
-                      </Link>
+                      {!isFilteredCollectionView && (
+                        <Link
+                          href={`/products/${product.id}`}
+                          onClick={rememberCurrentScroll}
+                          className={`text-xs sm:text-sm font-semibold py-2.5 px-3.5 rounded-xl transition cursor-pointer text-center ${t.pillBtn}`}
+                        >
+                          {lang === "bn" ? "বিস্তারিত" : "Details"}
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2583,15 +2864,18 @@ useEffect(() => {
                 <Link
                   key={`rel-${rel.id}`}
                   href={`/products/${rel.id}`}
+                  onClick={rememberCurrentScroll}
                   className={`flex items-center gap-3 p-2.5 rounded-2xl transition ${t.surfaceAlt} ${
                     isLight ? "hover:border-zinc-400" : "hover:border-zinc-500"
                   }`}
                 >
-                  <img
-                    src={rel.image}
-                    alt={rel.name}
-                    className="w-14 h-14 rounded-xl object-cover bg-zinc-800 shrink-0"
-                  />
+                  <div className="w-14 h-14 rounded-xl overflow-hidden bg-zinc-800 shrink-0">
+                    <img
+                      src={rel.image}
+                      alt={rel.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                   <div className="min-w-0">
                     <p
                       className={`text-xs sm:text-sm font-bold truncate ${t.titleText}`}
@@ -2696,7 +2980,7 @@ useEffect(() => {
         </div>
       </section>
 
-      {/* Real Customer Reviews */}
+      {/* Real Customer Reviews Only */}
       <section className="max-w-7xl mx-auto px-3 sm:px-4 pb-12">
         <div className={`rounded-3xl p-5 sm:p-8 space-y-6 ${t.surface}`}>
           <div className="flex items-center justify-between">
@@ -2956,6 +3240,7 @@ useEffect(() => {
               <li>
                 <Link
                   href="/policies"
+                  onClick={rememberCurrentScroll}
                   className={`underline underline-offset-4 ${
                     isLight ? "hover:text-zinc-950" : "hover:text-white"
                   }`}
@@ -2968,6 +3253,7 @@ useEffect(() => {
               <li>
                 <Link
                   href="/privacy"
+                  onClick={rememberCurrentScroll}
                   className={`underline underline-offset-4 ${
                     isLight ? "hover:text-zinc-950" : "hover:text-white"
                   }`}
@@ -2980,6 +3266,7 @@ useEffect(() => {
               <li>
                 <Link
                   href="/track-order"
+                  onClick={rememberCurrentScroll}
                   className={isLight ? "hover:text-zinc-950" : "hover:text-white"}
                 >
                   {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track Your Order"}
@@ -3163,7 +3450,10 @@ useEffect(() => {
 
           <Link
             href="/track-order"
-            onClick={() => setActiveBottomTab("orders")}
+            onClick={() => {
+              rememberCurrentScroll();
+              setActiveBottomTab("orders");
+            }}
             className="flex flex-col items-center justify-center py-1"
           >
             <span
@@ -3343,7 +3633,10 @@ useEffect(() => {
                 <div className="grid grid-cols-2 gap-2.5">
                   <Link
                     href="/track-order"
-                    onClick={() => setIsAccountModalOpen(false)}
+                    onClick={() => {
+                      rememberCurrentScroll();
+                      setIsAccountModalOpen(false);
+                    }}
                     className="bg-gradient-to-b from-zinc-200 via-zinc-300 to-zinc-500 hover:brightness-105 text-zinc-950 text-xs font-extrabold py-3 px-4 rounded-xl text-center transition shadow-md"
                   >
                     {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track My Orders"}
@@ -3764,7 +4057,11 @@ useEffect(() => {
                 }`}
               >
                 <img
-                  src={quickViewProduct.image}
+                  src={getImageForColor(
+                    quickViewProduct,
+                    selectedColors[quickViewProduct.id] ||
+                      quickViewProduct.colors?.[0]
+                  )}
                   alt={quickViewProduct.name}
                   className="w-full h-full object-cover"
                 />
@@ -3853,10 +4150,10 @@ useEffect(() => {
                               key={col}
                               type="button"
                               onClick={() =>
-                                setSelectedColors({
-                                  ...selectedColors,
+                                setSelectedColors((prev) => ({
+                                  ...prev,
                                   [quickViewProduct.id]: col,
-                                })
+                                }))
                               }
                               className={`px-2.5 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
                                 (selectedColors[quickViewProduct.id] ||
@@ -3969,9 +4266,27 @@ useEffect(() => {
                 </button>
               </div>
 
+              {/* Breadcrumb: Home > Shopping Cart */}
+              <div className={`flex items-center gap-1.5 text-xs mt-3 ${t.mutedText}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCartOpen(false);
+                    setActiveBottomTab("home");
+                  }}
+                  className={`font-medium hover:underline cursor-pointer ${t.bodyText}`}
+                >
+                  {lang === "bn" ? "হোম" : "Home"}
+                </button>
+                <span>&gt;</span>
+                <span className={`font-semibold ${t.titleText}`}>
+                  {lang === "bn" ? "শপিং কার্ট" : "Shopping Cart"}
+                </span>
+              </div>
+
               {orderSuccess ? (
                 <div
-                  className={`my-8 text-center p-6 rounded-3xl space-y-3 ${t.surface}`}
+                  className={`my-6 text-center p-6 rounded-3xl space-y-3 ${t.surface}`}
                 >
                   <div
                     className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${
@@ -4007,11 +4322,21 @@ useEffect(() => {
                   </button>
                 </div>
               ) : cart.length === 0 ? (
-                <div className={`text-center my-16 text-sm space-y-3 ${t.mutedText}`}>
-                  <p>
+                <div className={`text-center my-14 text-sm space-y-3 ${t.mutedText}`}>
+                  <div
+                    className={`w-14 h-14 rounded-full mx-auto flex items-center justify-center ${t.surfaceAlt}`}
+                  >
+                    <ShoppingBag className={`w-6 h-6 ${t.mutedText}`} />
+                  </div>
+                  <p className={`font-semibold ${t.titleText}`}>
                     {lang === "bn"
-                      ? "আপনার শপিং কার্ট বর্তমানে খালি।"
-                      : "Your shopping cart is empty."}
+                      ? "আপনার কার্ট খালি।"
+                      : "Your cart is empty"}
+                  </p>
+                  <p className={`text-xs ${t.mutedText}`}>
+                    {lang === "bn"
+                      ? "পছন্দের ফ্যাশন, ফুটওয়্যার, বিউটি ও গ্যাজেট থেকে প্রোডাক্ট যোগ করুন।"
+                      : "Explore fashion, footwear, beauty, gadgets & accessories."}
                   </p>
                   <button
                     type="button"
@@ -4019,9 +4344,10 @@ useEffect(() => {
                       setIsCartOpen(false);
                       setActiveBottomTab("home");
                     }}
-                    className={`text-xs font-extrabold px-4 py-2.5 rounded-xl cursor-pointer ${t.silverCta}`}
+                    className={`text-xs font-extrabold px-5 py-2.5 rounded-xl cursor-pointer inline-flex items-center gap-1.5 ${t.silverCta}`}
                   >
-                    {lang === "bn" ? "প্রোডাক্ট দেখুন" : "Browse Products"}
+                    <span>{lang === "bn" ? "শপিং শুরু করুন" : "Start shopping"}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ) : (
