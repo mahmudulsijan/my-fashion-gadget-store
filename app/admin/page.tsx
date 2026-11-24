@@ -33,6 +33,8 @@ import {
   Palette,
   Images,
   Link2,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 interface ProductItem {
@@ -44,6 +46,7 @@ interface ProductItem {
   oldPrice?: number;
   image: string;
   images?: string[];
+  colorImages?: Record<string, string>;
   badge?: string;
   sizes?: string[];
   colors?: string[];
@@ -130,13 +133,16 @@ type AdminSection =
   | "settings";
 
 type SalesPeriodTab = "daily" | "monthly" | "yearly";
+type ThemeMode = "night" | "day";
 
-const BRAND_NAME = "ZAVERO";
-const BRAND_TAGLINE = "Explore Beyond Trends";
-const SUPPORT_EMAIL = "zavero.trends.bd@gmail.com";
-const REVIEWS_STORAGE_KEY = "zavero_simple_reviews";
-const REGISTERED_ACCOUNTS_KEY = "zavero_registered_accounts";
-const CUSTOMER_PROFILE_KEY = "zavero_customer_profile";
+const BRAND_NAME = "MAVÉRON";
+const BRAND_TAGLINE = "ELEVATE YOUR EVERYDAY";
+const SUPPORT_EMAIL = "maveron.store@gmail.com";
+const LOGO_SRC = "/images/maveron-logo.png";
+const REVIEWS_STORAGE_KEY = "maveron_simple_reviews";
+const REGISTERED_ACCOUNTS_KEY = "maveron_registered_accounts";
+const CUSTOMER_PROFILE_KEY = "maveron_user";
+const THEME_STORAGE_KEY = "fg_admin_theme_mode";
 
 const STORE_SUBCATEGORIES = [
   "Men's Fashion",
@@ -310,18 +316,49 @@ function collectProductImages(prod: {
   return list;
 }
 
-function getStatusBadgeStyle(status: string) {
+function buildColorImageMap(
+  colors: string[],
+  images: string[]
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  if (colors.length === 0 || images.length === 0) return map;
+  colors.forEach((col, idx) => {
+    const key = col.trim().toLowerCase();
+    const mappedImg = images[idx] || images[idx % images.length] || images[0];
+    if (key && mappedImg) {
+      map[key] = mappedImg;
+    }
+  });
+  return map;
+}
+
+function getStatusBadgeStyle(status: string, isDay: boolean) {
+  if (isDay) {
+    switch (status) {
+      case "Delivered":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
+      case "Shipped":
+        return "bg-sky-50 text-sky-700 border-sky-200";
+      case "Confirmed":
+        return "bg-indigo-50 text-indigo-700 border-indigo-200";
+      case "Cancelled":
+        return "bg-rose-50 text-rose-700 border-rose-200";
+      default:
+        return "bg-amber-50 text-amber-700 border-amber-200";
+    }
+  }
+
   switch (status) {
     case "Delivered":
-      return "bg-emerald-100 text-emerald-800 border-emerald-200";
+      return "bg-emerald-950/70 text-emerald-300 border-emerald-800/60";
     case "Shipped":
-      return "bg-blue-100 text-blue-800 border-blue-200";
+      return "bg-sky-950/70 text-sky-300 border-sky-800/60";
     case "Confirmed":
-      return "bg-indigo-100 text-indigo-800 border-indigo-200";
+      return "bg-indigo-950/70 text-indigo-300 border-indigo-800/60";
     case "Cancelled":
-      return "bg-rose-100 text-rose-800 border-rose-200";
+      return "bg-rose-950/70 text-rose-300 border-rose-800/60";
     default:
-      return "bg-amber-100 text-amber-800 border-amber-200";
+      return "bg-amber-950/70 text-amber-300 border-amber-800/60";
   }
 }
 
@@ -378,6 +415,9 @@ async function compressImageToDataUrl(
 }
 
 export default function AdminPage() {
+  const [themeMode, setThemeMode] = useState<ThemeMode>("night");
+  const isDay = themeMode === "day";
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -401,7 +441,6 @@ export default function AdminPage() {
     string | null
   >(null);
 
-  // Global search & filters
   const [globalSearch, setGlobalSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [orderSearch, setOrderSearch] = useState("");
@@ -412,16 +451,14 @@ export default function AdminPage() {
     string | null
   >(null);
 
-  // Auto-stock deduction guard state (persisted in localStorage)
   const [autoDeductStock, setAutoDeductStock] = useState(true);
   const [deductedOrderIds, setDeductedOrderIds] = useState<string[]>([]);
 
-  // Product filters & quick stock
   const [productSearch, setProductSearch] = useState("");
   const [productCatFilter, setProductCatFilter] = useState<string>("all");
   const [stockUpdatingId, setStockUpdatingId] = useState<string | null>(null);
 
-  // Add Product Form State (Multiple Images Support)
+  // Add Product Form State
   const [name, setName] = useState("");
   const [subCategory, setSubCategory] = useState<string>("Men's Fashion");
   const category = useMemo(() => deriveMainCategory(subCategory), [subCategory]);
@@ -441,7 +478,7 @@ export default function AdminPage() {
     null
   );
 
-  // Edit Product Modal State (Multiple Images Support)
+  // Edit Product Modal State
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(
     null
   );
@@ -470,6 +507,69 @@ export default function AdminPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Eye-comfort palette tokens (low glare in both Day & Night)
+  const ui = useMemo(() => {
+    if (isDay) {
+      return {
+        pageBg: "bg-[#F4F5F7] text-slate-800",
+        sidebarBg: "bg-[#EBEEF2] text-slate-700 border-slate-300/80",
+        headerBg: "bg-[#F4F5F7]/95 border-slate-200",
+        cardBg: "bg-[#FCFcfd] border-slate-200/90",
+        subCardBg: "bg-[#F1F3F6] border-slate-200/80",
+        inputBg: "bg-white border-slate-300 text-slate-800 placeholder:text-slate-400 focus:border-slate-500",
+        mutedInputBg: "bg-[#F1F3F6] border-slate-200 text-slate-800",
+        textPrimary: "text-slate-800",
+        textSecondary: "text-slate-600",
+        textMuted: "text-slate-500",
+        divider: "border-slate-200",
+        hoverRow: "hover:bg-slate-100/80",
+        navActive: "bg-slate-800 text-slate-100 font-semibold shadow-2xs",
+        navIdle: "text-slate-700 hover:bg-slate-200/70 hover:text-slate-900",
+        primaryBtn:
+          "bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold",
+        secondaryBtn:
+          "bg-white hover:bg-slate-100 text-slate-700 border-slate-300",
+        footerBg: "bg-[#ECEFF3] border-slate-200 text-slate-500",
+        barFill: "bg-slate-700",
+        barTrack: "bg-slate-200",
+      };
+    }
+    return {
+      pageBg: "bg-[#0B0C0E] text-zinc-200",
+      sidebarBg: "bg-[#111317] text-zinc-300 border-zinc-800/80",
+      headerBg: "bg-[#0B0C0E]/95 border-zinc-800/80",
+      cardBg: "bg-[#13151A] border-zinc-800/80",
+      subCardBg: "bg-[#181B21] border-zinc-800/70",
+      inputBg:
+        "bg-[#181B21] border-zinc-700/80 text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500",
+      mutedInputBg: "bg-[#181B21] border-zinc-800 text-zinc-200",
+      textPrimary: "text-zinc-100",
+      textSecondary: "text-zinc-300",
+      textMuted: "text-zinc-400",
+      divider: "border-zinc-800/80",
+      hoverRow: "hover:bg-zinc-800/45",
+      navActive: "bg-zinc-200 text-zinc-900 font-semibold shadow-2xs",
+      navIdle: "text-zinc-300 hover:bg-zinc-800/60 hover:text-zinc-100",
+      primaryBtn:
+        "bg-zinc-200 hover:bg-zinc-300 text-zinc-900 font-semibold",
+      secondaryBtn:
+        "bg-[#181B21] hover:bg-zinc-800 text-zinc-200 border-zinc-700/80",
+      footerBg: "bg-[#0F1115] border-zinc-800/80 text-zinc-400",
+      barFill: "bg-zinc-300",
+      barTrack: "bg-zinc-800",
+    };
+  }, [isDay]);
+
+  const handleToggleTheme = () => {
+    const next: ThemeMode = isDay ? "night" : "day";
+    setThemeMode(next);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch {
+      // ignore storage errors
+    }
+  };
 
   const showToast = (msg: string) => {
     setFeedbackMsg(msg);
@@ -582,14 +682,18 @@ export default function AdminPage() {
             address: u?.address ? String(u.address) : prev?.address,
             verified: Boolean(u?.verified ?? prev?.verified ?? true),
             lastActiveAt: String(
-              u?.lastLoginAt || u?.updatedAt || u?.createdAt || prev?.lastActiveAt || ""
+              u?.lastLoginAt ||
+                u?.updatedAt ||
+                u?.createdAt ||
+                prev?.lastActiveAt ||
+                ""
             ),
             isLocalOnly: false,
           });
         });
       }
     } catch {
-      // /api/users না থাকলে লোকাল ইউজার তথ্যই ব্যবহৃত হবে
+      // ignore if /api/users is not available
     }
 
     setLoggedInUsers(Array.from(mergedMap.values()));
@@ -610,8 +714,12 @@ export default function AdminPage() {
         safeParseJson(subRes),
       ]);
 
-      if (prodData.success) setProducts(prodData.products || []);
-      if (ordData.success) setOrders(ordData.orders || []);
+      if (prodData.success && Array.isArray(prodData.products)) {
+        setProducts(prodData.products);
+      }
+      if (ordData.success && Array.isArray(ordData.orders)) {
+        setOrders(ordData.orders);
+      }
       if (subData.success && Array.isArray(subData.subscribers)) {
         setSubscribers(subData.subscribers);
       }
@@ -629,10 +737,19 @@ export default function AdminPage() {
     setCurrentDate(new Date());
 
     try {
+      const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+      if (savedTheme === "day" || savedTheme === "night") {
+        setThemeMode(savedTheme);
+      }
+
       const savedDeducted = localStorage.getItem("fg_admin_deducted_orders");
       if (savedDeducted) {
-        setDeductedOrderIds(JSON.parse(savedDeducted));
+        const parsedDeducted = JSON.parse(savedDeducted);
+        if (Array.isArray(parsedDeducted)) {
+          setDeductedOrderIds(parsedDeducted);
+        }
       }
+
       const savedSettings = localStorage.getItem("fg_admin_delivery_settings");
       if (savedSettings) {
         const parsed = JSON.parse(savedSettings);
@@ -862,6 +979,7 @@ export default function AdminPage() {
         ? parseCommaList(sizesText)
         : [];
     const parsedColors = parseCommaList(colorsText);
+    const colorImageMap = buildColorImageMap(parsedColors, finalImages);
 
     try {
       const res = await fetch("/api/products", {
@@ -875,6 +993,8 @@ export default function AdminPage() {
           oldPrice: oldPrice ? Number(oldPrice) : undefined,
           image: finalImages[0],
           images: finalImages,
+          colorImages:
+            Object.keys(colorImageMap).length > 0 ? colorImageMap : undefined,
           badge: badge.trim() || undefined,
           sizes: parsedSizes.length > 0 ? parsedSizes : undefined,
           colors: parsedColors.length > 0 ? parsedColors : undefined,
@@ -962,6 +1082,7 @@ export default function AdminPage() {
         ? parseCommaList(editSizesText)
         : [];
     const parsedColors = parseCommaList(editColorsText);
+    const colorImageMap = buildColorImageMap(parsedColors, mergedEditImages);
 
     const payload = {
       name: editName.trim(),
@@ -973,6 +1094,8 @@ export default function AdminPage() {
       badge: editBadge.trim() || undefined,
       sizes: parsedSizes.length > 0 ? parsedSizes : [],
       colors: parsedColors.length > 0 ? parsedColors : [],
+      colorImages:
+        Object.keys(colorImageMap).length > 0 ? colorImageMap : undefined,
       specs:
         editCategory === "gadget" && editSpecs.trim()
           ? editSpecs.trim()
@@ -1568,37 +1691,55 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#1E2B4D] via-[#15203B] to-[#0B0C10] text-white p-4 relative overflow-hidden">
-        <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[480px] h-[260px] rounded-full bg-[#0077E6]/20 blur-3xl" />
-
+      <div
+        className={`min-h-screen flex items-center justify-center p-4 relative overflow-hidden transition-colors ${ui.pageBg}`}
+      >
         <form
           onSubmit={handleLogin}
-          className="relative z-10 bg-[#111827]/95 border border-white/15 p-6 sm:p-8 rounded-3xl shadow-2xl w-full max-w-md space-y-5"
+          className={`relative z-10 border p-6 sm:p-8 rounded-3xl shadow-lg w-full max-w-md space-y-5 transition-colors ${ui.cardBg}`}
         >
-          <div className="flex items-center gap-3.5 border-b border-white/10 pb-4">
-            <img
-              src="/images/zavero-logo.png"
-              alt={BRAND_NAME}
-              className="w-12 h-12 rounded-2xl object-contain bg-white/5 p-1.5 border border-[#FFB020]/30 shrink-0"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = "none";
-              }}
-            />
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#FFB020]">
-                {BRAND_NAME} • {BRAND_TAGLINE}
-              </p>
-              <h1 className="text-xl font-black text-white tracking-tight mt-0.5">
-                Admin Control Panel
-              </h1>
-              <p className="text-xs text-white/65 mt-0.5">
-                Storefront, Sales, Users, Orders &amp; Wallets
-              </p>
+          <div
+            className={`flex items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <img
+                src={LOGO_SRC}
+                alt={BRAND_NAME}
+                className={`w-11 h-11 rounded-2xl object-contain p-1.5 border shrink-0 ${ui.mutedInputBg}`}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+              <div className="min-w-0">
+                <p
+                  className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${ui.textMuted}`}
+                >
+                  {BRAND_TAGLINE}
+                </p>
+                <h1
+                  className={`text-xl font-bold tracking-tight mt-0.5 ${ui.textPrimary}`}
+                >
+                  {BRAND_NAME} Admin
+                </h1>
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={handleToggleTheme}
+              title={isDay ? "Switch to Night Mode" : "Switch to Day Mode"}
+              className={`p-2 rounded-xl border transition cursor-pointer shrink-0 ${ui.secondaryBtn}`}
+            >
+              {isDay ? (
+                <Moon className="w-4 h-4" />
+              ) : (
+                <Sun className="w-4 h-4 text-amber-300" />
+              )}
+            </button>
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-white/85">
+            <label className={`block text-xs font-medium ${ui.textSecondary}`}>
               Admin Password
             </label>
             <div className="relative">
@@ -1607,14 +1748,14 @@ export default function AdminPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter admin password"
-                className="w-full bg-[#1E2B4D]/70 border border-white/15 focus:border-[#0077E6] rounded-xl px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-white/40 outline-none transition"
+                className={`w-full border rounded-xl px-3.5 py-2.5 pr-10 text-sm outline-none transition ${ui.inputBg}`}
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label="Toggle password visibility"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-[#FFB020] transition cursor-pointer"
+                className={`absolute right-3 top-1/2 -translate-y-1/2 transition cursor-pointer ${ui.textMuted} hover:opacity-80`}
               >
                 {showPassword ? (
                   <EyeOff className="w-4 h-4" />
@@ -1626,7 +1767,13 @@ export default function AdminPage() {
           </div>
 
           {authError && (
-            <div className="bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs font-medium px-3.5 py-2.5 rounded-xl">
+            <div
+              className={`text-xs font-medium px-3.5 py-2.5 rounded-xl border ${
+                isDay
+                  ? "bg-rose-50 border-rose-200 text-rose-700"
+                  : "bg-rose-950/60 border-rose-800/60 text-rose-300"
+              }`}
+            >
               {authError}
             </div>
           )}
@@ -1634,22 +1781,18 @@ export default function AdminPage() {
           <button
             type="submit"
             disabled={authLoading}
-            className="w-full bg-[#0077E6] hover:bg-[#0062BE] disabled:bg-slate-700 text-white disabled:text-slate-400 py-3 rounded-xl text-sm font-extrabold tracking-wide transition cursor-pointer shadow-lg shadow-[#0077E6]/20"
+            className={`w-full py-3 rounded-xl text-sm tracking-wide transition cursor-pointer disabled:opacity-50 ${ui.primaryBtn}`}
           >
             {authLoading ? "Verifying Access..." : "Unlock Admin Panel"}
           </button>
 
-          <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs text-white/70">
-            <Link
-              href="/"
-              className="hover:text-[#FFB020] transition font-medium"
-            >
+          <div
+            className={`pt-3 border-t flex items-center justify-between text-xs ${ui.divider} ${ui.textMuted}`}
+          >
+            <Link href="/" className="hover:underline font-medium">
               ← Back to {BRAND_NAME} Store
             </Link>
-            <Link
-              href="/track-order"
-              className="hover:text-[#FFB020] transition font-medium"
-            >
+            <Link href="/track-order" className="hover:underline font-medium">
               Track Order
             </Link>
           </div>
@@ -1734,31 +1877,45 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F6F9] text-[#111827] flex flex-col">
+    <div
+      className={`min-h-screen flex flex-col transition-colors ${ui.pageBg}`}
+    >
       {feedbackMsg && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-[#1E2B4D] text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-lg border border-white/15">
+        <div
+          className={`fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-md border ${
+            isDay
+              ? "bg-slate-800 text-slate-100 border-slate-700"
+              : "bg-[#1C1F26] text-zinc-100 border-zinc-700"
+          }`}
+        >
           {feedbackMsg}
         </div>
       )}
 
       <div className="flex-1 flex min-w-0">
         {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex w-64 shrink-0 bg-[#1E2B4D] text-white/85 flex-col justify-between p-4 border-r border-[#15203B]">
+        <aside
+          className={`hidden lg:flex w-64 shrink-0 flex-col justify-between p-4 border-r transition-colors ${ui.sidebarBg}`}
+        >
           <div className="space-y-6">
             <div className="px-2 pt-1 flex items-center gap-2.5">
               <img
-                src="/images/zavero-logo.png"
+                src={LOGO_SRC}
                 alt={BRAND_NAME}
-                className="h-8 w-auto object-contain shrink-0"
+                className="h-8 w-auto object-contain rounded-md shrink-0"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = "none";
                 }}
               />
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#FFB020]">
+                <p
+                  className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${ui.textMuted}`}
+                >
                   {BRAND_TAGLINE}
                 </p>
-                <h2 className="text-lg font-black text-white tracking-tight leading-tight">
+                <h2
+                  className={`text-lg font-bold tracking-wider leading-tight ${ui.textPrimary}`}
+                >
                   {BRAND_NAME}
                 </h2>
               </div>
@@ -1772,10 +1929,8 @@ export default function AdminPage() {
                     key={item.key}
                     type="button"
                     onClick={() => handleSelectSection(item.key)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer ${
-                      isActive
-                        ? "bg-[#0077E6] text-white shadow-xs"
-                        : "text-white/80 hover:bg-white/10 hover:text-white"
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition cursor-pointer ${
+                      isActive ? ui.navActive : ui.navIdle
                     }`}
                   >
                     <span className="flex items-center gap-2.5">
@@ -1784,10 +1939,12 @@ export default function AdminPage() {
                     </span>
                     {typeof item.badge === "number" && (
                       <span
-                        className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
                           isActive
-                            ? "bg-white/20 text-white"
-                            : "bg-[#111827]/50 text-white/90"
+                            ? isDay
+                              ? "bg-slate-700 text-slate-100 border-slate-600"
+                              : "bg-zinc-900 text-zinc-100 border-zinc-700"
+                            : ui.mutedInputBg
                         }`}
                       >
                         {item.badge}
@@ -1799,10 +1956,10 @@ export default function AdminPage() {
             </nav>
           </div>
 
-          <div className="space-y-2 pt-4 border-t border-white/10">
+          <div className={`space-y-2 pt-4 border-t ${ui.divider}`}>
             <Link
               href="/"
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white transition"
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition ${ui.navIdle}`}
             >
               <span>Open Live Store</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -1814,7 +1971,11 @@ export default function AdminPage() {
                 sessionStorage.removeItem("admin_authed");
                 setIsAuthenticated(false);
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-950/60 hover:text-rose-200 transition cursor-pointer"
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                isDay
+                  ? "text-rose-700 hover:bg-rose-50"
+                  : "text-rose-400 hover:bg-rose-950/50"
+              }`}
             >
               <LogOut className="w-4 h-4" />
               Logout
@@ -1824,22 +1985,28 @@ export default function AdminPage() {
 
         {/* Mobile Drawer Sidebar */}
         {mobileSidebarOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 flex bg-[#0B0C10]/60 backdrop-blur-xs">
-            <aside className="w-64 bg-[#1E2B4D] text-white/85 h-full p-4 flex flex-col justify-between overflow-y-auto">
+          <div className="lg:hidden fixed inset-0 z-50 flex bg-black/60 backdrop-blur-2xs">
+            <aside
+              className={`w-64 h-full p-4 flex flex-col justify-between overflow-y-auto border-r ${ui.sidebarBg}`}
+            >
               <div className="space-y-5">
                 <div className="flex items-center justify-between px-1">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#FFB020]">
+                    <p
+                      className={`text-[10px] font-semibold uppercase tracking-wider ${ui.textMuted}`}
+                    >
                       Admin Menu
                     </p>
-                    <h2 className="text-base font-black text-white">
+                    <h2
+                      className={`text-base font-bold tracking-wider ${ui.textPrimary}`}
+                    >
                       {BRAND_NAME}
                     </h2>
                   </div>
                   <button
                     type="button"
                     onClick={() => setMobileSidebarOpen(false)}
-                    className="p-1.5 rounded-lg hover:bg-white/10 text-white/80 cursor-pointer"
+                    className={`p-1.5 rounded-lg cursor-pointer ${ui.navIdle}`}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1856,10 +2023,8 @@ export default function AdminPage() {
                           handleSelectSection(item.key);
                           setMobileSidebarOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer ${
-                          isActive
-                            ? "bg-[#0077E6] text-white"
-                            : "text-white/80 hover:bg-white/10"
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition cursor-pointer ${
+                          isActive ? ui.navActive : ui.navIdle
                         }`}
                       >
                         <span className="flex items-center gap-2.5">
@@ -1867,7 +2032,9 @@ export default function AdminPage() {
                           {item.label}
                         </span>
                         {typeof item.badge === "number" && (
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#111827]/50 text-white">
+                          <span
+                            className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${ui.mutedInputBg}`}
+                          >
                             {item.badge}
                           </span>
                         )}
@@ -1877,10 +2044,10 @@ export default function AdminPage() {
                 </nav>
               </div>
 
-              <div className="space-y-2 pt-3 border-t border-white/10">
+              <div className={`space-y-2 pt-3 border-t ${ui.divider}`}>
                 <Link
                   href="/"
-                  className="block px-3 py-2 rounded-xl text-xs font-medium text-white/80 hover:bg-white/10"
+                  className={`block px-3 py-2 rounded-xl text-xs font-medium ${ui.navIdle}`}
                 >
                   Open Live Store →
                 </Link>
@@ -1890,7 +2057,9 @@ export default function AdminPage() {
                     sessionStorage.removeItem("admin_authed");
                     setIsAuthenticated(false);
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-950/60 cursor-pointer"
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
+                    isDay ? "text-rose-700 hover:bg-rose-50" : "text-rose-400 hover:bg-rose-950/50"
+                  }`}
                 >
                   <LogOut className="w-4 h-4" />
                   Logout
@@ -1903,49 +2072,75 @@ export default function AdminPage() {
         {/* Main Column */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Top Header */}
-          <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-[#E3E6EB] px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+          <header
+            className={`sticky top-0 z-20 backdrop-blur-md border-b px-4 sm:px-6 h-16 flex items-center justify-between gap-3 transition-colors ${ui.headerBg}`}
+          >
             <div className="flex items-center gap-2.5 min-w-0">
               <button
                 type="button"
                 onClick={() => setMobileSidebarOpen(true)}
                 aria-label="Open menu"
-                className="lg:hidden p-2 rounded-xl bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] cursor-pointer"
+                className={`lg:hidden p-2 rounded-xl border transition cursor-pointer ${ui.secondaryBtn}`}
               >
                 <Menu className="w-4 h-4" />
               </button>
               <div className="truncate">
-                <h1 className="text-base sm:text-lg font-bold text-[#111827] capitalize truncate">
+                <h1
+                  className={`text-base sm:text-lg font-bold capitalize truncate ${ui.textPrimary}`}
+                >
                   {activeSection}
                 </h1>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl px-3 py-1.5 w-52 md:w-64">
-                <Search className="w-4 h-4 text-[#4B5563] mr-2 shrink-0" />
+              <div
+                className={`hidden sm:flex items-center border rounded-xl px-3 py-1.5 w-52 md:w-64 transition-colors ${ui.mutedInputBg}`}
+              >
+                <Search className={`w-4 h-4 mr-2 shrink-0 ${ui.textMuted}`} />
                 <input
                   type="text"
                   placeholder="Search orders, users, items..."
                   value={globalSearch}
                   onChange={(e) => setGlobalSearch(e.target.value)}
-                  className="bg-transparent text-xs sm:text-sm outline-none w-full text-[#111827]"
+                  className={`bg-transparent text-xs sm:text-sm outline-none w-full ${ui.textPrimary} placeholder:${ui.textMuted}`}
                 />
                 {globalSearch && (
                   <button
                     type="button"
                     onClick={() => setGlobalSearch("")}
-                    className="text-[#4B5563] hover:text-[#111827] cursor-pointer"
+                    className={`cursor-pointer ${ui.textMuted} hover:opacity-80`}
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
 
+              {/* Day / Night Mode Switch */}
+              <button
+                type="button"
+                onClick={handleToggleTheme}
+                title={isDay ? "Switch to Night Mode" : "Switch to Day Mode"}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer ${ui.secondaryBtn}`}
+              >
+                {isDay ? (
+                  <>
+                    <Moon className="w-3.5 h-3.5 text-slate-700" />
+                    <span className="hidden md:inline">Night</span>
+                  </>
+                ) : (
+                  <>
+                    <Sun className="w-3.5 h-3.5 text-amber-300" />
+                    <span className="hidden md:inline">Day</span>
+                  </>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={fetchDashboardData}
                 title="Refresh data"
-                className="p-2 rounded-xl bg-[#F4F6F9] text-[#111827] hover:bg-[#E3E6EB] transition cursor-pointer"
+                className={`p-2 rounded-xl border transition cursor-pointer ${ui.secondaryBtn}`}
               >
                 <RefreshCw
                   className={`w-4 h-4 ${loadingData ? "animate-spin" : ""}`}
@@ -1954,7 +2149,7 @@ export default function AdminPage() {
 
               <Link
                 href="/"
-                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold bg-[#0077E6] text-white hover:bg-[#0062BE] transition"
+                className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs transition ${ui.primaryBtn}`}
               >
                 Store <ExternalLink className="w-3.5 h-3.5" />
               </Link>
@@ -1965,57 +2160,91 @@ export default function AdminPage() {
           <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl w-full mx-auto">
             {/* 4 Key Stats Cards */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs">
-                <p className="text-xs font-medium text-[#4B5563]">
+              <div
+                className={`p-4 sm:p-5 rounded-2xl border transition-colors ${ui.cardBg}`}
+              >
+                <p className={`text-xs font-medium ${ui.textMuted}`}>
                   Total Revenue
                 </p>
-                <p className="text-xl sm:text-2xl font-extrabold text-[#111827] mt-1">
+                <p
+                  className={`text-xl sm:text-2xl font-bold mt-1 ${ui.textPrimary}`}
+                >
                   ৳{stats.revenue.toLocaleString()}
                 </p>
-                <p className="text-[11px] text-emerald-600 font-semibold mt-1">
+                <p
+                  className={`text-[11px] font-medium mt-1 ${
+                    isDay ? "text-emerald-700" : "text-emerald-400"
+                  }`}
+                >
                   Today: ৳{salesReport.dailyRevenue.toLocaleString()} • Month: ৳
                   {salesReport.monthlyRevenue.toLocaleString()}
                 </p>
               </div>
 
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs">
-                <p className="text-xs font-medium text-[#4B5563]">
+              <div
+                className={`p-4 sm:p-5 rounded-2xl border transition-colors ${ui.cardBg}`}
+              >
+                <p className={`text-xs font-medium ${ui.textMuted}`}>
                   Total Orders
                 </p>
-                <p className="text-xl sm:text-2xl font-extrabold text-[#0077E6] mt-1">
+                <p
+                  className={`text-xl sm:text-2xl font-bold mt-1 ${ui.textPrimary}`}
+                >
                   {orders.length}
                 </p>
-                <p className="text-[11px] text-amber-600 font-semibold mt-1">
+                <p
+                  className={`text-[11px] font-medium mt-1 ${
+                    isDay ? "text-amber-700" : "text-amber-400"
+                  }`}
+                >
                   {stats.pendingCount} pending review
                 </p>
               </div>
 
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs">
-                <p className="text-xs font-medium text-[#4B5563]">
+              <div
+                className={`p-4 sm:p-5 rounded-2xl border transition-colors ${ui.cardBg}`}
+              >
+                <p className={`text-xs font-medium ${ui.textMuted}`}>
                   Logged-in Users
                 </p>
-                <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1">
+                <p
+                  className={`text-xl sm:text-2xl font-bold mt-1 ${
+                    isDay ? "text-emerald-700" : "text-emerald-400"
+                  }`}
+                >
                   {loggedInUsers.length}{" "}
-                  <span className="text-xs font-bold text-amber-600">
+                  <span
+                    className={`text-xs font-semibold ${
+                      isDay ? "text-amber-700" : "text-amber-400"
+                    }`}
+                  >
                     / {subscribers.length} sub
                   </span>
                 </p>
-                <p className="text-[11px] text-[#4B5563] font-medium mt-1">
+                <p className={`text-[11px] font-medium mt-1 ${ui.textMuted}`}>
                   Accounts &amp; newsletter subscribers
                 </p>
               </div>
 
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs">
-                <p className="text-xs font-medium text-[#4B5563]">
+              <div
+                className={`p-4 sm:p-5 rounded-2xl border transition-colors ${ui.cardBg}`}
+              >
+                <p className={`text-xs font-medium ${ui.textMuted}`}>
                   Inventory &amp; Low Stock
                 </p>
-                <p className="text-xl sm:text-2xl font-extrabold text-[#111827] mt-1">
+                <p
+                  className={`text-xl sm:text-2xl font-bold mt-1 ${ui.textPrimary}`}
+                >
                   {products.length}{" "}
-                  <span className="text-xs font-bold text-rose-600">
+                  <span
+                    className={`text-xs font-semibold ${
+                      isDay ? "text-rose-700" : "text-rose-400"
+                    }`}
+                  >
                     ({stats.lowStockCount} low)
                   </span>
                 </p>
-                <p className="text-[11px] text-[#4B5563] font-medium mt-1">
+                <p className={`text-[11px] font-medium mt-1 ${ui.textMuted}`}>
                   Stock ≤ 3 highlighted
                 </p>
               </div>
@@ -2025,32 +2254,42 @@ export default function AdminPage() {
             {activeSection === "overview" && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                  <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
-                    <div className="flex items-center justify-between">
+                  <div
+                    className={`lg:col-span-7 p-5 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
                       <div>
-                        <p className="text-xs font-semibold text-[#4B5563] uppercase tracking-wider">
+                        <p
+                          className={`text-xs font-semibold uppercase tracking-wider ${ui.textMuted}`}
+                        >
                           Sales Snapshot
                         </p>
-                        <h2 className="text-base sm:text-lg font-bold text-[#111827] flex items-center gap-1.5">
-                          <TrendingUp className="w-4 h-4 text-[#0077E6]" />
+                        <h2
+                          className={`text-base sm:text-lg font-bold flex items-center gap-1.5 ${ui.textPrimary}`}
+                        >
+                          <TrendingUp className="w-4 h-4" />
                           Recent Active Orders Value
                         </h2>
                       </div>
                       <button
                         type="button"
                         onClick={() => handleSelectSection("sales")}
-                        className="text-xs font-bold bg-[#0077E6]/10 text-[#0077E6] hover:bg-[#0077E6]/20 px-2.5 py-1 rounded-full transition cursor-pointer"
+                        className={`text-xs font-semibold border px-3 py-1 rounded-full transition cursor-pointer ${ui.secondaryBtn}`}
                       >
                         Full Sales Report →
                       </button>
                     </div>
 
                     {stats.recentSeries.length === 0 ? (
-                      <p className="text-xs text-[#4B5563] py-10 text-center">
+                      <p
+                        className={`text-xs py-10 text-center ${ui.textMuted}`}
+                      >
                         এখনো কোনো সক্রিয় অর্ডার ডাটা নেই।
                       </p>
                     ) : (
-                      <div className="h-44 flex items-end gap-3 pt-4 px-2 border-b border-[#E3E6EB]">
+                      <div
+                        className={`h-44 flex items-end gap-3 pt-4 px-2 border-b ${ui.divider}`}
+                      >
                         {stats.recentSeries.map((pt, idx) => {
                           const heightPct = Math.max(
                             12,
@@ -2061,14 +2300,18 @@ export default function AdminPage() {
                               key={`${pt.label}-${idx}`}
                               className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end"
                             >
-                              <span className="text-[10px] font-bold text-[#4B5563]">
+                              <span
+                                className={`text-[10px] font-semibold ${ui.textSecondary}`}
+                              >
                                 ৳{pt.amount}
                               </span>
                               <div
                                 style={{ height: `${heightPct}%` }}
-                                className="w-full max-w-[38px] rounded-t-xl bg-[#0077E6]/90 hover:bg-[#0077E6] transition"
+                                className={`w-full max-w-[38px] rounded-t-xl transition ${ui.barFill}`}
                               />
-                              <span className="text-[11px] font-semibold text-[#4B5563]">
+                              <span
+                                className={`text-[11px] font-medium ${ui.textMuted}`}
+                              >
                                 {pt.label}
                               </span>
                             </div>
@@ -2078,12 +2321,18 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs flex flex-col justify-between space-y-4">
+                  <div
+                    className={`lg:col-span-5 p-5 rounded-2xl border flex flex-col justify-between space-y-4 transition-colors ${ui.cardBg}`}
+                  >
                     <div>
-                      <p className="text-xs font-semibold text-[#4B5563] uppercase tracking-wider">
+                      <p
+                        className={`text-xs font-semibold uppercase tracking-wider ${ui.textMuted}`}
+                      >
                         Catalog Mix (7 Categories)
                       </p>
-                      <h2 className="text-base sm:text-lg font-bold text-[#111827] mt-0.5">
+                      <h2
+                        className={`text-base sm:text-lg font-bold mt-0.5 ${ui.textPrimary}`}
+                      >
                         Products by Category
                       </h2>
                     </div>
@@ -2091,13 +2340,17 @@ export default function AdminPage() {
                     <div className="space-y-2.5">
                       {stats.categoryCounts.map((cat) => (
                         <div key={cat.label}>
-                          <div className="flex justify-between text-xs font-bold mb-1">
-                            <span className="text-[#111827]">{cat.label}</span>
-                            <span className="text-[#0077E6]">
+                          <div className="flex justify-between text-xs font-semibold mb-1">
+                            <span className={ui.textSecondary}>
+                              {cat.label}
+                            </span>
+                            <span className={ui.textMuted}>
                               {cat.count} items
                             </span>
                           </div>
-                          <div className="w-full h-2 bg-[#F4F6F9] rounded-full overflow-hidden">
+                          <div
+                            className={`w-full h-2 rounded-full overflow-hidden ${ui.barTrack}`}
+                          >
                             <div
                               style={{
                                 width: `${
@@ -2108,20 +2361,26 @@ export default function AdminPage() {
                                     : 0
                                 }%`,
                               }}
-                              className="h-full bg-[#0077E6] rounded-full"
+                              className={`h-full rounded-full ${ui.barFill}`}
                             />
                           </div>
                         </div>
                       ))}
                     </div>
 
-                    <div className="pt-2 border-t border-[#E3E6EB] flex items-center justify-between text-xs">
-                      <span className="text-[#4B5563]">
+                    <div
+                      className={`pt-2 border-t flex items-center justify-between text-xs ${ui.divider}`}
+                    >
+                      <span className={ui.textMuted}>
                         Auto-stock on Confirm/Deliver:
                       </span>
                       <span
-                        className={`font-bold ${
-                          autoDeductStock ? "text-emerald-600" : "text-[#4B5563]"
+                        className={`font-semibold ${
+                          autoDeductStock
+                            ? isDay
+                              ? "text-emerald-700"
+                              : "text-emerald-400"
+                            : ui.textMuted
                         }`}
                       >
                         {autoDeductStock ? "Enabled" : "Off"}
@@ -2130,26 +2389,30 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="bg-white p-5 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
+                <div
+                  className={`p-5 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+                >
                   <div className="flex items-center justify-between">
-                    <h2 className="text-base sm:text-lg font-bold text-[#111827]">
+                    <h2
+                      className={`text-base sm:text-lg font-bold ${ui.textPrimary}`}
+                    >
                       Recent Orders
                     </h2>
                     <button
                       type="button"
                       onClick={() => handleSelectSection("orders")}
-                      className="text-xs font-bold text-[#0077E6] hover:underline cursor-pointer"
+                      className={`text-xs font-semibold hover:underline cursor-pointer ${ui.textSecondary}`}
                     >
                       Manage All Orders →
                     </button>
                   </div>
 
                   {orders.length === 0 ? (
-                    <p className="text-sm text-[#4B5563] py-4 text-center">
+                    <p className={`text-sm py-4 text-center ${ui.textMuted}`}>
                       কোনো অর্ডার নেই।
                     </p>
                   ) : (
-                    <div className="divide-y divide-[#E3E6EB]">
+                    <div className={`divide-y ${ui.divider}`}>
                       {orders.slice(0, 5).map((ord) => {
                         const pay = extractPaymentInfo(ord.address);
                         return (
@@ -2159,21 +2422,32 @@ export default function AdminPage() {
                           >
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-bold text-sm text-[#111827]">
+                                <span
+                                  className={`font-semibold text-sm ${ui.textPrimary}`}
+                                >
                                   {ord.customerName}
                                 </span>
-                                <span className="text-xs font-mono text-[#4B5563]">
+                                <span
+                                  className={`text-xs font-mono ${ui.textMuted}`}
+                                >
                                   {ord.phone}
                                 </span>
                                 <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadgeStyle(
-                                    ord.status || "Pending"
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${getStatusBadgeStyle(
+                                    ord.status || "Pending",
+                                    isDay
                                   )}`}
                                 >
                                   {ord.status || "Pending"}
                                 </span>
                                 {isWalletMethod(pay.method) && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                  <span
+                                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                      isDay
+                                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                                        : "bg-amber-950/70 text-amber-300 border-amber-800/60"
+                                    }`}
+                                  >
                                     {pay.method}
                                     {pay.trxId ? ` • ${pay.trxId}` : ""}
                                   </span>
@@ -2182,13 +2456,15 @@ export default function AdminPage() {
                             </div>
 
                             <div className="flex items-center gap-3 shrink-0">
-                              <span className="text-sm font-extrabold text-[#111827]">
+                              <span
+                                className={`text-sm font-bold ${ui.textPrimary}`}
+                              >
                                 ৳{Number(ord.totalAmount).toLocaleString()}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => setSelectedOrder(ord)}
-                                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] cursor-pointer"
+                                className={`text-xs font-semibold px-2.5 py-1 rounded-lg border cursor-pointer ${ui.secondaryBtn}`}
                               >
                                 Details
                               </button>
@@ -2202,109 +2478,161 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* SALES SECTION (DAILY, MONTHLY, YEARLY IN DETAILS) */}
+            {/* SALES SECTION */}
             {activeSection === "sales" && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div
                     onClick={() => setSalesPeriodTab("daily")}
-                    className={`bg-white p-5 rounded-2xl border transition cursor-pointer ${
+                    className={`p-5 rounded-2xl border transition cursor-pointer ${
+                      ui.cardBg
+                    } ${
                       salesPeriodTab === "daily"
-                        ? "border-[#0077E6] ring-2 ring-[#0077E6]/15"
-                        : "border-[#E3E6EB] hover:border-[#0077E6]/50"
+                        ? isDay
+                          ? "border-slate-700 ring-2 ring-slate-300"
+                          : "border-zinc-400 ring-2 ring-zinc-700/60"
+                        : ""
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
+                      <span
+                        className={`text-xs font-semibold uppercase tracking-wider ${ui.textMuted}`}
+                      >
                         Daily Sales (আজকের বিক্রি)
                       </span>
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                      <span
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                          isDay
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                        }`}
+                      >
                         {salesReport.dailyCount} orders
                       </span>
                     </div>
-                    <p className="text-2xl sm:text-3xl font-black text-[#111827] mt-2">
+                    <p
+                      className={`text-2xl sm:text-3xl font-bold mt-2 ${ui.textPrimary}`}
+                    >
                       ৳{salesReport.dailyRevenue.toLocaleString()}
                     </p>
-                    <p className="text-xs text-[#4B5563] mt-1.5">
-                      Units sold today: <strong>{salesReport.dailyUnits}</strong>
+                    <p className={`text-xs mt-1.5 ${ui.textMuted}`}>
+                      Units sold today:{" "}
+                      <strong className={ui.textSecondary}>
+                        {salesReport.dailyUnits}
+                      </strong>
                     </p>
                   </div>
 
                   <div
                     onClick={() => setSalesPeriodTab("monthly")}
-                    className={`bg-white p-5 rounded-2xl border transition cursor-pointer ${
+                    className={`p-5 rounded-2xl border transition cursor-pointer ${
+                      ui.cardBg
+                    } ${
                       salesPeriodTab === "monthly"
-                        ? "border-[#0077E6] ring-2 ring-[#0077E6]/15"
-                        : "border-[#E3E6EB] hover:border-[#0077E6]/50"
+                        ? isDay
+                          ? "border-slate-700 ring-2 ring-slate-300"
+                          : "border-zinc-400 ring-2 ring-zinc-700/60"
+                        : ""
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
+                      <span
+                        className={`text-xs font-semibold uppercase tracking-wider ${ui.textMuted}`}
+                      >
                         Monthly Sales (চলতি মাসের বিক্রি)
                       </span>
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#0077E6]/10 text-[#0077E6]">
+                      <span
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${ui.mutedInputBg}`}
+                      >
                         {salesReport.monthlyCount} orders
                       </span>
                     </div>
-                    <p className="text-2xl sm:text-3xl font-black text-[#0077E6] mt-2">
+                    <p
+                      className={`text-2xl sm:text-3xl font-bold mt-2 ${ui.textPrimary}`}
+                    >
                       ৳{salesReport.monthlyRevenue.toLocaleString()}
                     </p>
-                    <p className="text-xs text-[#4B5563] mt-1.5">
+                    <p className={`text-xs mt-1.5 ${ui.textMuted}`}>
                       Units sold this month:{" "}
-                      <strong>{salesReport.monthlyUnits}</strong>
+                      <strong className={ui.textSecondary}>
+                        {salesReport.monthlyUnits}
+                      </strong>
                     </p>
                   </div>
 
                   <div
                     onClick={() => setSalesPeriodTab("yearly")}
-                    className={`bg-white p-5 rounded-2xl border transition cursor-pointer ${
+                    className={`p-5 rounded-2xl border transition cursor-pointer ${
+                      ui.cardBg
+                    } ${
                       salesPeriodTab === "yearly"
-                        ? "border-[#0077E6] ring-2 ring-[#0077E6]/15"
-                        : "border-[#E3E6EB] hover:border-[#0077E6]/50"
+                        ? isDay
+                          ? "border-slate-700 ring-2 ring-slate-300"
+                          : "border-zinc-400 ring-2 ring-zinc-700/60"
+                        : ""
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
+                      <span
+                        className={`text-xs font-semibold uppercase tracking-wider ${ui.textMuted}`}
+                      >
                         Yearly Sales (চলতি বছরের বিক্রি)
                       </span>
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800">
+                      <span
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                          isDay
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-amber-950/70 text-amber-300 border-amber-800/60"
+                        }`}
+                      >
                         {salesReport.yearlyCount} orders
                       </span>
                     </div>
-                    <p className="text-2xl sm:text-3xl font-black text-[#1E2B4D] mt-2">
+                    <p
+                      className={`text-2xl sm:text-3xl font-bold mt-2 ${ui.textPrimary}`}
+                    >
                       ৳{salesReport.yearlyRevenue.toLocaleString()}
                     </p>
-                    <p className="text-xs text-[#4B5563] mt-1.5">
+                    <p className={`text-xs mt-1.5 ${ui.textMuted}`}>
                       Units sold this year:{" "}
-                      <strong>{salesReport.yearlyUnits}</strong> • All-time: ৳
-                      {salesReport.allTimeRevenue.toLocaleString()}
+                      <strong className={ui.textSecondary}>
+                        {salesReport.yearlyUnits}
+                      </strong>{" "}
+                      • All-time: ৳{salesReport.allTimeRevenue.toLocaleString()}
                     </p>
                   </div>
                 </div>
 
-                {/* Detailed Period Breakdown */}
-                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E6EB] pb-4">
+                <div
+                  className={`p-5 sm:p-6 rounded-2xl border space-y-5 transition-colors ${ui.cardBg}`}
+                >
+                  <div
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
+                  >
                     <div>
-                      <h2 className="text-lg font-bold text-[#111827] capitalize">
+                      <h2
+                        className={`text-lg font-bold capitalize ${ui.textPrimary}`}
+                      >
                         {salesPeriodTab} Sales Detailed Report
                       </h2>
-                      <p className="text-xs text-[#4B5563] mt-0.5">
+                      <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
                         Cancelled অর্ডার বাদ দিয়ে প্রকৃত বিক্রির হিসাব দেখানো হচ্ছে।
                       </p>
                     </div>
 
-                    <div className="inline-flex rounded-xl bg-[#F4F6F9] p-1 border border-[#E3E6EB] self-start sm:self-auto">
+                    <div
+                      className={`inline-flex rounded-xl p-1 border self-start sm:self-auto ${ui.mutedInputBg}`}
+                    >
                       {(["daily", "monthly", "yearly"] as SalesPeriodTab[]).map(
                         (tab) => (
                           <button
                             key={tab}
                             type="button"
                             onClick={() => setSalesPeriodTab(tab)}
-                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold capitalize transition cursor-pointer ${
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold capitalize transition cursor-pointer ${
                               salesPeriodTab === tab
-                                ? "bg-[#0077E6] text-white"
-                                : "text-[#4B5563] hover:text-[#111827]"
+                                ? ui.navActive
+                                : ui.textMuted
                             }`}
                           >
                             {tab}
@@ -2314,50 +2642,64 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#F4F6F9] border border-[#E3E6EB] rounded-2xl p-4">
+                  <div
+                    className={`grid grid-cols-2 sm:grid-cols-4 gap-3 border rounded-2xl p-4 ${ui.subCardBg}`}
+                  >
                     <div>
-                      <p className="text-[11px] font-semibold text-[#4B5563]">
+                      <p className={`text-[11px] font-medium ${ui.textMuted}`}>
                         Selected Period Revenue
                       </p>
-                      <p className="text-base sm:text-lg font-black text-[#111827] mt-0.5">
+                      <p
+                        className={`text-base sm:text-lg font-bold mt-0.5 ${ui.textPrimary}`}
+                      >
                         ৳{salesReport.periodRevenue.toLocaleString()}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[11px] font-semibold text-[#4B5563]">
+                      <p className={`text-[11px] font-medium ${ui.textMuted}`}>
                         Valid Orders
                       </p>
-                      <p className="text-base sm:text-lg font-black text-[#0077E6] mt-0.5">
+                      <p
+                        className={`text-base sm:text-lg font-bold mt-0.5 ${ui.textSecondary}`}
+                      >
                         {salesReport.periodOrders.length}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[11px] font-semibold text-[#4B5563]">
+                      <p className={`text-[11px] font-medium ${ui.textMuted}`}>
                         Total Items Sold
                       </p>
-                      <p className="text-base sm:text-lg font-black text-emerald-700 mt-0.5">
+                      <p
+                        className={`text-base sm:text-lg font-bold mt-0.5 ${
+                          isDay ? "text-emerald-700" : "text-emerald-400"
+                        }`}
+                      >
                         {salesReport.periodUnits}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[11px] font-semibold text-[#4B5563]">
+                      <p className={`text-[11px] font-medium ${ui.textMuted}`}>
                         Avg. Order Value
                       </p>
-                      <p className="text-base sm:text-lg font-black text-[#1E2B4D] mt-0.5">
+                      <p
+                        className={`text-base sm:text-lg font-bold mt-0.5 ${ui.textPrimary}`}
+                      >
                         ৳{salesReport.avgOrderValue.toLocaleString()}
                       </p>
                     </div>
                   </div>
 
                   {salesReport.periodOrders.length === 0 ? (
-                    <p className="text-sm text-[#4B5563] py-8 text-center">
+                    <p className={`text-sm py-8 text-center ${ui.textMuted}`}>
                       এই {salesPeriodTab} সময়ে এখনো কোনো সফল বা সক্রিয় অর্ডার নেই।
                     </p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse text-xs sm:text-sm">
                         <thead>
-                          <tr className="border-b border-[#E3E6EB] text-[#4B5563]">
+                          <tr
+                            className={`border-b ${ui.divider} ${ui.textMuted}`}
+                          >
                             <th className="py-2.5 px-3 font-semibold">Date</th>
                             <th className="py-2.5 px-3 font-semibold">
                               Order ID
@@ -2376,7 +2718,7 @@ export default function AdminPage() {
                             </th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#E3E6EB]">
+                        <tbody className={`divide-y ${ui.divider}`}>
                           {salesReport.periodOrders.map((ord) => {
                             const pay = extractPaymentInfo(ord.address);
                             const dt = parseOrderDate(ord.createdAt);
@@ -2384,37 +2726,50 @@ export default function AdminPage() {
                               <tr
                                 key={ord._id}
                                 onClick={() => setSelectedOrder(ord)}
-                                className="hover:bg-[#F4F6F9] transition cursor-pointer"
+                                className={`transition cursor-pointer ${ui.hoverRow}`}
                               >
-                                <td className="py-3 px-3 text-xs text-[#4B5563] whitespace-nowrap">
+                                <td
+                                  className={`py-3 px-3 text-xs whitespace-nowrap ${ui.textMuted}`}
+                                >
                                   {dt.toLocaleDateString("en-GB", {
                                     day: "2-digit",
                                     month: "short",
                                     year: "numeric",
                                   })}
                                 </td>
-                                <td className="py-3 px-3 font-mono text-xs text-[#111827]">
+                                <td
+                                  className={`py-3 px-3 font-mono text-xs ${ui.textSecondary}`}
+                                >
                                   #{ord._id.slice(-6)}
                                 </td>
-                                <td className="py-3 px-3 font-semibold text-[#111827]">
+                                <td
+                                  className={`py-3 px-3 font-semibold ${ui.textPrimary}`}
+                                >
                                   {ord.customerName}{" "}
-                                  <span className="font-mono text-xs text-[#4B5563]">
+                                  <span
+                                    className={`font-mono text-xs ${ui.textMuted}`}
+                                  >
                                     ({ord.phone})
                                   </span>
                                 </td>
-                                <td className="py-3 px-3 text-xs font-semibold text-[#0077E6]">
+                                <td
+                                  className={`py-3 px-3 text-xs font-medium ${ui.textSecondary}`}
+                                >
                                   {pay.method}
                                 </td>
                                 <td className="py-3 px-3">
                                   <span
-                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadgeStyle(
-                                      ord.status || "Pending"
+                                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${getStatusBadgeStyle(
+                                      ord.status || "Pending",
+                                      isDay
                                     )}`}
                                   >
                                     {ord.status || "Pending"}
                                   </span>
                                 </td>
-                                <td className="py-3 px-3 font-extrabold text-[#111827] text-right whitespace-nowrap">
+                                <td
+                                  className={`py-3 px-3 font-bold text-right whitespace-nowrap ${ui.textPrimary}`}
+                                >
                                   ৳{Number(ord.totalAmount).toLocaleString()}
                                 </td>
                               </tr>
@@ -2430,33 +2785,37 @@ export default function AdminPage() {
 
             {/* ORDERS SECTION */}
             {activeSection === "orders" && (
-              <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-2xs border border-[#E3E6EB] space-y-4">
+              <div
+                className={`p-4 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+              >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-bold text-[#111827]">
+                    <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                       Customer Orders ({filteredOrders.length})
                     </h2>
-                    <p className="text-xs text-[#4B5563] mt-0.5">
+                    <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
                       Confirmed বা Delivered করলে অটো-স্টক গার্ড সক্রিয় থাকে।
                     </p>
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-2.5">
-                    <div className="flex items-center bg-[#F4F6F9] rounded-xl px-3 py-1.5 border border-[#E3E6EB]">
-                      <Search className="w-4 h-4 text-[#4B5563] mr-2" />
+                    <div
+                      className={`flex items-center rounded-xl px-3 py-1.5 border ${ui.mutedInputBg}`}
+                    >
+                      <Search className={`w-4 h-4 mr-2 ${ui.textMuted}`} />
                       <input
                         type="text"
                         placeholder="Search phone, name or ID..."
                         value={orderSearch}
                         onChange={(e) => setOrderSearch(e.target.value)}
-                        className="bg-transparent text-xs sm:text-sm outline-none w-full sm:w-52"
+                        className={`bg-transparent text-xs sm:text-sm outline-none w-full sm:w-52 ${ui.textPrimary}`}
                       />
                     </div>
 
                     <select
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
-                      className="border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs sm:text-sm bg-[#F4F6F9] text-[#111827] font-medium outline-none cursor-pointer"
+                      className={`border rounded-xl px-3 py-2 text-xs sm:text-sm font-medium outline-none cursor-pointer ${ui.mutedInputBg}`}
                     >
                       <option value="All">All Statuses</option>
                       {ORDER_STATUSES.map((st) => (
@@ -2469,11 +2828,11 @@ export default function AdminPage() {
                 </div>
 
                 {loadingData && orders.length === 0 ? (
-                  <p className="text-[#4B5563] text-sm py-6 text-center">
+                  <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
                     Loading orders...
                   </p>
                 ) : filteredOrders.length === 0 ? (
-                  <p className="text-[#4B5563] text-sm py-6 text-center">
+                  <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
                     কোনো অর্ডার পাওয়া যায়নি।
                   </p>
                 ) : (
@@ -2488,23 +2847,26 @@ export default function AdminPage() {
                       return (
                         <div
                           key={order._id}
-                          className="border border-[#E3E6EB] rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-[#0077E6]/50 transition"
+                          className={`border rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition ${ui.subCardBg}`}
                         >
                           <div className="space-y-1.5 min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <span
-                                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${getStatusBadgeStyle(
-                                  order.status || "Pending"
+                                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${getStatusBadgeStyle(
+                                  order.status || "Pending",
+                                  isDay
                                 )}`}
                               >
                                 {order.status || "Pending"}
                               </span>
 
                               <span
-                                className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
                                   wallet
-                                    ? "bg-amber-50 text-amber-800 border-amber-200"
-                                    : "bg-[#F4F6F9] text-[#111827] border-[#E3E6EB]"
+                                    ? isDay
+                                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                                      : "bg-amber-950/70 text-amber-300 border-amber-800/60"
+                                    : ui.secondaryBtn
                                 }`}
                               >
                                 <CreditCard className="w-3 h-3" />
@@ -2513,7 +2875,13 @@ export default function AdminPage() {
                               </span>
 
                               {isStockDeducted && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                    isDay
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                                  }`}
+                                >
                                   Stock Deducted
                                 </span>
                               )}
@@ -2527,31 +2895,39 @@ export default function AdminPage() {
                                     "Order ID কপি করা হয়েছে"
                                   )
                                 }
-                                className="inline-flex items-center gap-1 text-[11px] font-mono bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] px-2 py-0.5 rounded-md transition cursor-pointer"
+                                className={`inline-flex items-center gap-1 text-[11px] font-mono border px-2 py-0.5 rounded-md transition cursor-pointer ${ui.secondaryBtn}`}
                                 title="Copy Order ID"
                               >
                                 <span>ID: {order._id}</span>
                                 {copiedId === order._id ? (
-                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <Check className="w-3 h-3 text-emerald-500" />
                                 ) : (
                                   <Copy className="w-3 h-3" />
                                 )}
                               </button>
                             </div>
 
-                            <p className="font-bold text-[#111827] text-sm sm:text-base">
+                            <p
+                              className={`font-bold text-sm sm:text-base ${ui.textPrimary}`}
+                            >
                               {order.customerName} —{" "}
-                              <span className="font-mono text-[#4B5563]">
+                              <span className={`font-mono ${ui.textSecondary}`}>
                                 {order.phone}
                               </span>
                             </p>
 
-                            <p className="text-xs sm:text-sm text-[#4B5563] break-words">
+                            <p
+                              className={`text-xs sm:text-sm break-words ${ui.textMuted}`}
+                            >
                               {order.address}
                             </p>
 
-                            <p className="text-xs sm:text-sm text-[#111827]">
-                              <span className="font-semibold">Items:</span>{" "}
+                            <p
+                              className={`text-xs sm:text-sm ${ui.textSecondary}`}
+                            >
+                              <span className={`font-semibold ${ui.textMuted}`}>
+                                Items:
+                              </span>{" "}
                               {order.items
                                 ?.map((i) => {
                                   const meta = [i.size, i.color]
@@ -2564,7 +2940,9 @@ export default function AdminPage() {
                                 .join(", ")}
                             </p>
 
-                            <p className="text-sm font-extrabold text-[#111827]">
+                            <p
+                              className={`text-sm font-bold ${ui.textPrimary}`}
+                            >
                               Total: ৳{Number(order.totalAmount).toLocaleString()}
                             </p>
                           </div>
@@ -2573,7 +2951,7 @@ export default function AdminPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedOrder(order)}
-                              className="inline-flex items-center gap-1 border border-[#E3E6EB] hover:border-[#0077E6] bg-[#F4F6F9] text-[#111827] px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer"
+                              className={`inline-flex items-center gap-1 border px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${ui.secondaryBtn}`}
                             >
                               <Eye className="w-3.5 h-3.5" />
                               Details
@@ -2584,7 +2962,11 @@ export default function AdminPage() {
                               disabled={deletingOrderId === order._id}
                               onClick={() => handleDeleteOrder(order._id)}
                               title="Delete order"
-                              className="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 px-2.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 transition cursor-pointer"
+                              className={`inline-flex items-center gap-1 border px-2.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 transition cursor-pointer ${
+                                isDay
+                                  ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200"
+                                  : "bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border-rose-800/60"
+                              }`}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                               {deletingOrderId === order._id
@@ -2593,7 +2975,9 @@ export default function AdminPage() {
                             </button>
 
                             <div>
-                              <label className="block text-[11px] font-semibold text-[#4B5563] mb-1">
+                              <label
+                                className={`block text-[11px] font-medium mb-1 ${ui.textMuted}`}
+                              >
                                 Update Status
                               </label>
                               <select
@@ -2602,7 +2986,7 @@ export default function AdminPage() {
                                 onChange={(e) =>
                                   handleStatusChange(order._id, e.target.value)
                                 }
-                                className="border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm bg-white text-[#111827] font-medium outline-none focus:border-[#0077E6] disabled:opacity-50 cursor-pointer"
+                                className={`border rounded-xl px-3 py-2 text-sm font-medium outline-none disabled:opacity-50 cursor-pointer ${ui.inputBg}`}
                               >
                                 {ORDER_STATUSES.map((st) => (
                                   <option key={st} value={st}>
@@ -2623,12 +3007,11 @@ export default function AdminPage() {
             {/* PRODUCTS SECTION */}
             {activeSection === "products" && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Add New Product Form */}
                 <form
                   onSubmit={handleAddProduct}
-                  className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-[#E3E6EB] space-y-3 h-fit"
+                  className={`p-5 sm:p-6 rounded-2xl border space-y-3 h-fit transition-colors ${ui.cardBg}`}
                 >
-                  <h2 className="text-lg font-bold text-[#111827]">
+                  <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                     Add New Product
                   </h2>
 
@@ -2637,18 +3020,20 @@ export default function AdminPage() {
                     placeholder="Product Name *"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                    className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                     required
                   />
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-[#4B5563]">
+                    <label
+                      className={`block text-xs font-medium ${ui.textMuted}`}
+                    >
                       Category (Auto-syncs to Storefront) *
                     </label>
                     <select
                       value={subCategory}
                       onChange={(e) => handleSubCategoryChange(e.target.value)}
-                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm bg-white text-[#111827] font-medium outline-none focus:border-[#0077E6] cursor-pointer"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm font-medium outline-none cursor-pointer ${ui.inputBg}`}
                     >
                       {STORE_SUBCATEGORIES.map((catLabel) => (
                         <option key={catLabel} value={catLabel}>
@@ -2664,7 +3049,7 @@ export default function AdminPage() {
                       placeholder="Price (BDT) *"
                       value={price}
                       onChange={(e) => setPrice(e.target.value)}
-                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
                       required
                     />
                     <input
@@ -2672,7 +3057,7 @@ export default function AdminPage() {
                       placeholder="Old Price (optional)"
                       value={oldPrice}
                       onChange={(e) => setOldPrice(e.target.value)}
-                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
                     />
                   </div>
 
@@ -2682,14 +3067,14 @@ export default function AdminPage() {
                       placeholder="Badge (e.g. Best Seller)"
                       value={badge}
                       onChange={(e) => setBadge(e.target.value)}
-                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
                     />
                     <input
                       type="number"
                       placeholder="Stock"
                       value={stock}
                       onChange={(e) => setStock(e.target.value)}
-                      className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
                     />
                   </div>
 
@@ -2705,9 +3090,9 @@ export default function AdminPage() {
                         }
                         value={sizesText}
                         onChange={(e) => setSizesText(e.target.value)}
-                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                       />
-                      <p className="text-[11px] text-[#4B5563] px-1">
+                      <p className={`text-[11px] px-1 ${ui.textMuted}`}>
                         {isFootwearSubCategory(subCategory)
                           ? "Footwear size format (40, 41, 42, 43...)"
                           : "Garment size format (M, L, XL...)"}
@@ -2719,14 +3104,17 @@ export default function AdminPage() {
                       placeholder="Specs (e.g. 36H Battery • Fast Charge)"
                       value={specs}
                       onChange={(e) => setSpecs(e.target.value)}
-                      className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                      className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                     />
                   ) : null}
 
-                  {/* Colors Option */}
-                  <div className="space-y-1.5 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-2.5">
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-[#111827]">
-                      <Palette className="w-3.5 h-3.5 text-[#0077E6]" />
+                  <div
+                    className={`space-y-1.5 border rounded-xl p-2.5 ${ui.subCardBg}`}
+                  >
+                    <label
+                      className={`flex items-center gap-1.5 text-xs font-semibold ${ui.textSecondary}`}
+                    >
+                      <Palette className={`w-3.5 h-3.5 ${ui.textMuted}`} />
                       Available Colors (comma separated)
                     </label>
                     <input
@@ -2734,7 +3122,7 @@ export default function AdminPage() {
                       placeholder="e.g. Black, Silver, Midnight Blue"
                       value={colorsText}
                       onChange={(e) => setColorsText(e.target.value)}
-                      className="w-full bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
                     />
                     <div className="flex flex-wrap gap-1.5 pt-0.5">
                       {QUICK_COLOR_PRESETS.map((preset) => (
@@ -2746,7 +3134,7 @@ export default function AdminPage() {
                               appendPresetToText(prev, preset)
                             )
                           }
-                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-[#E3E6EB] hover:border-[#0077E6] text-[#111827] transition cursor-pointer"
+                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition cursor-pointer ${ui.secondaryBtn}`}
                         >
                           + {preset}
                         </button>
@@ -2754,18 +3142,23 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* Multiple Images Upload & URLs */}
-                  <div className="space-y-2 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-3">
+                  <div
+                    className={`space-y-2 border rounded-xl p-3 ${ui.subCardBg}`}
+                  >
                     <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-1.5 text-xs font-semibold text-[#111827]">
-                        <Images className="w-3.5 h-3.5 text-[#0077E6]" />
+                      <label
+                        className={`flex items-center gap-1.5 text-xs font-semibold ${ui.textSecondary}`}
+                      >
+                        <Images className={`w-3.5 h-3.5 ${ui.textMuted}`} />
                         Product Images ({previewAddImages.length}) *
                       </label>
                       {previewAddImages.length > 0 && (
                         <button
                           type="button"
                           onClick={handleClearAllAddImages}
-                          className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                          className={`text-[11px] font-semibold hover:underline cursor-pointer ${
+                            isDay ? "text-rose-700" : "text-rose-400"
+                          }`}
                         >
                           Clear All
                         </button>
@@ -2784,12 +3177,12 @@ export default function AdminPage() {
                             handleAddImageUrl("add");
                           }
                         }}
-                        className="flex-1 bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs text-[#111827] outline-none focus:border-[#0077E6]"
+                        className={`flex-1 border rounded-xl px-3 py-2 text-xs outline-none transition ${ui.inputBg}`}
                       />
                       <button
                         type="button"
                         onClick={() => handleAddImageUrl("add")}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-[#1E2B4D] hover:bg-[#15203B] text-white text-xs font-semibold transition cursor-pointer shrink-0"
+                        className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer shrink-0 ${ui.secondaryBtn}`}
                       >
                         <Link2 className="w-3.5 h-3.5" />
                         Add
@@ -2809,7 +3202,7 @@ export default function AdminPage() {
                       type="button"
                       disabled={processingImage}
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-[#4B5563]/50 hover:border-[#0077E6] bg-white hover:bg-[#F4F6F9] text-[#111827] py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                      className={`w-full inline-flex items-center justify-center gap-1.5 border border-dashed py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50 ${ui.secondaryBtn}`}
                     >
                       <Upload className="w-3.5 h-3.5" />
                       {processingImage
@@ -2822,7 +3215,7 @@ export default function AdminPage() {
                         {previewAddImages.map((imgSrc, idx) => (
                           <div
                             key={`${idx}-${imgSrc.slice(0, 24)}`}
-                            className="relative group rounded-xl overflow-hidden border border-[#E3E6EB] bg-white aspect-square"
+                            className={`relative group rounded-xl overflow-hidden border aspect-square ${ui.mutedInputBg}`}
                           >
                             <img
                               src={imgSrc}
@@ -2830,7 +3223,7 @@ export default function AdminPage() {
                               className="w-full h-full object-cover"
                             />
                             {idx === 0 && (
-                              <span className="absolute bottom-1 left-1 bg-[#1E2B4D]/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                              <span className="absolute bottom-1 left-1 bg-slate-900/85 text-slate-100 text-[9px] font-semibold px-1.5 py-0.5 rounded-md">
                                 Main
                               </span>
                             )}
@@ -2842,7 +3235,7 @@ export default function AdminPage() {
                                     handleMakePrimaryImage(idx, "add")
                                   }
                                   title="Set as Main Image"
-                                  className="bg-white/95 hover:bg-white text-[#111827] text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-2xs cursor-pointer"
+                                  className="bg-slate-900/85 text-slate-100 text-[9px] font-semibold px-1.5 py-0.5 rounded-md cursor-pointer"
                                 >
                                   1st
                                 </button>
@@ -2851,7 +3244,7 @@ export default function AdminPage() {
                                 type="button"
                                 onClick={() => handleRemoveImageAt(idx, "add")}
                                 title="Remove image"
-                                className="w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-2xs cursor-pointer"
+                                className="w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center cursor-pointer"
                               >
                                 <X className="w-3 h-3" />
                               </button>
@@ -2866,14 +3259,14 @@ export default function AdminPage() {
                     placeholder="Description (optional)"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                    className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                     rows={3}
                   />
 
                   <button
                     type="submit"
                     disabled={creatingProduct || processingImage}
-                    className="w-full inline-flex items-center justify-center gap-1.5 bg-[#0077E6] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#0062BE] disabled:opacity-50 transition cursor-pointer"
+                    className={`w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm disabled:opacity-50 transition cursor-pointer ${ui.primaryBtn}`}
                   >
                     <Plus className="w-4 h-4" />
                     {creatingProduct ? "Adding..." : "Add Product"}
@@ -2881,28 +3274,34 @@ export default function AdminPage() {
                 </form>
 
                 {/* All Products List */}
-                <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-[#E3E6EB] space-y-4">
+                <div
+                  className={`lg:col-span-2 p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+                >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <h2 className="text-lg font-bold text-[#111827]">
+                    <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                       All Products ({filteredProducts.length})
                     </h2>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center bg-[#F4F6F9] rounded-xl px-3 py-1.5 border border-[#E3E6EB]">
-                        <Search className="w-4 h-4 text-[#4B5563] mr-1.5" />
+                      <div
+                        className={`flex items-center rounded-xl px-3 py-1.5 border ${ui.mutedInputBg}`}
+                      >
+                        <Search
+                          className={`w-4 h-4 mr-1.5 ${ui.textMuted}`}
+                        />
                         <input
                           type="text"
                           placeholder="Search product or color..."
                           value={productSearch}
                           onChange={(e) => setProductSearch(e.target.value)}
-                          className="bg-transparent text-xs outline-none w-36 sm:w-44"
+                          className={`bg-transparent text-xs outline-none w-36 sm:w-44 ${ui.textPrimary}`}
                         />
                       </div>
 
                       <select
                         value={productCatFilter}
                         onChange={(e) => setProductCatFilter(e.target.value)}
-                        className="border border-[#E3E6EB] rounded-xl px-3 py-1.5 text-xs bg-[#F4F6F9] text-[#111827] font-semibold outline-none cursor-pointer"
+                        className={`border rounded-xl px-3 py-1.5 text-xs font-semibold outline-none cursor-pointer ${ui.mutedInputBg}`}
                       >
                         <option value="all">All Categories</option>
                         {STORE_SUBCATEGORIES.map((catLabel) => (
@@ -2915,7 +3314,7 @@ export default function AdminPage() {
                   </div>
 
                   {filteredProducts.length === 0 ? (
-                    <p className="text-[#4B5563] text-sm py-6 text-center">
+                    <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
                       {products.length === 0
                         ? "ডাটাবেজে এখনো কোনো প্রোডাক্ট নেই। বাম পাশ থেকে যোগ করুন।"
                         : "কোনো ম্যাচিং প্রোডাক্ট পাওয়া যায়নি।"}
@@ -2935,60 +3334,78 @@ export default function AdminPage() {
                         return (
                           <div
                             key={prod._id}
-                            className="border border-[#E3E6EB] rounded-2xl p-3.5 flex flex-col justify-between gap-3"
+                            className={`border rounded-2xl p-3.5 flex flex-col justify-between gap-3 ${ui.subCardBg}`}
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               <div className="relative shrink-0">
                                 <img
                                   src={allProdImgs[0] || prod.image}
                                   alt={prod.name}
-                                  className="w-14 h-14 object-cover rounded-xl bg-[#F4F6F9]"
+                                  className={`w-14 h-14 object-cover rounded-xl ${ui.mutedInputBg}`}
                                 />
                                 {allProdImgs.length > 1 && (
-                                  <span className="absolute -bottom-1 -right-1 bg-[#1E2B4D] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                  <span
+                                    className={`absolute -bottom-1 -right-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                      isDay
+                                        ? "bg-slate-800 text-slate-100"
+                                        : "bg-zinc-200 text-zinc-900"
+                                    }`}
+                                  >
                                     +{allProdImgs.length - 1}
                                   </span>
                                 )}
                               </div>
                               <div className="min-w-0">
-                                <p className="font-semibold text-sm text-[#111827] truncate">
+                                <p
+                                  className={`font-semibold text-sm truncate ${ui.textPrimary}`}
+                                >
                                   {prod.name}
                                 </p>
-                                <p className="text-xs text-[#4B5563]">
+                                <p className={`text-xs ${ui.textMuted}`}>
                                   {displaySubCat} •{" "}
-                                  <span className="font-bold text-[#111827]">
+                                  <span className={`font-bold ${ui.textPrimary}`}>
                                     ৳{prod.price}
                                   </span>
                                   {prod.oldPrice ? (
-                                    <span className="line-through text-[#4B5563]/70 ml-1">
+                                    <span className="line-through opacity-60 ml-1">
                                       ৳{prod.oldPrice}
                                     </span>
                                   ) : null}
                                 </p>
                                 <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                   <span
-                                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
                                       currentStock === 0
-                                        ? "bg-rose-100 text-rose-700"
+                                        ? isDay
+                                          ? "bg-rose-50 text-rose-700 border-rose-200"
+                                          : "bg-rose-950/70 text-rose-300 border-rose-800/60"
                                         : isLowStock
-                                        ? "bg-amber-100 text-amber-800"
-                                        : "bg-[#F4F6F9] text-[#111827]"
+                                        ? isDay
+                                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                                          : "bg-amber-950/70 text-amber-300 border-amber-800/60"
+                                        : ui.secondaryBtn
                                     }`}
                                   >
                                     Stock: {currentStock}
                                   </span>
                                   {allProdImgs.length > 1 && (
-                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#F4F6F9] text-[#111827]">
+                                    <span
+                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${ui.secondaryBtn}`}
+                                    >
                                       {allProdImgs.length} Photos
                                     </span>
                                   )}
                                   {prod.sizes && prod.sizes.length > 0 && (
-                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#0077E6]/10 text-[#0077E6]">
+                                    <span
+                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${ui.secondaryBtn}`}
+                                    >
                                       Sizes: {prod.sizes.join(", ")}
                                     </span>
                                   )}
                                   {prod.colors && prod.colors.length > 0 && (
-                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#FFB020]/20 text-[#111827] border border-[#FFB020]/40">
+                                    <span
+                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${ui.secondaryBtn}`}
+                                    >
                                       Colors: {prod.colors.join(", ")}
                                     </span>
                                   )}
@@ -2996,7 +3413,9 @@ export default function AdminPage() {
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E3E6EB]">
+                            <div
+                              className={`flex items-center justify-between gap-2 pt-2 border-t ${ui.divider}`}
+                            >
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
@@ -3008,7 +3427,7 @@ export default function AdminPage() {
                                     handleQuickStockChange(prod, -1)
                                   }
                                   title="Decrease stock"
-                                  className="w-7 h-7 rounded-lg bg-[#F4F6F9] hover:bg-[#E3E6EB] flex items-center justify-center text-[#111827] disabled:opacity-40 cursor-pointer"
+                                  className={`w-7 h-7 rounded-lg border flex items-center justify-center disabled:opacity-40 cursor-pointer ${ui.secondaryBtn}`}
                                 >
                                   <Minus className="w-3.5 h-3.5" />
                                 </button>
@@ -3019,7 +3438,7 @@ export default function AdminPage() {
                                     handleQuickStockChange(prod, 1)
                                   }
                                   title="Increase stock"
-                                  className="w-7 h-7 rounded-lg bg-[#F4F6F9] hover:bg-[#E3E6EB] flex items-center justify-center text-[#111827] disabled:opacity-40 cursor-pointer"
+                                  className={`w-7 h-7 rounded-lg border flex items-center justify-center disabled:opacity-40 cursor-pointer ${ui.secondaryBtn}`}
                                 >
                                   <Plus className="w-3.5 h-3.5" />
                                 </button>
@@ -3029,7 +3448,7 @@ export default function AdminPage() {
                                 <button
                                   type="button"
                                   onClick={() => openEditModal(prod)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-[#F4F6F9] text-[#111827] rounded-xl hover:bg-[#E3E6EB] transition cursor-pointer"
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl transition cursor-pointer ${ui.secondaryBtn}`}
                                 >
                                   <Pencil className="w-3 h-3" />
                                   Edit
@@ -3039,7 +3458,11 @@ export default function AdminPage() {
                                   type="button"
                                   disabled={deletingProductId === prod._id}
                                   onClick={() => handleDeleteProduct(prod._id)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-50 text-rose-700 rounded-xl hover:bg-rose-100 disabled:opacity-50 transition cursor-pointer"
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl disabled:opacity-50 transition cursor-pointer ${
+                                    isDay
+                                      ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                                      : "bg-rose-950/60 text-rose-300 border-rose-800/60 hover:bg-rose-900/70"
+                                  }`}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                   {deletingProductId === prod._id
@@ -3059,27 +3482,31 @@ export default function AdminPage() {
 
             {/* CUSTOMERS SECTION */}
             {activeSection === "customers" && (
-              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
+              <div
+                className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+              >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <h2 className="text-lg font-bold text-[#111827]">
+                    <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                       Customers ({customersList.length})
                     </h2>
-                    <p className="text-xs text-[#4B5563]">
+                    <p className={`text-xs ${ui.textMuted}`}>
                       যেকোনো কাস্টমারের উপর ক্লিক করলে তার সব অর্ডার ও প্রোডাক্টের বিস্তারিত দেখা যাবে।
                     </p>
                   </div>
                 </div>
 
                 {customersList.length === 0 ? (
-                  <p className="text-sm text-[#4B5563] py-6 text-center">
+                  <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
                     এখনো কোনো কাস্টমার অর্ডার রেকর্ড পাওয়া যায়নি।
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs sm:text-sm">
                       <thead>
-                        <tr className="border-b border-[#E3E6EB] text-[#4B5563]">
+                        <tr
+                          className={`border-b ${ui.divider} ${ui.textMuted}`}
+                        >
                           <th className="py-2.5 px-3 font-semibold">Name</th>
                           <th className="py-2.5 px-3 font-semibold">Phone</th>
                           <th className="py-2.5 px-3 font-semibold">Address</th>
@@ -3092,26 +3519,36 @@ export default function AdminPage() {
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#E3E6EB]">
+                      <tbody className={`divide-y ${ui.divider}`}>
                         {customersList.map((cust) => (
                           <tr
                             key={cust.phone}
                             onClick={() => setSelectedCustomerPhone(cust.phone)}
-                            className="hover:bg-[#F4F6F9] transition cursor-pointer"
+                            className={`transition cursor-pointer ${ui.hoverRow}`}
                           >
-                            <td className="py-3 px-3 font-semibold text-[#111827]">
+                            <td
+                              className={`py-3 px-3 font-semibold ${ui.textPrimary}`}
+                            >
                               {cust.name}
                             </td>
-                            <td className="py-3 px-3 font-mono text-[#4B5563]">
+                            <td
+                              className={`py-3 px-3 font-mono ${ui.textMuted}`}
+                            >
                               {cust.phone}
                             </td>
-                            <td className="py-3 px-3 text-[#4B5563] max-w-xs truncate">
+                            <td
+                              className={`py-3 px-3 max-w-xs truncate ${ui.textMuted}`}
+                            >
                               {cust.address}
                             </td>
-                            <td className="py-3 px-3 font-bold text-[#0077E6]">
+                            <td
+                              className={`py-3 px-3 font-bold ${ui.textSecondary}`}
+                            >
                               {cust.orderCount}
                             </td>
-                            <td className="py-3 px-3 font-extrabold text-[#111827] text-right">
+                            <td
+                              className={`py-3 px-3 font-bold text-right ${ui.textPrimary}`}
+                            >
                               ৳{cust.totalSpent.toLocaleString()}
                             </td>
                             <td className="py-3 px-3 text-right">
@@ -3121,7 +3558,7 @@ export default function AdminPage() {
                                   e.stopPropagation();
                                   setSelectedCustomerPhone(cust.phone);
                                 }}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F4F6F9] hover:bg-[#E3E6EB] text-[#111827] text-xs font-semibold cursor-pointer"
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold cursor-pointer ${ui.secondaryBtn}`}
                               >
                                 <Eye className="w-3.5 h-3.5" />
                                 View Orders
@@ -3138,14 +3575,18 @@ export default function AdminPage() {
 
             {/* LOGGED-IN USERS SECTION */}
             {activeSection === "users" && (
-              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E6EB] pb-4">
+              <div
+                className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+              >
+                <div
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
+                >
                   <div>
-                    <h2 className="text-lg font-bold text-[#111827]">
+                    <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                       Logged-in &amp; Registered Users (
                       {filteredLoggedInUsers.length})
                     </h2>
-                    <p className="text-xs text-[#4B5563] mt-0.5">
+                    <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
                       স্টোরফ্রন্টে লগইন বা রেজিস্টার করা ইউজারদের প্রোফাইল ও তথ্য
                     </p>
                   </div>
@@ -3160,10 +3601,10 @@ export default function AdminPage() {
                           "সব ইউজার ইমেইল কপি করা হয়েছে"
                         )
                       }
-                      className="inline-flex items-center gap-1.5 bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto"
+                      className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto ${ui.primaryBtn}`}
                     >
                       {copiedId === "all-users-emails" ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                        <Check className="w-3.5 h-3.5" />
                       ) : (
                         <Copy className="w-3.5 h-3.5" />
                       )}
@@ -3173,16 +3614,16 @@ export default function AdminPage() {
                 </div>
 
                 {filteredLoggedInUsers.length === 0 ? (
-                  <p className="text-sm text-[#4B5563] py-6 text-center">
+                  <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
                     এখনো কোনো লগইন বা রেজিস্টার করা ইউজারের তথ্য পাওয়া যায়নি।
-                    স্টোরফ্রন্ট লগইন/ভেরিফিকেশন থেকে POST /api/users কল হলে
-                    এখানে দেখা যাবে।
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs sm:text-sm">
                       <thead>
-                        <tr className="border-b border-[#E3E6EB] text-[#4B5563]">
+                        <tr
+                          className={`border-b ${ui.divider} ${ui.textMuted}`}
+                        >
                           <th className="py-2.5 px-3 font-semibold">User</th>
                           <th className="py-2.5 px-3 font-semibold">Email</th>
                           <th className="py-2.5 px-3 font-semibold">
@@ -3197,30 +3638,42 @@ export default function AdminPage() {
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#E3E6EB]">
+                      <tbody className={`divide-y ${ui.divider}`}>
                         {filteredLoggedInUsers.map((user) => (
                           <tr
                             key={user.id}
-                            className="hover:bg-[#F4F6F9] transition"
+                            className={`transition ${ui.hoverRow}`}
                           >
-                            <td className="py-3 px-3 font-bold text-[#111827]">
+                            <td
+                              className={`py-3 px-3 font-semibold ${ui.textPrimary}`}
+                            >
                               {user.name}
                             </td>
-                            <td className="py-3 px-3 text-[#111827]">
+                            <td className={`py-3 px-3 ${ui.textSecondary}`}>
                               {user.email}
                             </td>
                             <td className="py-3 px-3">
-                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#0077E6]/10 text-[#0077E6] uppercase">
+                              <span
+                                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border uppercase ${ui.secondaryBtn}`}
+                              >
                                 {user.provider}
                               </span>
                             </td>
-                            <td className="py-3 px-3 text-xs text-[#4B5563]">
+                            <td
+                              className={`py-3 px-3 text-xs ${ui.textMuted}`}
+                            >
                               {[user.district, user.address]
                                 .filter(Boolean)
                                 .join(" • ") || "—"}
                             </td>
                             <td className="py-3 px-3">
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                                  isDay
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                                }`}
+                              >
                                 {user.verified ? "Verified" : "Active"}
                               </span>
                             </td>
@@ -3236,10 +3689,10 @@ export default function AdminPage() {
                                     )
                                   }
                                   title="Copy email"
-                                  className="p-1.5 text-[#111827] hover:bg-[#E3E6EB] rounded-lg transition cursor-pointer"
+                                  className={`p-1.5 rounded-lg transition cursor-pointer ${ui.navIdle}`}
                                 >
                                   {copiedId === user.id ? (
-                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
                                   ) : (
                                     <Copy className="w-3.5 h-3.5" />
                                   )}
@@ -3248,7 +3701,11 @@ export default function AdminPage() {
                                   type="button"
                                   onClick={() => handleDeleteLocalUser(user)}
                                   title="Remove user"
-                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                  className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                    isDay
+                                      ? "text-rose-700 hover:bg-rose-50"
+                                      : "text-rose-400 hover:bg-rose-950/50"
+                                  }`}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -3265,13 +3722,17 @@ export default function AdminPage() {
 
             {/* NEWSLETTER SUBSCRIBERS SECTION */}
             {activeSection === "subscribers" && (
-              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E3E6EB] pb-4">
+              <div
+                className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+              >
+                <div
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
+                >
                   <div>
-                    <h2 className="text-lg font-bold text-[#111827]">
+                    <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                       Newsletter Subscribers ({filteredSubscribers.length})
                     </h2>
-                    <p className="text-xs text-[#4B5563] mt-0.5">
+                    <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
                       স্টোরফ্রন্ট ফুটার সাবস্ক্রিপশন ফর্ম থেকে সংগৃহীত ইমেইল লিস্ট
                     </p>
                   </div>
@@ -3286,10 +3747,10 @@ export default function AdminPage() {
                           "সব সাবস্ক্রাইবার ইমেইল কপি করা হয়েছে"
                         )
                       }
-                      className="inline-flex items-center gap-1.5 bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto"
+                      className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto ${ui.primaryBtn}`}
                     >
                       {copiedId === "all-subscribers" ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                        <Check className="w-3.5 h-3.5" />
                       ) : (
                         <Copy className="w-3.5 h-3.5" />
                       )}
@@ -3299,25 +3760,29 @@ export default function AdminPage() {
                 </div>
 
                 {loadingData && subscribers.length === 0 ? (
-                  <p className="text-sm text-[#4B5563] py-6 text-center">
+                  <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
                     Loading subscribers...
                   </p>
                 ) : filteredSubscribers.length === 0 ? (
-                  <p className="text-sm text-[#4B5563] py-6 text-center">
+                  <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
                     এখনো কোনো নিউজলেটার সাবস্ক্রাইবার পাওয়া যায়নি।
                   </p>
                 ) : (
-                  <div className="divide-y divide-[#E3E6EB] border border-[#E3E6EB] rounded-2xl overflow-hidden">
+                  <div
+                    className={`divide-y border rounded-2xl overflow-hidden ${ui.divider}`}
+                  >
                     {filteredSubscribers.map((sub) => (
                       <div
                         key={sub._id}
-                        className="flex items-center justify-between gap-3 px-4 py-3 bg-[#F4F6F9]/40 hover:bg-[#F4F6F9]"
+                        className={`flex items-center justify-between gap-3 px-4 py-3 transition ${ui.subCardBg} ${ui.hoverRow}`}
                       >
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-[#111827] truncate">
+                          <p
+                            className={`text-sm font-semibold truncate ${ui.textPrimary}`}
+                          >
                             {sub.email}
                           </p>
-                          <p className="text-[11px] text-[#4B5563]">
+                          <p className={`text-[11px] ${ui.textMuted}`}>
                             {sub.createdAt
                               ? `Subscribed: ${new Date(
                                   sub.createdAt
@@ -3337,10 +3802,10 @@ export default function AdminPage() {
                               )
                             }
                             title="Copy email"
-                            className="p-2 text-[#111827] hover:bg-[#E3E6EB] rounded-xl transition cursor-pointer"
+                            className={`p-2 rounded-xl transition cursor-pointer ${ui.navIdle}`}
                           >
                             {copiedId === sub._id ? (
-                              <Check className="w-4 h-4 text-emerald-600" />
+                              <Check className="w-4 h-4 text-emerald-500" />
                             ) : (
                               <Copy className="w-4 h-4" />
                             )}
@@ -3351,7 +3816,11 @@ export default function AdminPage() {
                             disabled={deletingSubscriberId === sub._id}
                             onClick={() => handleDeleteSubscriber(sub._id)}
                             title="Delete subscriber"
-                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition disabled:opacity-50 cursor-pointer"
+                            className={`p-2 rounded-xl transition disabled:opacity-50 cursor-pointer ${
+                              isDay
+                                ? "text-rose-700 hover:bg-rose-50"
+                                : "text-rose-400 hover:bg-rose-950/50"
+                            }`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -3365,20 +3834,24 @@ export default function AdminPage() {
 
             {/* CUSTOMER REVIEWS SECTION */}
             {activeSection === "reviews" && (
-              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4">
-                <div className="flex items-center justify-between border-b border-[#E3E6EB] pb-4">
+              <div
+                className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+              >
+                <div
+                  className={`flex items-center justify-between border-b pb-4 ${ui.divider}`}
+                >
                   <div>
-                    <h2 className="text-lg font-bold text-[#111827]">
+                    <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                       Customer Reviews ({filteredReviews.length})
                     </h2>
-                    <p className="text-xs text-[#4B5563] mt-0.5">
+                    <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
                       কাস্টমারদের দেওয়া রিভিউ ও রিসিভ করা প্রোডাক্টের ছবি
                     </p>
                   </div>
                 </div>
 
                 {filteredReviews.length === 0 ? (
-                  <p className="text-sm text-[#4B5563] py-6 text-center">
+                  <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
                     এখনো কোনো কাস্টমার রিভিউ যোগ হয়নি।
                   </p>
                 ) : (
@@ -3386,21 +3859,31 @@ export default function AdminPage() {
                     {filteredReviews.map((rev) => (
                       <div
                         key={rev.id}
-                        className="rounded-2xl border border-[#E3E6EB] bg-[#F4F6F9] p-4 space-y-3"
+                        className={`rounded-2xl border p-4 space-y-3 ${ui.subCardBg}`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-[#111827]">
+                          <span
+                            className={`text-sm font-bold ${ui.textPrimary}`}
+                          >
                             {rev.name}
                           </span>
-                          <span className="text-xs font-bold text-amber-600">
+                          <span
+                            className={`text-xs font-bold ${
+                              isDay ? "text-amber-700" : "text-amber-400"
+                            }`}
+                          >
                             {rev.rating} ★
                           </span>
                         </div>
-                        <p className="text-xs text-[#4B5563] leading-relaxed">
+                        <p
+                          className={`text-xs leading-relaxed ${ui.textSecondary}`}
+                        >
                           {rev.comment}
                         </p>
                         {rev.photo && (
-                          <div className="aspect-video w-full rounded-xl overflow-hidden bg-[#E3E6EB] border border-[#E3E6EB]">
+                          <div
+                            className={`aspect-video w-full rounded-xl overflow-hidden border ${ui.mutedInputBg}`}
+                          >
                             <img
                               src={rev.photo}
                               alt={`${rev.name} product review`}
@@ -3412,7 +3895,9 @@ export default function AdminPage() {
                           <button
                             type="button"
                             onClick={() => handleDeleteReview(rev.id)}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:underline cursor-pointer"
+                            className={`inline-flex items-center gap-1 text-xs font-semibold hover:underline cursor-pointer ${
+                              isDay ? "text-rose-700" : "text-rose-400"
+                            }`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             Delete Review
@@ -3430,15 +3915,17 @@ export default function AdminPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <form
                   onSubmit={handleSaveDeliverySettings}
-                  className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4"
+                  className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
                 >
-                  <h2 className="text-lg font-bold text-[#111827]">
+                  <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                     Mymensingh Delivery &amp; Wallet Settings
                   </h2>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
+                      <label
+                        className={`block text-xs font-medium mb-1 ${ui.textMuted}`}
+                      >
                         Inside Mymensingh Charge (৳)
                       </label>
                       <input
@@ -3450,12 +3937,14 @@ export default function AdminPage() {
                             insideMymensinghCharge: Number(e.target.value),
                           })
                         }
-                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
+                      <label
+                        className={`block text-xs font-medium mb-1 ${ui.textMuted}`}
+                      >
                         Outside Mymensingh Charge (৳)
                       </label>
                       <input
@@ -3467,13 +3956,15 @@ export default function AdminPage() {
                             outsideMymensinghCharge: Number(e.target.value),
                           })
                         }
-                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-[#4B5563] mb-1">
+                    <label
+                      className={`block text-xs font-medium mb-1 ${ui.textMuted}`}
+                    >
                       Free Delivery Threshold (৳, 0 = disabled)
                     </label>
                     <input
@@ -3485,13 +3976,15 @@ export default function AdminPage() {
                           freeDeliveryThreshold: Number(e.target.value),
                         })
                       }
-                      className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
+                      className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                     />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
+                      <label
+                        className={`block text-xs font-medium mb-1 ${ui.textMuted}`}
+                      >
                         bKash Number
                       </label>
                       <input
@@ -3503,12 +3996,14 @@ export default function AdminPage() {
                             bkashNumber: e.target.value,
                           })
                         }
-                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
+                      <label
+                        className={`block text-xs font-medium mb-1 ${ui.textMuted}`}
+                      >
                         Nagad Number
                       </label>
                       <input
@@ -3520,12 +4015,14 @@ export default function AdminPage() {
                             nagadNumber: e.target.value,
                           })
                         }
-                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[#4B5563] mb-1">
+                      <label
+                        className={`block text-xs font-medium mb-1 ${ui.textMuted}`}
+                      >
                         Rocket Number
                       </label>
                       <input
@@ -3537,49 +4034,63 @@ export default function AdminPage() {
                             rocketNumber: e.target.value,
                           })
                         }
-                        className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#0077E6]"
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
                       />
                     </div>
                   </div>
 
                   <button
                     type="submit"
-                    className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition cursor-pointer"
+                    className={`text-sm px-5 py-2.5 rounded-xl transition cursor-pointer ${ui.primaryBtn}`}
                   >
                     Save Settings
                   </button>
                 </form>
 
-                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-[#E3E6EB] shadow-2xs space-y-4 h-fit">
+                <div
+                  className={`p-5 sm:p-6 rounded-2xl border space-y-4 h-fit transition-colors ${ui.cardBg}`}
+                >
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                    <h2 className="text-lg font-bold text-[#111827]">
+                    <ShieldCheck
+                      className={`w-5 h-5 ${
+                        isDay ? "text-emerald-700" : "text-emerald-400"
+                      }`}
+                    />
+                    <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                       Auto-Stock Deduction Guard
                     </h2>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-[#4B5563] leading-relaxed">
-                    অর্ডার <strong>Confirmed</strong> বা{" "}
-                    <strong>Delivered</strong> করলে সংশ্লিষ্ট প্রোডাক্টের স্টক
-                    স্বয়ংক্রিয়ভাবে কমানো হবে এবং একই অর্ডারের জন্য যেন দ্বিতীয়বার
-                    স্টক না কাটে সেটির গার্ড সক্রিয় থাকবে।
+                  <p
+                    className={`text-xs sm:text-sm leading-relaxed ${ui.textMuted}`}
+                  >
+                    অর্ডার{" "}
+                    <strong className={ui.textSecondary}>Confirmed</strong> বা{" "}
+                    <strong className={ui.textSecondary}>Delivered</strong>{" "}
+                    করলে সংশ্লিষ্ট প্রোডাক্টের স্টক স্বয়ংক্রিয়ভাবে কমানো হবে এবং
+                    একই অর্ডারের জন্য যেন দ্বিতীয়বার স্টক না কাটে সেটির গার্ড
+                    সক্রিয় থাকবে।
                   </p>
 
-                  <label className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F4F6F9] border border-[#E3E6EB] cursor-pointer">
-                    <span className="text-sm font-semibold text-[#111827]">
+                  <label
+                    className={`flex items-center justify-between p-3.5 rounded-2xl border cursor-pointer ${ui.subCardBg}`}
+                  >
+                    <span className={`text-sm font-semibold ${ui.textPrimary}`}>
                       Enable Auto-Stock Guard
                     </span>
                     <input
                       type="checkbox"
                       checked={autoDeductStock}
                       onChange={(e) => setAutoDeductStock(e.target.checked)}
-                      className="w-4 h-4 accent-[#0077E6] cursor-pointer"
+                      className="w-4 h-4 cursor-pointer"
                     />
                   </label>
 
-                  <p className="text-xs text-[#4B5563]">
+                  <p className={`text-xs ${ui.textMuted}`}>
                     Protected orders count:{" "}
-                    <strong>{deductedOrderIds.length}</strong>
+                    <strong className={ui.textSecondary}>
+                      {deductedOrderIds.length}
+                    </strong>
                   </p>
                 </div>
               </div>
@@ -3587,7 +4098,9 @@ export default function AdminPage() {
           </main>
 
           {/* Footer */}
-          <footer className="bg-white border-t border-[#E3E6EB] px-4 sm:px-6 py-4 text-xs text-[#4B5563] flex flex-col sm:flex-row items-center justify-between gap-2">
+          <footer
+            className={`border-t px-4 sm:px-6 py-4 text-xs flex flex-col sm:flex-row items-center justify-between gap-2 transition-colors ${ui.footerBg}`}
+          >
             <p>
               © 2026 {BRAND_NAME} Admin Dashboard • {BRAND_TAGLINE}.
             </p>
@@ -3600,50 +4113,60 @@ export default function AdminPage() {
       {selectedCustomer && (
         <div
           onClick={() => setSelectedCustomerPhone(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-2xs p-4 overflow-y-auto"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-[#E3E6EB] space-y-4 my-auto max-h-[88vh] overflow-y-auto"
+            className={`rounded-3xl max-w-2xl w-full p-6 shadow-xl border space-y-4 my-auto max-h-[88vh] overflow-y-auto ${ui.cardBg}`}
           >
-            <div className="flex items-start justify-between border-b border-[#E3E6EB] pb-3.5 gap-3">
+            <div
+              className={`flex items-start justify-between border-b pb-3.5 gap-3 ${ui.divider}`}
+            >
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-[#0077E6]">
+                <p
+                  className={`text-[11px] font-semibold uppercase tracking-wider ${ui.textMuted}`}
+                >
                   Customer Order History
                 </p>
-                <h3 className="text-lg font-bold text-[#111827]">
+                <h3 className={`text-lg font-bold ${ui.textPrimary}`}>
                   {selectedCustomer.name} •{" "}
-                  <span className="font-mono text-[#4B5563] text-base">
+                  <span className={`font-mono text-base ${ui.textMuted}`}>
                     {selectedCustomer.phone}
                   </span>
                 </h3>
-                <p className="text-xs text-[#4B5563] mt-0.5">
+                <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
                   {selectedCustomer.address}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedCustomerPhone(null)}
-                className="p-1.5 rounded-full hover:bg-[#F4F6F9] cursor-pointer shrink-0"
+                className={`p-1.5 rounded-full cursor-pointer shrink-0 ${ui.navIdle}`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 bg-[#F4F6F9] border border-[#E3E6EB] rounded-2xl p-3.5 text-xs sm:text-sm">
+            <div
+              className={`grid grid-cols-2 border rounded-2xl p-3.5 text-xs sm:text-sm ${ui.subCardBg}`}
+            >
               <div>
-                <span className="text-[#4B5563] block text-xs">
+                <span className={`block text-xs ${ui.textMuted}`}>
                   Total Orders
                 </span>
-                <span className="font-extrabold text-[#111827] text-base">
+                <span className={`font-bold text-base ${ui.textPrimary}`}>
                   {selectedCustomer.orderCount}
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-[#4B5563] block text-xs">
+                <span className={`block text-xs ${ui.textMuted}`}>
                   Total Spent
                 </span>
-                <span className="font-extrabold text-emerald-700 text-base">
+                <span
+                  className={`font-bold text-base ${
+                    isDay ? "text-emerald-700" : "text-emerald-400"
+                  }`}
+                >
                   ৳{selectedCustomer.totalSpent.toLocaleString()}
                 </span>
               </div>
@@ -3655,48 +4178,63 @@ export default function AdminPage() {
                 return (
                   <div
                     key={ord._id || idx}
-                    className="border border-[#E3E6EB] rounded-2xl p-4 space-y-2.5 bg-white"
+                    className={`border rounded-2xl p-4 space-y-2.5 ${ui.subCardBg}`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E3E6EB] pb-2">
+                    <div
+                      className={`flex flex-wrap items-center justify-between gap-2 border-b pb-2 ${ui.divider}`}
+                    >
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-[#4B5563]">
+                        <span
+                          className={`text-xs font-mono font-bold ${ui.textSecondary}`}
+                        >
                           #{ord._id}
                         </span>
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadgeStyle(
-                            ord.status || "Pending"
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${getStatusBadgeStyle(
+                            ord.status || "Pending",
+                            isDay
                           )}`}
                         >
                           {ord.status || "Pending"}
                         </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                            isDay
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-amber-950/70 text-amber-300 border-amber-800/60"
+                          }`}
+                        >
                           {pay.method}
                           {pay.trxId ? ` • TrxID: ${pay.trxId}` : ""}
                         </span>
                       </div>
 
-                      <span className="text-sm font-extrabold text-[#111827]">
+                      <span className={`text-sm font-bold ${ui.textPrimary}`}>
                         ৳{Number(ord.totalAmount).toLocaleString()}
                       </span>
                     </div>
 
-                    <div className="divide-y divide-[#E3E6EB]">
+                    <div className={`divide-y ${ui.divider}`}>
                       {ord.items?.map((line, lIdx) => (
                         <div
                           key={`${line.name}-${lIdx}`}
                           className="py-2 flex items-center justify-between gap-3 text-xs sm:text-sm"
                         >
                           <div className="min-w-0">
-                            <p className="font-semibold text-[#111827] truncate">
+                            <p
+                              className={`font-semibold truncate ${ui.textPrimary}`}
+                            >
                               {line.name}
                             </p>
-                            <p className="text-xs text-[#4B5563]">
+                            <p className={`text-xs ${ui.textMuted}`}>
                               {line.size ? `Size: ${line.size} • ` : ""}
                               {line.color ? `Color: ${line.color} • ` : ""}
                               Qty: {line.quantity} × ৳{line.price}
                             </p>
                           </div>
-                          <p className="font-bold text-[#111827] shrink-0">
+                          <p
+                            className={`font-bold shrink-0 ${ui.textPrimary}`}
+                          >
                             ৳{(line.price * line.quantity).toLocaleString()}
                           </p>
                         </div>
@@ -3707,11 +4245,11 @@ export default function AdminPage() {
               })}
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-[#E3E6EB]">
+            <div className={`flex justify-end pt-2 border-t ${ui.divider}`}>
               <button
                 type="button"
                 onClick={() => setSelectedCustomerPhone(null)}
-                className="bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer"
+                className={`text-xs px-4 py-2 rounded-xl cursor-pointer ${ui.primaryBtn}`}
               >
                 Close
               </button>
@@ -3722,21 +4260,27 @@ export default function AdminPage() {
 
       {/* Order Details Modal */}
       {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#E3E6EB] space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E3E6EB] pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-2xs p-4">
+          <div
+            className={`rounded-3xl max-w-lg w-full p-6 shadow-xl border space-y-4 ${ui.cardBg}`}
+          >
+            <div
+              className={`flex items-center justify-between border-b pb-3 ${ui.divider}`}
+            >
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-[#4B5563]">
+                <p
+                  className={`text-[11px] font-semibold uppercase tracking-wider ${ui.textMuted}`}
+                >
                   Order Details
                 </p>
-                <h3 className="text-base font-bold font-mono text-[#111827]">
+                <h3 className={`text-base font-bold font-mono ${ui.textPrimary}`}>
                   #{selectedOrder._id}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedOrder(null)}
-                className="p-1.5 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
+                className={`p-1.5 rounded-full cursor-pointer ${ui.navIdle}`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3745,49 +4289,57 @@ export default function AdminPage() {
             {(() => {
               const pay = extractPaymentInfo(selectedOrder.address);
               return (
-                <div className="space-y-2 text-xs sm:text-sm bg-[#F4F6F9] border border-[#E3E6EB] rounded-2xl p-4">
+                <div
+                  className={`space-y-2 text-xs sm:text-sm border rounded-2xl p-4 ${ui.subCardBg}`}
+                >
                   <p>
-                    <span className="font-semibold text-[#4B5563]">
+                    <span className={`font-semibold ${ui.textMuted}`}>
                       Customer:
                     </span>{" "}
-                    <span className="font-bold text-[#111827]">
+                    <span className={`font-bold ${ui.textPrimary}`}>
                       {selectedOrder.customerName}
                     </span>
                   </p>
                   <p>
-                    <span className="font-semibold text-[#4B5563]">
+                    <span className={`font-semibold ${ui.textMuted}`}>
                       Phone:
                     </span>{" "}
-                    <span className="font-mono text-[#111827]">
+                    <span className={`font-mono ${ui.textSecondary}`}>
                       {selectedOrder.phone}
                     </span>
                   </p>
                   <p>
-                    <span className="font-semibold text-[#4B5563]">
+                    <span className={`font-semibold ${ui.textMuted}`}>
                       Payment:
                     </span>{" "}
-                    <span className="font-bold text-[#0077E6]">
+                    <span className={`font-bold ${ui.textSecondary}`}>
                       {pay.method}
                     </span>
                     {pay.trxId && (
-                      <span className="ml-2 font-mono text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">
+                      <span
+                        className={`ml-2 font-mono text-xs px-2 py-0.5 rounded-md border ${
+                          isDay
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-amber-950/70 text-amber-300 border-amber-800/60"
+                        }`}
+                      >
                         TrxID: {pay.trxId}
                       </span>
                     )}
                   </p>
                   <p>
-                    <span className="font-semibold text-[#4B5563]">
+                    <span className={`font-semibold ${ui.textMuted}`}>
                       Address:
                     </span>{" "}
-                    <span className="text-[#111827]">
+                    <span className={ui.textSecondary}>
                       {selectedOrder.address}
                     </span>
                   </p>
                   <p>
-                    <span className="font-semibold text-[#4B5563]">
+                    <span className={`font-semibold ${ui.textMuted}`}>
                       Status:
                     </span>{" "}
-                    <span className="font-bold text-[#111827]">
+                    <span className={`font-bold ${ui.textPrimary}`}>
                       {selectedOrder.status || "Pending"}
                     </span>
                   </p>
@@ -3796,26 +4348,30 @@ export default function AdminPage() {
             })()}
 
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-[#4B5563]">
+              <p
+                className={`text-xs font-semibold uppercase tracking-wider ${ui.textMuted}`}
+              >
                 Ordered Items
               </p>
-              <div className="border border-[#E3E6EB] rounded-2xl divide-y divide-[#E3E6EB] px-3.5">
+              <div
+                className={`border rounded-2xl divide-y px-3.5 ${ui.subCardBg} ${ui.divider}`}
+              >
                 {selectedOrder.items?.map((item, idx) => (
                   <div
                     key={`${item.name}-${idx}`}
                     className="py-2.5 flex items-center justify-between text-xs sm:text-sm"
                   >
                     <div>
-                      <p className="font-semibold text-[#111827]">
+                      <p className={`font-semibold ${ui.textPrimary}`}>
                         {item.name}
                       </p>
-                      <p className="text-xs text-[#4B5563]">
+                      <p className={`text-xs ${ui.textMuted}`}>
                         {item.size ? `Size: ${item.size} • ` : ""}
                         {item.color ? `Color: ${item.color} • ` : ""}Qty:{" "}
                         {item.quantity} × ৳{item.price}
                       </p>
                     </div>
-                    <p className="font-bold text-[#111827]">
+                    <p className={`font-bold ${ui.textPrimary}`}>
                       ৳{item.price * item.quantity}
                     </p>
                   </div>
@@ -3823,18 +4379,20 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-[#E3E6EB]">
-              <span className="text-sm font-bold text-[#111827]">
+            <div
+              className={`flex items-center justify-between pt-2 border-t ${ui.divider}`}
+            >
+              <span className={`text-sm font-bold ${ui.textPrimary}`}>
                 Total: ৳{Number(selectedOrder.totalAmount).toLocaleString()}
               </span>
 
               <button
                 type="button"
                 onClick={() => handleCopyOrderSummary(selectedOrder)}
-                className="inline-flex items-center gap-1.5 bg-[#0077E6] hover:bg-[#0062BE] text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition cursor-pointer"
+                className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl transition cursor-pointer ${ui.primaryBtn}`}
               >
                 {copiedId === `sum-${selectedOrder._id}` ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-300" />
+                  <Check className="w-3.5 h-3.5" />
                 ) : (
                   <Copy className="w-3.5 h-3.5" />
                 )}
@@ -3847,19 +4405,21 @@ export default function AdminPage() {
 
       {/* Edit Product Modal */}
       {editingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0C10]/60 backdrop-blur-xs p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-2xs p-4 overflow-y-auto">
           <form
             onSubmit={handleSaveProductEdit}
-            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#E3E6EB] space-y-3 my-auto max-h-[90vh] overflow-y-auto"
+            className={`rounded-3xl max-w-lg w-full p-6 shadow-xl border space-y-3 my-auto max-h-[90vh] overflow-y-auto ${ui.cardBg}`}
           >
-            <div className="flex items-center justify-between border-b border-[#E3E6EB] pb-3">
-              <h3 className="text-lg font-bold text-[#111827]">
+            <div
+              className={`flex items-center justify-between border-b pb-3 ${ui.divider}`}
+            >
+              <h3 className={`text-lg font-bold ${ui.textPrimary}`}>
                 Edit Product
               </h3>
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className="p-1.5 rounded-full hover:bg-[#F4F6F9] cursor-pointer"
+                className={`p-1.5 rounded-full cursor-pointer ${ui.navIdle}`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3871,17 +4431,17 @@ export default function AdminPage() {
               placeholder="Product Name *"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+              className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
             />
 
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-[#4B5563]">
+              <label className={`block text-xs font-medium ${ui.textMuted}`}>
                 Category
               </label>
               <select
                 value={editSubCategory}
                 onChange={(e) => setEditSubCategory(e.target.value)}
-                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm bg-white text-[#111827] font-medium outline-none focus:border-[#0077E6] cursor-pointer"
+                className={`w-full border rounded-xl px-3 py-2 text-sm font-medium outline-none cursor-pointer ${ui.inputBg}`}
               >
                 {STORE_SUBCATEGORIES.map((catLabel) => (
                   <option key={catLabel} value={catLabel}>
@@ -3898,14 +4458,14 @@ export default function AdminPage() {
                 placeholder="Price (BDT) *"
                 value={editPrice}
                 onChange={(e) => setEditPrice(e.target.value)}
-                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
               />
               <input
                 type="number"
                 placeholder="Old Price (optional)"
                 value={editOldPrice}
                 onChange={(e) => setEditOldPrice(e.target.value)}
-                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
               />
             </div>
 
@@ -3915,14 +4475,14 @@ export default function AdminPage() {
                 placeholder="Badge"
                 value={editBadge}
                 onChange={(e) => setEditBadge(e.target.value)}
-                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
               />
               <input
                 type="number"
                 placeholder="Stock"
                 value={editStock}
                 onChange={(e) => setEditStock(e.target.value)}
-                className="w-full border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
               />
             </div>
 
@@ -3937,7 +4497,7 @@ export default function AdminPage() {
                 }
                 value={editSizesText}
                 onChange={(e) => setEditSizesText(e.target.value)}
-                className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
               />
             ) : editCategory === "gadget" ? (
               <input
@@ -3945,14 +4505,17 @@ export default function AdminPage() {
                 placeholder="Specs"
                 value={editSpecs}
                 onChange={(e) => setEditSpecs(e.target.value)}
-                className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
               />
             ) : null}
 
-            {/* Edit Colors Option */}
-            <div className="space-y-1.5 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-2.5">
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-[#111827]">
-                <Palette className="w-3.5 h-3.5 text-[#0077E6]" />
+            <div
+              className={`space-y-1.5 border rounded-xl p-2.5 ${ui.subCardBg}`}
+            >
+              <label
+                className={`flex items-center gap-1.5 text-xs font-semibold ${ui.textSecondary}`}
+              >
+                <Palette className={`w-3.5 h-3.5 ${ui.textMuted}`} />
                 Colors (comma separated)
               </label>
               <input
@@ -3960,7 +4523,7 @@ export default function AdminPage() {
                 placeholder="e.g. Black, Silver, Midnight Blue"
                 value={editColorsText}
                 onChange={(e) => setEditColorsText(e.target.value)}
-                className="w-full bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
               />
               <div className="flex flex-wrap gap-1.5 pt-0.5">
                 {QUICK_COLOR_PRESETS.map((preset) => (
@@ -3972,7 +4535,7 @@ export default function AdminPage() {
                         appendPresetToText(prev, preset)
                       )
                     }
-                    className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-[#E3E6EB] hover:border-[#0077E6] text-[#111827] transition cursor-pointer"
+                    className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition cursor-pointer ${ui.secondaryBtn}`}
                   >
                     + {preset}
                   </button>
@@ -3980,10 +4543,13 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Edit Multiple Images */}
-            <div className="space-y-2 bg-[#F4F6F9] border border-[#E3E6EB] rounded-xl p-3">
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-[#111827]">
-                <Images className="w-3.5 h-3.5 text-[#0077E6]" />
+            <div
+              className={`space-y-2 border rounded-xl p-3 ${ui.subCardBg}`}
+            >
+              <label
+                className={`flex items-center gap-1.5 text-xs font-semibold ${ui.textSecondary}`}
+              >
+                <Images className={`w-3.5 h-3.5 ${ui.textMuted}`} />
                 Product Images ({editImagesList.length}) *
               </label>
 
@@ -3999,12 +4565,12 @@ export default function AdminPage() {
                       handleAddImageUrl("edit");
                     }
                   }}
-                  className="flex-1 bg-white border border-[#E3E6EB] rounded-xl px-3 py-2 text-xs text-[#111827] outline-none focus:border-[#0077E6]"
+                  className={`flex-1 border rounded-xl px-3 py-2 text-xs outline-none transition ${ui.inputBg}`}
                 />
                 <button
                   type="button"
                   onClick={() => handleAddImageUrl("edit")}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-[#1E2B4D] hover:bg-[#15203B] text-white text-xs font-semibold transition cursor-pointer shrink-0"
+                  className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer shrink-0 ${ui.secondaryBtn}`}
                 >
                   <Link2 className="w-3.5 h-3.5" />
                   Add
@@ -4024,7 +4590,7 @@ export default function AdminPage() {
                 type="button"
                 disabled={processingImage}
                 onClick={() => editFileInputRef.current?.click()}
-                className="w-full inline-flex items-center justify-center gap-1.5 border border-dashed border-[#4B5563]/50 hover:border-[#0077E6] bg-white text-[#111827] py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
+                className={`w-full inline-flex items-center justify-center gap-1.5 border border-dashed py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer ${ui.secondaryBtn}`}
               >
                 <Upload className="w-3.5 h-3.5" />
                 {processingImage ? "Processing Photos..." : "Add More Photos"}
@@ -4035,7 +4601,7 @@ export default function AdminPage() {
                   {editImagesList.map((imgSrc, idx) => (
                     <div
                       key={`${idx}-${imgSrc.slice(0, 24)}`}
-                      className="relative rounded-xl overflow-hidden border border-[#E3E6EB] bg-white aspect-square"
+                      className={`relative rounded-xl overflow-hidden border aspect-square ${ui.mutedInputBg}`}
                     >
                       <img
                         src={imgSrc}
@@ -4043,7 +4609,7 @@ export default function AdminPage() {
                         className="w-full h-full object-cover"
                       />
                       {idx === 0 && (
-                        <span className="absolute bottom-1 left-1 bg-[#1E2B4D]/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                        <span className="absolute bottom-1 left-1 bg-slate-900/85 text-slate-100 text-[9px] font-semibold px-1.5 py-0.5 rounded-md">
                           Main
                         </span>
                       )}
@@ -4053,7 +4619,7 @@ export default function AdminPage() {
                             type="button"
                             onClick={() => handleMakePrimaryImage(idx, "edit")}
                             title="Set as Main Image"
-                            className="bg-white/95 hover:bg-white text-[#111827] text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-2xs cursor-pointer"
+                            className="bg-slate-900/85 text-slate-100 text-[9px] font-semibold px-1.5 py-0.5 rounded-md cursor-pointer"
                           >
                             1st
                           </button>
@@ -4062,7 +4628,7 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => handleRemoveImageAt(idx, "edit")}
                           title="Remove image"
-                          className="w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-2xs cursor-pointer"
+                          className="w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center cursor-pointer"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -4077,7 +4643,7 @@ export default function AdminPage() {
               placeholder="Description (optional)"
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
-              className="w-full border border-[#E3E6EB] rounded-xl px-3.5 py-2 text-sm text-[#111827] outline-none focus:border-[#0077E6]"
+              className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
               rows={2}
             />
 
@@ -4085,14 +4651,14 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className="flex-1 border border-[#E3E6EB] text-[#111827] py-2.5 rounded-xl text-sm font-semibold hover:bg-[#F4F6F9] transition cursor-pointer"
+                className={`flex-1 border py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer ${ui.secondaryBtn}`}
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={savingEdit || processingImage}
-                className="flex-1 bg-[#0077E6] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#0062BE] disabled:opacity-50 transition cursor-pointer"
+                className={`flex-1 py-2.5 rounded-xl text-sm disabled:opacity-50 transition cursor-pointer ${ui.primaryBtn}`}
               >
                 {savingEdit ? "Saving..." : "Save Changes"}
               </button>

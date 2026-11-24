@@ -146,18 +146,19 @@ const CATEGORY_BN: Record<string, string> = {
 
 const CATEGORY_IMAGES = {
   mensFashion:
-    "https://images.unsplash.com/photo-1516257984-b1b4d707412e?auto=format&fit=crop&w=500&q=80",
+   "/images/mensFashion.jpg",
   womensFashion:
-    "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=500&q=80",
+    "/images/womensFashion.jpg",
   mensFootwear:
-    "https://images.unsplash.com/photo-1600185365926-3a2ce3cdb9eb?auto=format&fit=crop&w=500&q=80",
+    "/images/mensFootwear.jpg",
   womensFootwear:
-    "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=500&q=80",
+    "/images/womensFootwear.jpg",
   gadgets:
     "/images/gadgets.jpg",
   beautyProducts:
-    "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=500&q=80",
-  mobileAccessories: "/images/mobile-accessories.jpg",
+    "/images/beautyProducts.jpg",
+  mobileAccessories:
+    "/images/mobile-accessories.jpg",
 };
 
 const FEATURED_CATEGORIES = [
