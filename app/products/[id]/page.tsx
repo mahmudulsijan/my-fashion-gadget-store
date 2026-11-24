@@ -27,6 +27,7 @@ type ApiProduct = {
   price: number;
   oldPrice?: number;
   images: string[];
+  colorImages?: Record<string, string>;
   badge: string;
   sizes?: string[];
   colors?: string[];
@@ -63,7 +64,16 @@ const CATEGORY_BN: Record<string, string> = {
 
 function parseStringArray(val: unknown): string[] {
   if (Array.isArray(val)) {
-    return val.map((item) => String(item || "").trim()).filter(Boolean);
+    return val
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (item && typeof item === "object") {
+          const obj = item as Record<string, unknown>;
+          return String(obj.name || obj.color || obj.label || "").trim();
+        }
+        return "";
+      })
+      .filter(Boolean);
   }
   if (typeof val === "string" && val.trim()) {
     return val
@@ -72,6 +82,60 @@ function parseStringArray(val: unknown): string[] {
       .filter(Boolean);
   }
   return [];
+}
+
+function resolveColorImages(
+  item: Record<string, unknown>,
+  colors: string[],
+  images: string[]
+): Record<string, string> {
+  const map: Record<string, string> = {};
+
+  if (item?.colorImages && typeof item.colorImages === "object") {
+    for (const [k, v] of Object.entries(
+      item.colorImages as Record<string, unknown>
+    )) {
+      const key = k.trim().toLowerCase();
+      if (key && typeof v === "string" && v.trim()) {
+        map[key] = v.trim();
+      }
+    }
+  }
+
+  if (Array.isArray(item?.colors)) {
+    for (const c of item.colors) {
+      if (c && typeof c === "object") {
+        const obj = c as Record<string, unknown>;
+        const key = String(obj.name || obj.color || obj.label || "")
+          .trim()
+          .toLowerCase();
+        const img = String(obj.image || obj.url || obj.src || "").trim();
+        if (key && img) map[key] = img;
+      }
+    }
+  }
+
+  if (Array.isArray(item?.variants)) {
+    for (const v of item.variants) {
+      if (v && typeof v === "object") {
+        const obj = v as Record<string, unknown>;
+        const key = String(obj.color || obj.name || "")
+          .trim()
+          .toLowerCase();
+        const img = String(obj.image || obj.url || "").trim();
+        if (key && img) map[key] = img;
+      }
+    }
+  }
+
+  colors.forEach((col, idx) => {
+    const key = col.trim().toLowerCase();
+    if (!map[key] && images[idx]) {
+      map[key] = images[idx];
+    }
+  });
+
+  return map;
 }
 
 function sanitizeReviews(raw: unknown): ProductReview[] {
@@ -149,6 +213,18 @@ function mapProduct(item: Record<string, unknown>, idx: number): ApiProduct {
     const secImg = item.secondaryImage.trim();
     if (!imgs.includes(secImg)) imgs.push(secImg);
   }
+  if (Array.isArray(item.variants)) {
+    for (const v of item.variants) {
+      if (v && typeof v === "object") {
+        const vImg = String(
+          (v as Record<string, unknown>).image ||
+            (v as Record<string, unknown>).url ||
+            ""
+        ).trim();
+        if (vImg && !imgs.includes(vImg)) imgs.push(vImg);
+      }
+    }
+  }
   if (imgs.length === 0) {
     imgs.push("/hero-banner.jpg");
   }
@@ -162,6 +238,7 @@ function mapProduct(item: Record<string, unknown>, idx: number): ApiProduct {
       : [];
 
   const parsedColors = parseStringArray(item.colors);
+  const colorImages = resolveColorImages(item, parsedColors, imgs);
 
   return {
     id: String(item._id || item.id || idx),
@@ -176,6 +253,7 @@ function mapProduct(item: Record<string, unknown>, idx: number): ApiProduct {
         ? Number(item.oldPrice)
         : undefined,
     images: imgs,
+    colorImages,
     badge: String(item.badge || `${BRAND_NAME} Edit`),
     sizes: parsedSizes.length > 0 ? parsedSizes : undefined,
     colors: parsedColors.length > 0 ? parsedColors : undefined,
@@ -350,6 +428,32 @@ function ProductDetailsContent() {
     }
   }, [productId]);
 
+  const handleSelectColor = (col: string) => {
+    setSelectedColor(col);
+    if (!product) return;
+
+    const key = col.trim().toLowerCase();
+    const mappedImg = product.colorImages?.[key];
+
+    if (mappedImg) {
+      const foundIdx = product.images.findIndex((u) => u === mappedImg);
+      if (foundIdx >= 0) {
+        setActiveImgIdx(foundIdx);
+        return;
+      }
+    }
+
+    const colorIdx = product.colors
+      ? product.colors.findIndex((c) => c.trim().toLowerCase() === key)
+      : -1;
+
+    if (colorIdx >= 0 && product.images[colorIdx]) {
+      setActiveImgIdx(colorIdx);
+    } else if (colorIdx > 0 && product.images.length > 1) {
+      setActiveImgIdx(colorIdx % product.images.length);
+    }
+  };
+
   const frequentlyBoughtTogether = useMemo(() => {
     if (!product) return [];
     return allProducts.filter((p) => p.id !== product.id).slice(0, 2);
@@ -360,6 +464,18 @@ function ProductDetailsContent() {
     const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
     return (sum / reviews.length).toFixed(1);
   }, [reviews]);
+
+  const displayedMainImage = useMemo(() => {
+    if (!product) return "/hero-banner.jpg";
+    if (selectedColor) {
+      const key = selectedColor.trim().toLowerCase();
+      const mappedImg = product.colorImages?.[key];
+      if (mappedImg && product.images[activeImgIdx] === mappedImg) {
+        return mappedImg;
+      }
+    }
+    return product.images[activeImgIdx] || product.images[0];
+  }, [product, selectedColor, activeImgIdx]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -383,6 +499,10 @@ function ProductDetailsContent() {
     try {
       const raw = localStorage.getItem("maveron_cart");
       const current = raw ? JSON.parse(raw) : [];
+      const chosenImg =
+        (optColor && targetProduct.colorImages?.[optColor.trim().toLowerCase()]) ||
+        targetProduct.images[0] ||
+        "/hero-banner.jpg";
       const cartItemObj = {
         id: targetProduct.id,
         name: targetProduct.name,
@@ -390,10 +510,11 @@ function ProductDetailsContent() {
         subCategory: targetProduct.subCategory,
         price: targetProduct.price,
         oldPrice: targetProduct.oldPrice,
-        image: targetProduct.images[0] || "/hero-banner.jpg",
+        image: chosenImg,
         badge: targetProduct.badge,
         sizes: targetProduct.sizes,
         colors: targetProduct.colors,
+        colorImages: targetProduct.colorImages,
         specs: targetProduct.specs,
         description: targetProduct.description,
         stock: targetProduct.stock,
@@ -612,7 +733,8 @@ function ProductDetailsContent() {
               className={`aspect-square rounded-2xl overflow-hidden cursor-zoom-in relative ${t.surfaceAlt}`}
             >
               <img
-                src={product.images[activeImgIdx] || product.images[0]}
+                key={`${product.id}-${activeImgIdx}-${displayedMainImage}`}
+                src={displayedMainImage}
                 alt={product.name}
                 style={{
                   transformOrigin: zoomOrigin,
@@ -747,8 +869,8 @@ function ProductDetailsContent() {
                     <button
                       key={col}
                       type="button"
-                      onClick={() => setSelectedColor(col)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer ${
+                      onClick={() => handleSelectColor(col)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border cursor-pointer ${
                         selectedColor === col ? t.chipActive : t.chipIdle
                       }`}
                     >
