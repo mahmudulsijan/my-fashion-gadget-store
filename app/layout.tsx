@@ -42,6 +42,19 @@ export const metadata: Metadata = {
   },
 };
 
+const themeInitScript = `
+  (function () {
+    try {
+      var mode = localStorage.getItem("maveron_theme_mode");
+      var resolved = mode === "light" || mode === "night" ? mode : "night";
+      var root = document.documentElement;
+      root.setAttribute("data-maveron-theme", resolved);
+      root.style.colorScheme = resolved === "light" ? "light" : "dark";
+      root.style.backgroundColor = resolved === "light" ? "#F4F4F6" : "#09090B";
+    } catch (e) {}
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -49,7 +62,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body suppressHydrationWarning className="min-h-screen">
+        {children}
+      </body>
     </html>
   );
 }
