@@ -1,6 +1,12 @@
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, {
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -269,12 +275,20 @@ function mapProduct(item: Record<string, unknown>, idx: number): ApiProduct {
   };
 }
 
+function getInitialThemeFromDom(): ThemeMode {
+  if (typeof document !== "undefined") {
+    const attr = document.documentElement.getAttribute("data-maveron-theme");
+    if (attr === "light" || attr === "night") return attr;
+  }
+  return "night";
+}
+
 function ProductDetailsContent() {
   const params = useParams<{ id: string }>();
   const productId = String(params?.id || "");
 
   const [lang, setLang] = useState<Lang>("en");
-  const [themeMode, setThemeMode] = useState<ThemeMode>("night");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeFromDom);
 
   const [allProducts, setAllProducts] = useState<ApiProduct[]>([]);
   const [product, setProduct] = useState<ApiProduct | null>(null);
@@ -331,13 +345,22 @@ function ProductDetailsContent() {
       : "bg-zinc-900 text-zinc-300 border-zinc-800",
   };
 
+  useLayoutEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem("maveron_theme_mode");
+      if (savedTheme === "night" || savedTheme === "light") {
+        setThemeMode(savedTheme);
+        document.documentElement.setAttribute("data-maveron-theme", savedTheme);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     try {
       const savedLang = localStorage.getItem("maveron_store_lang");
       if (savedLang === "en" || savedLang === "bn") setLang(savedLang);
-      const savedTheme = localStorage.getItem("maveron_theme_mode");
-      if (savedTheme === "night" || savedTheme === "light")
-        setThemeMode(savedTheme);
     } catch {
       // ignore
     }
@@ -358,6 +381,11 @@ function ProductDetailsContent() {
     setThemeMode(next);
     try {
       localStorage.setItem("maveron_theme_mode", next);
+      document.documentElement.setAttribute("data-maveron-theme", next);
+      document.documentElement.style.colorScheme =
+        next === "light" ? "light" : "dark";
+      document.documentElement.style.backgroundColor =
+        next === "light" ? "#F4F4F6" : "#09090B";
     } catch {
       // ignore
     }
@@ -614,6 +642,7 @@ function ProductDetailsContent() {
     return (
       <div
         suppressHydrationWarning
+        data-theme={themeMode}
         className={`min-h-screen p-6 max-w-6xl mx-auto ${t.pageBg}`}
       >
         <div
@@ -629,6 +658,7 @@ function ProductDetailsContent() {
     return (
       <div
         suppressHydrationWarning
+        data-theme={themeMode}
         className={`min-h-screen flex items-center justify-center p-4 ${t.pageBg}`}
       >
         <div
@@ -664,7 +694,11 @@ function ProductDetailsContent() {
       : null;
 
   return (
-    <div suppressHydrationWarning className={`min-h-screen pb-16 ${t.pageBg}`}>
+    <div
+      suppressHydrationWarning
+      data-theme={themeMode}
+      className={`min-h-screen pb-16 ${t.pageBg}`}
+    >
       <header className={`sticky top-0 z-30 ${t.headerBg}`}>
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
           <Link

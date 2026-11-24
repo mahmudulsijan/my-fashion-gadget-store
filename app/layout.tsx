@@ -64,6 +64,22 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+              html[data-maveron-theme="light"],
+              html[data-maveron-theme="light"] body {
+                background-color: #F4F4F6 !important;
+                color: #111114 !important;
+              }
+              html[data-maveron-theme="night"],
+              html[data-maveron-theme="night"] body {
+                background-color: #09090B !important;
+                color: #F4F4F5 !important;
+              }
+            `,
+          }}
+        />
       </head>
       <body suppressHydrationWarning className="min-h-screen">
         {children}
