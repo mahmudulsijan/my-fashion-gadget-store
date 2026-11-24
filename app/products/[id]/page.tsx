@@ -3,7 +3,6 @@
 import React, {
   Suspense,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useState,
 } from "react";
@@ -275,20 +274,13 @@ function mapProduct(item: Record<string, unknown>, idx: number): ApiProduct {
   };
 }
 
-function getInitialThemeFromDom(): ThemeMode {
-  if (typeof document !== "undefined") {
-    const attr = document.documentElement.getAttribute("data-maveron-theme");
-    if (attr === "light" || attr === "night") return attr;
-  }
-  return "night";
-}
-
 function ProductDetailsContent() {
   const params = useParams<{ id: string }>();
   const productId = String(params?.id || "");
 
+  const [isMounted, setIsMounted] = useState(false);
   const [lang, setLang] = useState<Lang>("en");
-  const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeFromDom);
+  const [themeMode, setThemeMode] = useState<ThemeMode>("night");
 
   const [allProducts, setAllProducts] = useState<ApiProduct[]>([]);
   const [product, setProduct] = useState<ApiProduct | null>(null);
@@ -310,7 +302,7 @@ function ProductDetailsContent() {
   const [revComment, setRevComment] = useState("");
   const [revPhoto, setRevPhoto] = useState("");
 
-  const isLight = themeMode === "light";
+  const isLight = isMounted && themeMode === "light";
 
   const t = {
     pageBg: isLight
@@ -345,22 +337,18 @@ function ProductDetailsContent() {
       : "bg-zinc-900 text-zinc-300 border-zinc-800",
   };
 
-  useLayoutEffect(() => {
+  useEffect(() => {
+    setIsMounted(true);
     try {
       const savedTheme = localStorage.getItem("maveron_theme_mode");
       if (savedTheme === "night" || savedTheme === "light") {
         setThemeMode(savedTheme);
         document.documentElement.setAttribute("data-maveron-theme", savedTheme);
       }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
       const savedLang = localStorage.getItem("maveron_store_lang");
-      if (savedLang === "en" || savedLang === "bn") setLang(savedLang);
+      if (savedLang === "en" || savedLang === "bn") {
+        setLang(savedLang);
+      }
     } catch {
       // ignore
     }
@@ -392,7 +380,7 @@ function ProductDetailsContent() {
   };
 
   const catLabelText = (label: string) =>
-    lang === "bn" ? CATEGORY_BN[label] || label : label;
+    isMounted && lang === "bn" ? CATEGORY_BN[label] || label : label;
 
   useEffect(() => {
     let active = true;
@@ -642,10 +630,11 @@ function ProductDetailsContent() {
     return (
       <div
         suppressHydrationWarning
-        data-theme={themeMode}
+        data-theme={isMounted ? themeMode : "night"}
         className={`min-h-screen p-6 max-w-6xl mx-auto ${t.pageBg}`}
       >
         <div
+          suppressHydrationWarning
           className={`h-96 rounded-3xl animate-pulse ${
             isLight ? "bg-zinc-200" : "bg-zinc-800"
           }`}
@@ -658,17 +647,20 @@ function ProductDetailsContent() {
     return (
       <div
         suppressHydrationWarning
-        data-theme={themeMode}
+        data-theme={isMounted ? themeMode : "night"}
         className={`min-h-screen flex items-center justify-center p-4 ${t.pageBg}`}
       >
         <div
+          suppressHydrationWarning
           className={`rounded-3xl p-8 max-w-md w-full text-center space-y-4 ${t.surface}`}
         >
           <h1 className={`text-xl font-bold ${t.titleText}`}>
-            {lang === "bn" ? "প্রোডাক্ট পাওয়া যায়নি" : "Product Not Found"}
+            {isMounted && lang === "bn"
+              ? "প্রোডাক্ট পাওয়া যায়নি"
+              : "Product Not Found"}
           </h1>
           <p className={`text-sm ${t.mutedText}`}>
-            {lang === "bn"
+            {isMounted && lang === "bn"
               ? "এই প্রোডাক্টটি পাওয়া যায়নি বা সরিয়ে ফেলা হয়েছে।"
               : "This product could not be found or is no longer available."}
           </p>
@@ -678,7 +670,7 @@ function ProductDetailsContent() {
           >
             <ArrowLeft className="w-4 h-4" />
             <span>
-              {lang === "bn"
+              {isMounted && lang === "bn"
                 ? `${BRAND_NAME} স্টোরে ফিরুন`
                 : `Back to ${BRAND_NAME} Store`}
             </span>
@@ -696,10 +688,10 @@ function ProductDetailsContent() {
   return (
     <div
       suppressHydrationWarning
-      data-theme={themeMode}
+      data-theme={isMounted ? themeMode : "night"}
       className={`min-h-screen pb-16 ${t.pageBg}`}
     >
-      <header className={`sticky top-0 z-30 ${t.headerBg}`}>
+      <header suppressHydrationWarning className={`sticky top-0 z-30 ${t.headerBg}`}>
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
           <Link
             href="/"
@@ -712,33 +704,37 @@ function ProductDetailsContent() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              suppressHydrationWarning
               onClick={toggleThemeMode}
               aria-label="Toggle Theme"
               className={`h-9 px-3 rounded-full inline-flex items-center gap-1.5 text-xs font-bold cursor-pointer ${t.pillBtn}`}
             >
-              {themeMode === "night" ? (
-                <Sun className="w-3.5 h-3.5" />
-              ) : (
+              {isLight ? (
                 <Moon className="w-3.5 h-3.5" />
+              ) : (
+                <Sun className="w-3.5 h-3.5" />
               )}
-              <span className="hidden sm:inline">
-                {themeMode === "night"
-                  ? lang === "bn"
-                    ? "লাইট"
-                    : "Light"
-                  : lang === "bn"
-                  ? "নাইট"
-                  : "Night"}
+              <span suppressHydrationWarning className="hidden sm:inline">
+                {isLight
+                  ? isMounted && lang === "bn"
+                    ? "নাইট"
+                    : "Night"
+                  : isMounted && lang === "bn"
+                  ? "লাইট"
+                  : "Light"}
               </span>
             </button>
 
             <button
               type="button"
+              suppressHydrationWarning
               onClick={toggleLanguage}
               className={`h-9 px-3 rounded-full inline-flex items-center gap-1 text-xs font-bold cursor-pointer ${t.pillBtn}`}
             >
               <Globe className="w-3.5 h-3.5" />
-              <span>{lang === "en" ? "বাংলা" : "EN"}</span>
+              <span suppressHydrationWarning>
+                {isMounted && lang === "bn" ? "EN" : "বাংলা"}
+              </span>
             </button>
 
             <a
@@ -756,6 +752,7 @@ function ProductDetailsContent() {
 
       <main className="max-w-6xl mx-auto px-4 pt-6 space-y-10">
         <div
+          suppressHydrationWarning
           className={`rounded-3xl p-5 sm:p-8 grid lg:grid-cols-12 gap-8 ${t.surface}`}
         >
           <div className="lg:col-span-6 space-y-3">
@@ -807,6 +804,7 @@ function ProductDetailsContent() {
           <div className="lg:col-span-6 space-y-5">
             <div className="flex flex-wrap items-center gap-2">
               <span
+                suppressHydrationWarning
                 className={`text-xs font-bold px-3 py-1 rounded-full ${t.chipActive}`}
               >
                 {catLabelText(product.subCategory)}
@@ -817,6 +815,7 @@ function ProductDetailsContent() {
                 </span>
               )}
               <span
+                suppressHydrationWarning
                 className={`text-xs font-bold px-2.5 py-1 rounded-full ${
                   product.stock > 0
                     ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
@@ -824,10 +823,10 @@ function ProductDetailsContent() {
                 }`}
               >
                 {product.stock > 0
-                  ? lang === "bn"
+                  ? isMounted && lang === "bn"
                     ? `স্টক: ${product.stock}`
                     : `Stock Quantity: ${product.stock}`
-                  : lang === "bn"
+                  : isMounted && lang === "bn"
                   ? "স্টক শেষ"
                   : "Out of Stock"}
               </span>
@@ -862,10 +861,13 @@ function ProductDetailsContent() {
 
             {product.specs && (
               <div
+                suppressHydrationWarning
                 className={`rounded-2xl p-3.5 text-xs ${t.surfaceAlt} ${t.bodyText}`}
               >
                 <span className={`font-bold block mb-1 ${t.titleText}`}>
-                  {lang === "bn" ? "স্পেসিফিকেশন:" : "Specifications:"}
+                  {isMounted && lang === "bn"
+                    ? "স্পেসিফিকেশন:"
+                    : "Specifications:"}
                 </span>
                 {product.specs}
               </div>
@@ -874,7 +876,9 @@ function ProductDetailsContent() {
             {product.sizes && product.sizes.length > 0 && (
               <div className="space-y-1.5">
                 <span className={`text-xs font-bold block ${t.bodyText}`}>
-                  {lang === "bn" ? "সাইজ নির্বাচন করুন:" : "Available Sizes:"}
+                  {isMounted && lang === "bn"
+                    ? "সাইজ নির্বাচন করুন:"
+                    : "Available Sizes:"}
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {product.sizes.map((sz) => (
@@ -896,7 +900,9 @@ function ProductDetailsContent() {
             {product.colors && product.colors.length > 0 && (
               <div className="space-y-1.5">
                 <span className={`text-xs font-bold block ${t.bodyText}`}>
-                  {lang === "bn" ? "কালার নির্বাচন করুন:" : "Available Colors:"}
+                  {isMounted && lang === "bn"
+                    ? "কালার নির্বাচন করুন:"
+                    : "Available Colors:"}
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {product.colors.map((col) => (
@@ -916,7 +922,10 @@ function ProductDetailsContent() {
             )}
 
             <div className="flex items-center gap-3 pt-2">
-              <div className={`flex items-center rounded-xl ${t.surfaceAlt}`}>
+              <div
+                suppressHydrationWarning
+                className={`flex items-center rounded-xl ${t.surfaceAlt}`}
+              >
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
@@ -941,12 +950,12 @@ function ProductDetailsContent() {
                 className={`flex-1 disabled:opacity-45 inline-flex items-center justify-center gap-2 text-sm font-extrabold py-3 px-5 rounded-xl transition cursor-pointer ${t.cta}`}
               >
                 <ShoppingBag className="w-4 h-4" />
-                <span>
+                <span suppressHydrationWarning>
                   {addedNotice
-                    ? lang === "bn"
+                    ? isMounted && lang === "bn"
                       ? "কার্টে যোগ হয়েছে!"
                       : "Added to Cart!"
-                    : lang === "bn"
+                    : isMounted && lang === "bn"
                     ? `কার্টে যোগ করুন — ৳${product.price * quantity}`
                     : `Add to Cart — ৳${product.price * quantity}`}
                 </span>
@@ -954,35 +963,50 @@ function ProductDetailsContent() {
             </div>
 
             <div className="grid sm:grid-cols-3 gap-3 pt-2 text-xs">
-              <div className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}>
+              <div
+                suppressHydrationWarning
+                className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}
+              >
                 <Truck className={`w-4 h-4 ${t.titleText}`} />
                 <p className={`font-bold ${t.titleText}`}>
-                  {lang === "bn" ? "ডেলিভারি তথ্য" : "Delivery Info"}
+                  {isMounted && lang === "bn"
+                    ? "ডেলিভারি তথ্য"
+                    : "Delivery Info"}
                 </p>
                 <p className={t.mutedText}>
-                  {lang === "bn"
+                  {isMounted && lang === "bn"
                     ? "ময়মনসিংহের ভেতরে ৳৭০, বাইরে ৳১৩০ (২–৪ দিন)।"
                     : "Inside Mymensingh ৳70, Outside ৳130 (2–4 days)."}
                 </p>
               </div>
-              <div className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}>
+              <div
+                suppressHydrationWarning
+                className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}
+              >
                 <RotateCcw className={`w-4 h-4 ${t.titleText}`} />
                 <p className={`font-bold ${t.titleText}`}>
-                  {lang === "bn" ? "রিটার্ন ও এক্সচেঞ্জ" : "Return & Exchange"}
+                  {isMounted && lang === "bn"
+                    ? "রিটার্ন ও এক্সচেঞ্জ"
+                    : "Return & Exchange"}
                 </p>
                 <p className={t.mutedText}>
-                  {lang === "bn"
+                  {isMounted && lang === "bn"
                     ? "আনবক্সিং ভিডিওসহ ৭ দিনের এক্সচেঞ্জ সুবিধা।"
                     : "7-day easy size/item exchange with parcel video."}
                 </p>
               </div>
-              <div className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}>
+              <div
+                suppressHydrationWarning
+                className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}
+              >
                 <ShieldCheck className={`w-4 h-4 ${t.titleText}`} />
                 <p className={`font-bold ${t.titleText}`}>
-                  {lang === "bn" ? "নিরাপদ পেমেন্ট" : "Secure Payment"}
+                  {isMounted && lang === "bn"
+                    ? "নিরাপদ পেমেন্ট"
+                    : "Secure Payment"}
                 </p>
                 <p className={t.mutedText}>
-                  {lang === "bn"
+                  {isMounted && lang === "bn"
                     ? "COD, bKash, Nagad ও Rocket সুবিধা।"
                     : "COD, bKash, Nagad & Rocket supported."}
                 </p>
@@ -992,9 +1016,12 @@ function ProductDetailsContent() {
         </div>
 
         {frequentlyBoughtTogether.length > 0 && (
-          <div className={`rounded-3xl p-6 space-y-4 ${t.surface}`}>
+          <div
+            suppressHydrationWarning
+            className={`rounded-3xl p-6 space-y-4 ${t.surface}`}
+          >
             <h2 className={`text-lg font-bold ${t.titleText}`}>
-              {lang === "bn"
+              {isMounted && lang === "bn"
                 ? "একসাথে বেশি কেনা হয়"
                 : "Frequently Bought Together"}
             </h2>
@@ -1003,6 +1030,7 @@ function ProductDetailsContent() {
                 <React.Fragment key={item.id}>
                   {i > 0 && <Plus className={`w-4 h-4 ${t.mutedText}`} />}
                   <div
+                    suppressHydrationWarning
                     className={`flex items-center gap-3 p-3 rounded-2xl ${t.surfaceAlt}`}
                   >
                     <img
@@ -1027,17 +1055,22 @@ function ProductDetailsContent() {
                 className={`ml-auto inline-flex items-center gap-1.5 text-xs font-extrabold px-4 py-3 rounded-xl cursor-pointer ${t.cta}`}
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>
-                  {lang === "bn" ? "বান্ডেল কার্টে নিন" : "Add Bundle to Cart"}
+                <span suppressHydrationWarning>
+                  {isMounted && lang === "bn"
+                    ? "বান্ডেল কার্টে নিন"
+                    : "Add Bundle to Cart"}
                 </span>
               </button>
             </div>
           </div>
         )}
 
-        <div className={`rounded-3xl p-6 space-y-5 ${t.surface}`}>
+        <div
+          suppressHydrationWarning
+          className={`rounded-3xl p-6 space-y-5 ${t.surface}`}
+        >
           <h2 className={`text-lg font-bold ${t.titleText}`}>
-            {lang === "bn"
+            {isMounted && lang === "bn"
               ? `কাস্টমার রিভিউ (${reviews.length})`
               : `Customer Reviews with Photos (${reviews.length})`}
           </h2>
@@ -1047,7 +1080,9 @@ function ProductDetailsContent() {
               <input
                 type="text"
                 required
-                placeholder={lang === "bn" ? "আপনার নাম *" : "Your name *"}
+                placeholder={
+                  isMounted && lang === "bn" ? "আপনার নাম *" : "Your name *"
+                }
                 value={revName}
                 onChange={(e) => setRevName(e.target.value)}
                 className={`sm:col-span-3 rounded-xl px-3.5 py-2 text-xs sm:text-sm outline-none ${t.input}`}
@@ -1067,7 +1102,7 @@ function ProductDetailsContent() {
                 type="text"
                 required
                 placeholder={
-                  lang === "bn"
+                  isMounted && lang === "bn"
                     ? "রিসিভ করা প্রোডাক্ট নিয়ে রিভিউ লিখুন... *"
                     : "Write review about received product... *"
                 }
@@ -1079,7 +1114,7 @@ function ProductDetailsContent() {
                 type="submit"
                 className={`sm:col-span-2 text-xs sm:text-sm font-extrabold py-2 px-4 rounded-xl cursor-pointer ${t.cta}`}
               >
-                {lang === "bn" ? "রিভিউ দিন" : "Post Review"}
+                {isMounted && lang === "bn" ? "রিভিউ দিন" : "Post Review"}
               </button>
             </div>
 
@@ -1087,12 +1122,12 @@ function ProductDetailsContent() {
               className={`inline-flex items-center gap-2 text-xs font-semibold px-3.5 py-2 rounded-xl cursor-pointer ${t.pillBtn}`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>
+              <span suppressHydrationWarning>
                 {revPhoto
-                  ? lang === "bn"
+                  ? isMounted && lang === "bn"
                     ? "ছবি যুক্ত হয়েছে"
                     : "Photo Attached"
-                  : lang === "bn"
+                  : isMounted && lang === "bn"
                   ? "প্রোডাক্টের ছবি যোগ করুন"
                   : "Add Product Photo"}
               </span>
@@ -1107,7 +1142,7 @@ function ProductDetailsContent() {
 
           {reviews.length === 0 ? (
             <p className={`text-xs sm:text-sm ${t.mutedText}`}>
-              {lang === "bn"
+              {isMounted && lang === "bn"
                 ? "এই প্রোডাক্টে এখনো কোনো রিভিউ নেই।"
                 : "No reviews for this product yet."}
             </p>
@@ -1116,6 +1151,7 @@ function ProductDetailsContent() {
               {reviews.map((r) => (
                 <div
                   key={r.id}
+                  suppressHydrationWarning
                   className={`p-4 rounded-2xl space-y-2 ${t.surfaceAlt}`}
                 >
                   <div className="flex items-center justify-between text-xs font-bold">

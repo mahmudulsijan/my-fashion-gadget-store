@@ -17,6 +17,8 @@ import {
   X,
   Sun,
   Moon,
+  Phone,
+  Hash,
 } from "lucide-react";
 
 interface TrackedOrderItem {
@@ -29,6 +31,7 @@ interface TrackedOrderItem {
 
 interface TrackedOrder {
   _id: string;
+  orderId?: string;
   customerName: string;
   phone: string;
   address: string;
@@ -69,10 +72,32 @@ function formatOrderDate(rawDate?: string): string | null {
   }).format(dt);
 }
 
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("880") && digits.length >= 13) {
+    return "0" + digits.slice(3, 13);
+  }
+  return digits;
+}
+
+function maskPhone(raw: string): string {
+  const clean = normalizePhone(raw);
+  if (clean.length < 7) return raw;
+  return `${clean.slice(0, 3)}****${clean.slice(-4)}`;
+}
+
+function maskAddress(raw: string): string {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  if (text.length <= 12) return `${text.slice(0, 3)}***${text.slice(-2)}`;
+  return `${text.slice(0, 8)} •••••• ${text.slice(-6)}`;
+}
+
 export default function TrackOrderPage() {
   const [lang, setLang] = useState<Lang>("en");
   const [themeMode, setThemeMode] = useState<ThemeMode>("night");
-  const [query, setQuery] = useState("");
+  const [orderIdInput, setOrderIdInput] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
   const [orders, setOrders] = useState<TrackedOrder[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [searched, setSearched] = useState(false);
@@ -159,34 +184,71 @@ export default function TrackOrderPage() {
     }
   };
 
-  const fetchMatchingOrders = async (searchText: string) => {
-    const cleaned = searchText.trim();
-    if (!cleaned) return;
+  const handleCopyId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId(null), 1800);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const cleanOrderId = orderIdInput.trim().replace(/^#/, "");
+    const cleanPhone = normalizePhone(phoneInput.trim());
+
+    if (!cleanOrderId || !cleanPhone) {
+      setErrorMsg(
+        lang === "bn"
+          ? "অর্ডার ট্র্যাক করতে Order ID এবং Phone Number উভয়টিই দিন।"
+          : "Please enter both Order ID and Phone Number to track your order."
+      );
+      setSearched(true);
+      setOrders([]);
+      return;
+    }
+
+    if (!/^01[3-9]\d{8}$/.test(cleanPhone)) {
+      setErrorMsg(
+        lang === "bn"
+          ? "সঠিক ১১ সংখ্যার মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।"
+          : "Please enter a valid 11-digit phone number (e.g. 017XXXXXXXX)."
+      );
+      setSearched(true);
+      setOrders([]);
+      return;
+    }
 
     setLoading(true);
     setErrorMsg("");
     setSearched(true);
 
     try {
-      const res = await fetch("/api/orders", { cache: "no-store" });
+      const url = `/api/orders?orderId=${encodeURIComponent(
+        cleanOrderId
+      )}&phone=${encodeURIComponent(cleanPhone)}`;
+      const res = await fetch(url, { cache: "no-store" });
       const data = await res.json();
 
       if (!res.ok || !data.success || !Array.isArray(data.orders)) {
-        throw new Error(data.message || "Could not load orders.");
+        throw new Error(data.message || "Could not verify order.");
       }
 
-      const normalizedQuery = cleaned.replace(/^#/, "").toLowerCase();
-      const matches = (data.orders as TrackedOrder[]).filter((ord) => {
-        const phoneMatch = (ord.phone || "")
-          .toLowerCase()
-          .includes(normalizedQuery);
-        const idMatch = String(ord._id || "")
-          .toLowerCase()
-          .includes(normalizedQuery);
-        return phoneMatch || idMatch;
+      // Extra client-side strict verification that both Order ID and Phone match
+      const strictlyMatched = (data.orders as TrackedOrder[]).filter((ord) => {
+        const ordIdStr = String(ord._id || "").trim().toLowerCase();
+        const customIdStr = String(ord.orderId || "").trim().toLowerCase();
+        const targetIdLower = cleanOrderId.toLowerCase();
+        const idMatches =
+          ordIdStr === targetIdLower || customIdStr === targetIdLower;
+        const phoneMatches = normalizePhone(String(ord.phone || "")) === cleanPhone;
+        return idMatches && phoneMatches;
       });
 
-      setOrders(matches);
+      setOrders(strictlyMatched);
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "Failed to search order status.";
@@ -195,41 +257,6 @@ export default function TrackOrderPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Auto-load orders if user is already logged in with a phone number
-  useEffect(() => {
-    try {
-      const savedUser =
-        localStorage.getItem("maveron_user") ||
-        sessionStorage.getItem("maveron_user") ||
-        localStorage.getItem("zavero_user") ||
-        sessionStorage.getItem("zavero_user");
-      if (savedUser) {
-        const parsed = JSON.parse(savedUser);
-        if (parsed?.phone) {
-          setQuery(String(parsed.phone));
-          fetchMatchingOrders(String(parsed.phone));
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const handleCopyId = async (id: string) => {
-    try {
-      await navigator.clipboard.writeText(id);
-      setCopiedId(id);
-      window.setTimeout(() => setCopiedId(null), 1800);
-    } catch {
-      // Ignore clipboard errors
-    }
-  };
-
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await fetchMatchingOrders(query);
   };
 
   const visibleOrders = useMemo(() => {
@@ -263,8 +290,8 @@ export default function TrackOrderPage() {
       {/* Top Announcement Bar */}
       <div className={`text-xs py-2 px-4 text-center ${t.topBar}`}>
         {lang === "bn"
-          ? `${BRAND_NAME} (${BRAND_TAGLINE}) • লাইভ অর্ডার স্ট্যাটাস ট্র্যাকিং`
-          : `${BRAND_NAME} — ${BRAND_TAGLINE} • Real-Time Order Status Lookup`}
+          ? `${BRAND_NAME} (${BRAND_TAGLINE}) • নিরাপদ অর্ডার স্ট্যাটাস ট্র্যাকিং`
+          : `${BRAND_NAME} — ${BRAND_TAGLINE} • Verified Order Status Lookup`}
       </div>
 
       {/* Header */}
@@ -345,60 +372,118 @@ export default function TrackOrderPage() {
               </h1>
               <p className={`text-xs sm:text-sm ${t.mutedText}`}>
                 {lang === "bn"
-                  ? "বর্তমান ডেলিভারি স্ট্যাটাস জানতে মোবাইল নম্বর (যেমন: 017XXXXXXXX) অথবা অর্ডার আইডি দিন।"
-                  : "Enter your phone number (e.g. 017XXXXXXXX) or Order ID to check current status."}
+                  ? "অর্ডার দেখতে Order ID এবং অর্ডারের সময় ব্যবহৃত Phone Number উভয়টিই দিন। একটির সাথে অন্যটি না মিললে তথ্য দেখাবে না।"
+                  : "Enter both your Order ID and Phone Number. Results only appear when both match."}
               </p>
             </div>
           </div>
 
-          <form
-            onSubmit={handleSearch}
-            className="flex flex-col sm:flex-row gap-2.5 pt-1"
-          >
-            <div className="relative flex-1">
-              <Search
-                className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${t.mutedText}`}
-              />
-              <input
-                type="text"
-                required
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={
-                  lang === "bn"
-                    ? "মোবাইল নম্বর বা অর্ডার আইডি লিখুন..."
-                    : "Phone number or Order ID..."
-                }
-                className={`w-full rounded-xl pl-10 pr-9 py-3 text-sm outline-none ${t.input}`}
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery("");
-                    setOrders([]);
-                    setSearched(false);
-                    setErrorMsg("");
-                  }}
-                  aria-label="Clear search"
-                  className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${t.mutedText}`}
+          <form onSubmit={handleSearch} className="space-y-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Separate Box 1: Order ID */}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="track-order-id"
+                  className={`block text-xs font-bold ${t.titleText}`}
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+                  {lang === "bn" ? "অর্ডার আইডি (Order ID) *" : "Order ID *"}
+                </label>
+                <div className="relative">
+                  <Hash
+                    className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${t.mutedText}`}
+                  />
+                  <input
+                    id="track-order-id"
+                    type="text"
+                    required
+                    value={orderIdInput}
+                    onChange={(e) => setOrderIdInput(e.target.value)}
+                    placeholder={
+                      lang === "bn"
+                        ? "যেমন: 675f... অথবা MVR-123456"
+                        : "e.g. 675f... or MVR-123456"
+                    }
+                    className={`w-full rounded-xl pl-10 pr-9 py-3 text-sm outline-none ${t.input}`}
+                  />
+                  {orderIdInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderIdInput("");
+                        setOrders([]);
+                        setSearched(false);
+                        setErrorMsg("");
+                      }}
+                      aria-label="Clear Order ID"
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${t.mutedText}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Separate Box 2: Phone Number */}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="track-phone"
+                  className={`block text-xs font-bold ${t.titleText}`}
+                >
+                  {lang === "bn"
+                    ? "মোবাইল নম্বর (Phone Number) *"
+                    : "Phone Number *"}
+                </label>
+                <div className="relative">
+                  <Phone
+                    className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${t.mutedText}`}
+                  />
+                  <input
+                    id="track-phone"
+                    type="tel"
+                    required
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    placeholder={
+                      lang === "bn"
+                        ? "যেমন: 017XXXXXXXX"
+                        : "e.g. 017XXXXXXXX"
+                    }
+                    className={`w-full rounded-xl pl-10 pr-9 py-3 text-sm outline-none ${t.input}`}
+                  />
+                  {phoneInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhoneInput("");
+                        setOrders([]);
+                        setSearched(false);
+                        setErrorMsg("");
+                      }}
+                      aria-label="Clear Phone Number"
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${t.mutedText}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
+
             <button
               type="submit"
               disabled={loading}
-              className={`disabled:opacity-50 text-sm font-extrabold px-6 py-3 rounded-xl transition cursor-pointer shrink-0 ${t.cta}`}
+              className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 disabled:opacity-50 text-sm font-extrabold px-6 py-3 rounded-xl transition cursor-pointer ${t.cta}`}
             >
-              {loading
-                ? lang === "bn"
-                  ? "খোঁজা হচ্ছে..."
-                  : "Searching..."
-                : lang === "bn"
-                ? "অর্ডার খুঁজুন"
-                : "Track Order"}
+              <Search className="w-4 h-4" />
+              <span>
+                {loading
+                  ? lang === "bn"
+                    ? "যাচাই ও খোঁজা হচ্ছে..."
+                    : "Verifying & Searching..."
+                  : lang === "bn"
+                  ? "অর্ডার খুঁজুন"
+                  : "Track Order"}
+              </span>
             </button>
           </form>
         </div>
@@ -448,13 +533,13 @@ export default function TrackOrderPage() {
               <div className={`rounded-3xl p-8 text-center space-y-2 ${t.surface}`}>
                 <p className={`text-sm font-semibold ${t.titleText}`}>
                   {lang === "bn"
-                    ? `“${query}” এর জন্য কোনো অর্ডার পাওয়া যায়নি`
-                    : `No orders found for “${query}”`}
+                    ? "Order ID এবং Phone Number মিলেনি"
+                    : "Order ID and Phone Number did not match"}
                 </p>
                 <p className={`text-xs ${t.mutedText}`}>
                   {lang === "bn"
-                    ? "মোবাইল নম্বর অথবা অর্ডার আইডি আবার যাচাই করে চেষ্টা করুন।"
-                    : "Double-check your phone number or Order ID and try again."}
+                    ? "সঠিক Order ID এবং অর্ডার করার সময় ব্যবহৃত সঠিক মোবাইল নম্বর একসাথে দিন।"
+                    : "Please make sure both the Order ID and the exact Phone Number used during checkout match an existing order."}
                 </p>
               </div>
             ) : (
@@ -468,6 +553,7 @@ export default function TrackOrderPage() {
                   )
                 );
                 const formattedDate = formatOrderDate(order.createdAt);
+                const displayId = order.orderId || order._id;
 
                 return (
                   <div
@@ -483,15 +569,15 @@ export default function TrackOrderPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className={`text-xs font-mono ${t.mutedText}`}>
                             {lang === "bn" ? "অর্ডার আইডি:" : "Order ID:"}{" "}
-                            {order._id}
+                            {displayId}
                           </span>
                           <button
                             type="button"
-                            onClick={() => handleCopyId(order._id)}
+                            onClick={() => handleCopyId(displayId)}
                             className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md transition cursor-pointer ${t.pillBtn}`}
                             title="Copy Order ID"
                           >
-                            {copiedId === order._id ? (
+                            {copiedId === displayId ? (
                               <>
                                 <Check className="w-3 h-3 text-emerald-500" />
                                 <span>
@@ -510,7 +596,7 @@ export default function TrackOrderPage() {
                         </div>
 
                         <h2 className={`text-base font-bold ${t.titleText}`}>
-                          {order.customerName} • {order.phone}
+                          {order.customerName} • {maskPhone(order.phone)}
                         </h2>
 
                         {formattedDate && (
@@ -579,7 +665,7 @@ export default function TrackOrderPage() {
                         <span className={`font-semibold ${t.titleText}`}>
                           {lang === "bn" ? "ঠিকানা:" : "Address:"}
                         </span>{" "}
-                        {order.address}
+                        {maskAddress(order.address)}
                       </p>
                       <p>
                         <span className={`font-semibold ${t.titleText}`}>

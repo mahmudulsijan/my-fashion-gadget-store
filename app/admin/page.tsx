@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Package,
@@ -135,6 +135,18 @@ type AdminSection =
 type SalesPeriodTab = "daily" | "monthly" | "yearly";
 type ThemeMode = "night" | "day";
 
+const VALID_SECTIONS: AdminSection[] = [
+  "overview",
+  "sales",
+  "orders",
+  "products",
+  "customers",
+  "users",
+  "subscribers",
+  "reviews",
+  "settings",
+];
+
 const BRAND_NAME = "MAVÉRON";
 const BRAND_TAGLINE = "ELEVATE YOUR EVERYDAY";
 const SUPPORT_EMAIL = "maveron.store@gmail.com";
@@ -143,6 +155,7 @@ const REVIEWS_STORAGE_KEY = "maveron_simple_reviews";
 const REGISTERED_ACCOUNTS_KEY = "maveron_registered_accounts";
 const CUSTOMER_PROFILE_KEY = "maveron_user";
 const THEME_STORAGE_KEY = "fg_admin_theme_mode";
+const SECTION_STORAGE_KEY = "fg_admin_active_section";
 
 const STORE_SUBCATEGORIES = [
   "Men's Fashion",
@@ -179,6 +192,77 @@ const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = {
   rocketNumber: "015339196489",
 };
 
+function isValidSection(val: string | null | undefined): val is AdminSection {
+  if (!val) return false;
+  return (VALID_SECTIONS as string[]).includes(val);
+}
+
+function readPersistedSectionFromBrowser(): AdminSection {
+  if (typeof window === "undefined") return "overview";
+  try {
+    const hashVal = window.location.hash.replace(/^#/, "").trim();
+    if (isValidSection(hashVal)) return hashVal;
+
+    const params = new URLSearchParams(window.location.search);
+    const tabVal = params.get("tab");
+    if (isValidSection(tabVal)) return tabVal;
+
+    const savedLocal = localStorage.getItem(SECTION_STORAGE_KEY);
+    if (isValidSection(savedLocal)) return savedLocal;
+
+    const savedSession = sessionStorage.getItem(SECTION_STORAGE_KEY);
+    if (isValidSection(savedSession)) return savedSession;
+  } catch {
+    // ignore storage errors
+  }
+  return "overview";
+}
+
+function persistSection(sec: AdminSection) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SECTION_STORAGE_KEY, sec);
+    sessionStorage.setItem(SECTION_STORAGE_KEY, sec);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", sec);
+    url.hash = sec;
+    window.history.replaceState(null, "", url.toString());
+  } catch {
+    // ignore history/storage errors
+  }
+}
+
+function readThemeFromBrowser(): ThemeMode {
+  if (typeof window === "undefined") return "night";
+  try {
+    const attr = document.documentElement.getAttribute("data-admin-theme");
+    if (attr === "day" || attr === "night") return attr;
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === "day" || saved === "night") return saved;
+  } catch {
+    // ignore storage errors
+  }
+  return "night";
+}
+
+function applyThemeImmediate(mode: ThemeMode) {
+  if (typeof window === "undefined") return;
+  const bg = mode === "day" ? "#F4F5F7" : "#0B0C0E";
+  const fg = mode === "day" ? "#1E293B" : "#E4E4E7";
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, mode);
+    document.documentElement.setAttribute("data-admin-theme", mode);
+    document.documentElement.style.backgroundColor = bg;
+    document.documentElement.style.color = fg;
+    if (document.body) {
+      document.body.style.backgroundColor = bg;
+      document.body.style.color = fg;
+    }
+  } catch {
+    // ignore
+  }
+}
+
 async function safeParseJson(res: Response) {
   const text = await res.text();
   if (!text) return {};
@@ -187,6 +271,62 @@ async function safeParseJson(res: Response) {
   } catch {
     return { success: false, message: text };
   }
+}
+
+function normalizeReviewRecord(
+  raw: Record<string, unknown>,
+  idx: number,
+  sourceKey?: string
+): CustomerReviewItem | null {
+  const name = String(
+    raw?.name ?? raw?.userName ?? raw?.customerName ?? raw?.author ?? ""
+  ).trim();
+  const comment = String(
+    raw?.comment ?? raw?.review ?? raw?.text ?? raw?.message ?? raw?.body ?? ""
+  ).trim();
+
+  if (!name && !comment) return null;
+
+  const ratingNum = Number(raw?.rating ?? raw?.stars ?? 5);
+  const photoVal = raw?.photo ?? raw?.image ?? raw?.photoUrl ?? raw?.img;
+
+  return {
+    id: String(
+      raw?.id ??
+        raw?._id ??
+        `${sourceKey || "rev"}-${idx}-${name || "user"}`
+    ),
+    productId: raw?.productId ? String(raw.productId) : undefined,
+    name: name || "Customer",
+    rating: Number.isFinite(ratingNum) && ratingNum > 0 ? ratingNum : 5,
+    comment,
+    photo:
+      typeof photoVal === "string" && photoVal.trim()
+        ? photoVal.trim()
+        : undefined,
+  };
+}
+
+function extractArrayFromReviewPayload(
+  parsed: unknown
+): Record<string, unknown>[] {
+  if (Array.isArray(parsed)) {
+    return parsed.filter((item): item is Record<string, unknown> =>
+      Boolean(item && typeof item === "object")
+    );
+  }
+  if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    for (const key of ["reviews", "data", "items", "list"]) {
+      if (Array.isArray(obj[key])) {
+        return (obj[key] as unknown[]).filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item && typeof item === "object")
+        );
+      }
+    }
+  }
+  return [];
 }
 
 function parseOrderDate(raw?: string): Date {
@@ -418,6 +558,7 @@ export default function AdminPage() {
   const [themeMode, setThemeMode] = useState<ThemeMode>("night");
   const isDay = themeMode === "day";
 
+  const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -508,16 +649,24 @@ export default function AdminPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Eye-comfort palette tokens (low glare in both Day & Night)
+  const rootStyle = useMemo<React.CSSProperties>(
+    () => ({
+      backgroundColor: isDay ? "#F4F5F7" : "#0B0C0E",
+      color: isDay ? "#1E293B" : "#E4E4E7",
+    }),
+    [isDay]
+  );
+
   const ui = useMemo(() => {
     if (isDay) {
       return {
         pageBg: "bg-[#F4F5F7] text-slate-800",
         sidebarBg: "bg-[#EBEEF2] text-slate-700 border-slate-300/80",
-        headerBg: "bg-[#F4F5F7]/95 border-slate-200",
-        cardBg: "bg-[#FCFcfd] border-slate-200/90",
+        headerBg: "bg-[#F4F5F7] border-slate-200",
+        cardBg: "bg-[#FCFCFD] border-slate-200/90",
         subCardBg: "bg-[#F1F3F6] border-slate-200/80",
-        inputBg: "bg-white border-slate-300 text-slate-800 placeholder:text-slate-400 focus:border-slate-500",
+        inputBg:
+          "bg-white border-slate-300 text-slate-800 placeholder:text-slate-400 focus:border-slate-500",
         mutedInputBg: "bg-[#F1F3F6] border-slate-200 text-slate-800",
         textPrimary: "text-slate-800",
         textSecondary: "text-slate-600",
@@ -538,7 +687,7 @@ export default function AdminPage() {
     return {
       pageBg: "bg-[#0B0C0E] text-zinc-200",
       sidebarBg: "bg-[#111317] text-zinc-300 border-zinc-800/80",
-      headerBg: "bg-[#0B0C0E]/95 border-zinc-800/80",
+      headerBg: "bg-[#0B0C0E] border-zinc-800/80",
       cardBg: "bg-[#13151A] border-zinc-800/80",
       subCardBg: "bg-[#181B21] border-zinc-800/70",
       inputBg:
@@ -564,39 +713,69 @@ export default function AdminPage() {
   const handleToggleTheme = () => {
     const next: ThemeMode = isDay ? "night" : "day";
     setThemeMode(next);
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, next);
-    } catch {
-      // ignore storage errors
-    }
+    applyThemeImmediate(next);
   };
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setFeedbackMsg(msg);
     window.setTimeout(() => {
       setFeedbackMsg((prev) => (prev === msg ? null : prev));
     }, 2800);
-  };
+  }, []);
 
-  const loadLocalReviews = () => {
+  const loadLocalReviews = useCallback(async () => {
+    const collected: CustomerReviewItem[] = [];
+    const seenKeys = new Set<string>();
+
+    const pushNormalized = (
+      list: Record<string, unknown>[],
+      sourceKey: string
+    ) => {
+      list.forEach((item, idx) => {
+        const norm = normalizeReviewRecord(item, idx, sourceKey);
+        if (!norm) return;
+        const dedupKey = `${norm.id}::${norm.name}::${norm.comment}`;
+        if (seenKeys.has(dedupKey)) return;
+        seenKeys.add(dedupKey);
+        collected.push(norm);
+      });
+    };
+
     try {
-      const savedReviews =
-        localStorage.getItem(REVIEWS_STORAGE_KEY) ||
-        localStorage.getItem("fg_simple_reviews");
-      if (savedReviews) {
-        const parsed = JSON.parse(savedReviews);
-        if (Array.isArray(parsed)) {
-          setReviews(parsed);
-          return;
+      for (let i = 0; i < localStorage.length; i++) {
+        const storageKey = localStorage.key(i);
+        if (!storageKey || !storageKey.toLowerCase().includes("review")) {
+          continue;
+        }
+        const rawVal = localStorage.getItem(storageKey);
+        if (!rawVal) continue;
+        try {
+          const parsed = JSON.parse(rawVal);
+          const arr = extractArrayFromReviewPayload(parsed);
+          pushNormalized(arr, storageKey);
+        } catch {
+          // ignore non-JSON review keys
         }
       }
-      setReviews([]);
-    } catch {
-      setReviews([]);
+    } catch (err) {
+      console.error("Failed to scan localStorage reviews:", err);
     }
-  };
 
-  const loadLoggedInUsers = async () => {
+    try {
+      const res = await fetch("/api/reviews", { cache: "no-store" });
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        const apiArr = extractArrayFromReviewPayload(data);
+        pushNormalized(apiArr, "api-reviews");
+      }
+    } catch {
+      // ignore if /api/reviews does not exist
+    }
+
+    setReviews(collected);
+  }, []);
+
+  const loadLoggedInUsers = useCallback(async () => {
     const mergedMap = new Map<string, LoggedInUserRecord>();
 
     try {
@@ -697,9 +876,9 @@ export default function AdminPage() {
     }
 
     setLoggedInUsers(Array.from(mergedMap.values()));
-  };
+  }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     setLoadingData(true);
     try {
       const [prodRes, ordRes, subRes] = await Promise.all([
@@ -723,25 +902,27 @@ export default function AdminPage() {
       if (subData.success && Array.isArray(subData.subscribers)) {
         setSubscribers(subData.subscribers);
       }
-      loadLocalReviews();
-      await loadLoggedInUsers();
+      await Promise.all([loadLocalReviews(), loadLoggedInUsers()]);
     } catch (err) {
       console.error("Failed to load admin data:", err);
       showToast("ডাটা লোড করতে সমস্যা হয়েছে");
     } finally {
       setLoadingData(false);
     }
-  };
+  }, [loadLocalReviews, loadLoggedInUsers, showToast]);
 
   useEffect(() => {
     setCurrentDate(new Date());
 
-    try {
-      const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-      if (savedTheme === "day" || savedTheme === "night") {
-        setThemeMode(savedTheme);
-      }
+    const resolvedTheme = readThemeFromBrowser();
+    setThemeMode(resolvedTheme);
+    applyThemeImmediate(resolvedTheme);
 
+    const resolvedSection = readPersistedSectionFromBrowser();
+    setActiveSection(resolvedSection);
+    persistSection(resolvedSection);
+
+    try {
       const savedDeducted = localStorage.getItem("fg_admin_deducted_orders");
       if (savedDeducted) {
         const parsedDeducted = JSON.parse(savedDeducted);
@@ -772,18 +953,38 @@ export default function AdminPage() {
           ),
         });
       }
-      loadLocalReviews();
-      loadLoggedInUsers();
+      void loadLocalReviews();
+      void loadLoggedInUsers();
     } catch (err) {
       console.error("Failed to load admin settings:", err);
     }
 
-    const savedAuth = sessionStorage.getItem("admin_authed");
-    if (savedAuth === "true") {
-      setIsAuthenticated(true);
+    let authed = false;
+    try {
+      authed = sessionStorage.getItem("admin_authed") === "true";
+    } catch {
+      authed = false;
+    }
+
+    setIsAuthenticated(authed);
+    setAuthChecked(true);
+
+    if (authed) {
       fetchDashboardData();
     }
-  }, []);
+
+    const handleHashOrPop = () => {
+      const nextSec = readPersistedSectionFromBrowser();
+      setActiveSection(nextSec);
+    };
+
+    window.addEventListener("hashchange", handleHashOrPop);
+    window.addEventListener("popstate", handleHashOrPop);
+    return () => {
+      window.removeEventListener("hashchange", handleHashOrPop);
+      window.removeEventListener("popstate", handleHashOrPop);
+    };
+  }, [fetchDashboardData, loadLocalReviews, loadLoggedInUsers]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -797,9 +998,17 @@ export default function AdminPage() {
       });
       const data = await safeParseJson(res);
       if (data.success) {
-        sessionStorage.setItem("admin_authed", "true");
+        try {
+          sessionStorage.setItem("admin_authed", "true");
+        } catch {
+          // ignore
+        }
         setIsAuthenticated(true);
+        setAuthChecked(true);
         setPassword("");
+        const sec = readPersistedSectionFromBrowser();
+        setActiveSection(sec);
+        persistSection(sec);
         fetchDashboardData();
       } else {
         setAuthError(data.message || "ভুল পাসওয়ার্ড!");
@@ -809,6 +1018,16 @@ export default function AdminPage() {
     } finally {
       setAuthLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    try {
+      sessionStorage.removeItem("admin_authed");
+    } catch {
+      // ignore
+    }
+    setIsAuthenticated(false);
+    setAuthChecked(true);
   };
 
   const handleSubCategoryChange = (nextSubCat: string) => {
@@ -1353,12 +1572,42 @@ export default function AdminPage() {
     }
   };
 
-  const handleDeleteReview = (id: string) => {
-    const updated = reviews.filter((r) => r.id !== id);
-    setReviews(updated);
+  const handleDeleteReview = async (id: string) => {
+    setReviews((prev) => prev.filter((r) => r.id !== id));
     try {
-      localStorage.setItem(REVIEWS_STORAGE_KEY, JSON.stringify(updated));
-      localStorage.removeItem("fg_simple_reviews");
+      for (let i = 0; i < localStorage.length; i++) {
+        const storageKey = localStorage.key(i);
+        if (!storageKey || !storageKey.toLowerCase().includes("review")) {
+          continue;
+        }
+        const rawVal = localStorage.getItem(storageKey);
+        if (!rawVal) continue;
+        try {
+          const parsed = JSON.parse(rawVal);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter((item, idx) => {
+              const norm = normalizeReviewRecord(
+                (item || {}) as Record<string, unknown>,
+                idx,
+                storageKey
+              );
+              return norm?.id !== id;
+            });
+            localStorage.setItem(storageKey, JSON.stringify(filtered));
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        await fetch(`/api/reviews?id=${encodeURIComponent(id)}`, {
+          method: "DELETE",
+        });
+      } catch {
+        // ignore
+      }
+
       showToast("রিভিউ মুছে ফেলা হয়েছে");
     } catch {
       showToast("রিভিউ মুছতে সমস্যা হয়েছে");
@@ -1689,14 +1938,31 @@ export default function AdminPage() {
 
   const previewAddImages = getFinalAddImages();
 
+  if (!authChecked) {
+    return (
+      <div
+        style={rootStyle}
+        className={`min-h-screen flex items-center justify-center p-4 ${ui.pageBg}`}
+      >
+        <div
+          className={`flex items-center gap-2.5 text-xs sm:text-sm font-medium ${ui.textMuted}`}
+        >
+          <RefreshCw className="w-4 h-4 animate-spin" />
+          <span>Loading {BRAND_NAME} Admin...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div
-        className={`min-h-screen flex items-center justify-center p-4 relative overflow-hidden transition-colors ${ui.pageBg}`}
+        style={rootStyle}
+        className={`min-h-screen flex items-center justify-center p-4 relative overflow-hidden ${ui.pageBg}`}
       >
         <form
           onSubmit={handleLogin}
-          className={`relative z-10 border p-6 sm:p-8 rounded-3xl shadow-lg w-full max-w-md space-y-5 transition-colors ${ui.cardBg}`}
+          className={`relative z-10 border p-6 sm:p-8 rounded-3xl shadow-lg w-full max-w-md space-y-5 ${ui.cardBg}`}
         >
           <div
             className={`flex items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
@@ -1728,7 +1994,7 @@ export default function AdminPage() {
               type="button"
               onClick={handleToggleTheme}
               title={isDay ? "Switch to Night Mode" : "Switch to Day Mode"}
-              className={`p-2 rounded-xl border transition cursor-pointer shrink-0 ${ui.secondaryBtn}`}
+              className={`p-2 rounded-xl border cursor-pointer shrink-0 ${ui.secondaryBtn}`}
             >
               {isDay ? (
                 <Moon className="w-4 h-4" />
@@ -1748,14 +2014,14 @@ export default function AdminPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter admin password"
-                className={`w-full border rounded-xl px-3.5 py-2.5 pr-10 text-sm outline-none transition ${ui.inputBg}`}
+                className={`w-full border rounded-xl px-3.5 py-2.5 pr-10 text-sm outline-none ${ui.inputBg}`}
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label="Toggle password visibility"
-                className={`absolute right-3 top-1/2 -translate-y-1/2 transition cursor-pointer ${ui.textMuted} hover:opacity-80`}
+                className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${ui.textMuted} hover:opacity-80`}
               >
                 {showPassword ? (
                   <EyeOff className="w-4 h-4" />
@@ -1781,7 +2047,7 @@ export default function AdminPage() {
           <button
             type="submit"
             disabled={authLoading}
-            className={`w-full py-3 rounded-xl text-sm tracking-wide transition cursor-pointer disabled:opacity-50 ${ui.primaryBtn}`}
+            className={`w-full py-3 rounded-xl text-sm tracking-wide cursor-pointer disabled:opacity-50 ${ui.primaryBtn}`}
           >
             {authLoading ? "Verifying Access..." : "Unlock Admin Panel"}
           </button>
@@ -1862,6 +2128,8 @@ export default function AdminPage() {
 
   const handleSelectSection = (sec: AdminSection) => {
     setActiveSection(sec);
+    persistSection(sec);
+
     if (
       sec === "subscribers" ||
       sec === "orders" ||
@@ -1870,16 +2138,14 @@ export default function AdminPage() {
     ) {
       fetchDashboardData();
     } else if (sec === "users") {
-      loadLoggedInUsers();
+      void loadLoggedInUsers();
     } else if (sec === "reviews") {
-      loadLocalReviews();
+      void loadLocalReviews();
     }
   };
 
   return (
-    <div
-      className={`min-h-screen flex flex-col transition-colors ${ui.pageBg}`}
-    >
+    <div style={rootStyle} className={`min-h-screen flex flex-col ${ui.pageBg}`}>
       {feedbackMsg && (
         <div
           className={`fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] text-xs sm:text-sm font-medium px-4 py-2.5 rounded-full shadow-md border ${
@@ -1895,7 +2161,7 @@ export default function AdminPage() {
       <div className="flex-1 flex min-w-0">
         {/* Desktop Sidebar */}
         <aside
-          className={`hidden lg:flex w-64 shrink-0 flex-col justify-between p-4 border-r transition-colors ${ui.sidebarBg}`}
+          className={`hidden lg:flex w-64 shrink-0 flex-col justify-between p-4 border-r ${ui.sidebarBg}`}
         >
           <div className="space-y-6">
             <div className="px-2 pt-1 flex items-center gap-2.5">
@@ -1929,7 +2195,7 @@ export default function AdminPage() {
                     key={item.key}
                     type="button"
                     onClick={() => handleSelectSection(item.key)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition cursor-pointer ${
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm cursor-pointer ${
                       isActive ? ui.navActive : ui.navIdle
                     }`}
                   >
@@ -1959,7 +2225,7 @@ export default function AdminPage() {
           <div className={`space-y-2 pt-4 border-t ${ui.divider}`}>
             <Link
               href="/"
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition ${ui.navIdle}`}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium ${ui.navIdle}`}
             >
               <span>Open Live Store</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -1967,11 +2233,8 @@ export default function AdminPage() {
 
             <button
               type="button"
-              onClick={() => {
-                sessionStorage.removeItem("admin_authed");
-                setIsAuthenticated(false);
-              }}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
+              onClick={handleLogout}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
                 isDay
                   ? "text-rose-700 hover:bg-rose-50"
                   : "text-rose-400 hover:bg-rose-950/50"
@@ -1985,7 +2248,7 @@ export default function AdminPage() {
 
         {/* Mobile Drawer Sidebar */}
         {mobileSidebarOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 flex bg-black/60 backdrop-blur-2xs">
+          <div className="lg:hidden fixed inset-0 z-50 flex bg-black/60">
             <aside
               className={`w-64 h-full p-4 flex flex-col justify-between overflow-y-auto border-r ${ui.sidebarBg}`}
             >
@@ -2023,7 +2286,7 @@ export default function AdminPage() {
                           handleSelectSection(item.key);
                           setMobileSidebarOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition cursor-pointer ${
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm cursor-pointer ${
                           isActive ? ui.navActive : ui.navIdle
                         }`}
                       >
@@ -2053,12 +2316,11 @@ export default function AdminPage() {
                 </Link>
                 <button
                   type="button"
-                  onClick={() => {
-                    sessionStorage.removeItem("admin_authed");
-                    setIsAuthenticated(false);
-                  }}
+                  onClick={handleLogout}
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
-                    isDay ? "text-rose-700 hover:bg-rose-50" : "text-rose-400 hover:bg-rose-950/50"
+                    isDay
+                      ? "text-rose-700 hover:bg-rose-50"
+                      : "text-rose-400 hover:bg-rose-950/50"
                   }`}
                 >
                   <LogOut className="w-4 h-4" />
@@ -2073,14 +2335,14 @@ export default function AdminPage() {
         <div className="flex-1 flex flex-col min-w-0">
           {/* Top Header */}
           <header
-            className={`sticky top-0 z-20 backdrop-blur-md border-b px-4 sm:px-6 h-16 flex items-center justify-between gap-3 transition-colors ${ui.headerBg}`}
+            className={`sticky top-0 z-20 border-b px-4 sm:px-6 h-16 flex items-center justify-between gap-3 ${ui.headerBg}`}
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <button
                 type="button"
                 onClick={() => setMobileSidebarOpen(true)}
                 aria-label="Open menu"
-                className={`lg:hidden p-2 rounded-xl border transition cursor-pointer ${ui.secondaryBtn}`}
+                className={`lg:hidden p-2 rounded-xl border cursor-pointer ${ui.secondaryBtn}`}
               >
                 <Menu className="w-4 h-4" />
               </button>
@@ -2095,7 +2357,7 @@ export default function AdminPage() {
 
             <div className="flex items-center gap-2">
               <div
-                className={`hidden sm:flex items-center border rounded-xl px-3 py-1.5 w-52 md:w-64 transition-colors ${ui.mutedInputBg}`}
+                className={`hidden sm:flex items-center border rounded-xl px-3 py-1.5 w-52 md:w-64 ${ui.mutedInputBg}`}
               >
                 <Search className={`w-4 h-4 mr-2 shrink-0 ${ui.textMuted}`} />
                 <input
@@ -2116,12 +2378,11 @@ export default function AdminPage() {
                 )}
               </div>
 
-              {/* Day / Night Mode Switch */}
               <button
                 type="button"
                 onClick={handleToggleTheme}
                 title={isDay ? "Switch to Night Mode" : "Switch to Day Mode"}
-                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer ${ui.secondaryBtn}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${ui.secondaryBtn}`}
               >
                 {isDay ? (
                   <>
@@ -2140,7 +2401,7 @@ export default function AdminPage() {
                 type="button"
                 onClick={fetchDashboardData}
                 title="Refresh data"
-                className={`p-2 rounded-xl border transition cursor-pointer ${ui.secondaryBtn}`}
+                className={`p-2 rounded-xl border cursor-pointer ${ui.secondaryBtn}`}
               >
                 <RefreshCw
                   className={`w-4 h-4 ${loadingData ? "animate-spin" : ""}`}
@@ -2149,7 +2410,7 @@ export default function AdminPage() {
 
               <Link
                 href="/"
-                className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs transition ${ui.primaryBtn}`}
+                className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs ${ui.primaryBtn}`}
               >
                 Store <ExternalLink className="w-3.5 h-3.5" />
               </Link>
@@ -2160,9 +2421,7 @@ export default function AdminPage() {
           <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl w-full mx-auto">
             {/* 4 Key Stats Cards */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-              <div
-                className={`p-4 sm:p-5 rounded-2xl border transition-colors ${ui.cardBg}`}
-              >
+              <div className={`p-4 sm:p-5 rounded-2xl border ${ui.cardBg}`}>
                 <p className={`text-xs font-medium ${ui.textMuted}`}>
                   Total Revenue
                 </p>
@@ -2181,9 +2440,7 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              <div
-                className={`p-4 sm:p-5 rounded-2xl border transition-colors ${ui.cardBg}`}
-              >
+              <div className={`p-4 sm:p-5 rounded-2xl border ${ui.cardBg}`}>
                 <p className={`text-xs font-medium ${ui.textMuted}`}>
                   Total Orders
                 </p>
@@ -2201,9 +2458,7 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              <div
-                className={`p-4 sm:p-5 rounded-2xl border transition-colors ${ui.cardBg}`}
-              >
+              <div className={`p-4 sm:p-5 rounded-2xl border ${ui.cardBg}`}>
                 <p className={`text-xs font-medium ${ui.textMuted}`}>
                   Logged-in Users
                 </p>
@@ -2226,9 +2481,7 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              <div
-                className={`p-4 sm:p-5 rounded-2xl border transition-colors ${ui.cardBg}`}
-              >
+              <div className={`p-4 sm:p-5 rounded-2xl border ${ui.cardBg}`}>
                 <p className={`text-xs font-medium ${ui.textMuted}`}>
                   Inventory &amp; Low Stock
                 </p>
@@ -2255,7 +2508,7 @@ export default function AdminPage() {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                   <div
-                    className={`lg:col-span-7 p-5 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+                    className={`lg:col-span-7 p-5 rounded-2xl border space-y-4 ${ui.cardBg}`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -2274,7 +2527,7 @@ export default function AdminPage() {
                       <button
                         type="button"
                         onClick={() => handleSelectSection("sales")}
-                        className={`text-xs font-semibold border px-3 py-1 rounded-full transition cursor-pointer ${ui.secondaryBtn}`}
+                        className={`text-xs font-semibold border px-3 py-1 rounded-full cursor-pointer ${ui.secondaryBtn}`}
                       >
                         Full Sales Report →
                       </button>
@@ -2307,7 +2560,7 @@ export default function AdminPage() {
                               </span>
                               <div
                                 style={{ height: `${heightPct}%` }}
-                                className={`w-full max-w-[38px] rounded-t-xl transition ${ui.barFill}`}
+                                className={`w-full max-w-[38px] rounded-t-xl ${ui.barFill}`}
                               />
                               <span
                                 className={`text-[11px] font-medium ${ui.textMuted}`}
@@ -2322,7 +2575,7 @@ export default function AdminPage() {
                   </div>
 
                   <div
-                    className={`lg:col-span-5 p-5 rounded-2xl border flex flex-col justify-between space-y-4 transition-colors ${ui.cardBg}`}
+                    className={`lg:col-span-5 p-5 rounded-2xl border flex flex-col justify-between space-y-4 ${ui.cardBg}`}
                   >
                     <div>
                       <p
@@ -2389,9 +2642,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div
-                  className={`p-5 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
-                >
+                <div className={`p-5 rounded-2xl border space-y-4 ${ui.cardBg}`}>
                   <div className="flex items-center justify-between">
                     <h2
                       className={`text-base sm:text-lg font-bold ${ui.textPrimary}`}
@@ -2484,7 +2735,7 @@ export default function AdminPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div
                     onClick={() => setSalesPeriodTab("daily")}
-                    className={`p-5 rounded-2xl border transition cursor-pointer ${
+                    className={`p-5 rounded-2xl border cursor-pointer ${
                       ui.cardBg
                     } ${
                       salesPeriodTab === "daily"
@@ -2525,7 +2776,7 @@ export default function AdminPage() {
 
                   <div
                     onClick={() => setSalesPeriodTab("monthly")}
-                    className={`p-5 rounded-2xl border transition cursor-pointer ${
+                    className={`p-5 rounded-2xl border cursor-pointer ${
                       ui.cardBg
                     } ${
                       salesPeriodTab === "monthly"
@@ -2562,7 +2813,7 @@ export default function AdminPage() {
 
                   <div
                     onClick={() => setSalesPeriodTab("yearly")}
-                    className={`p-5 rounded-2xl border transition cursor-pointer ${
+                    className={`p-5 rounded-2xl border cursor-pointer ${
                       ui.cardBg
                     } ${
                       salesPeriodTab === "yearly"
@@ -2604,7 +2855,7 @@ export default function AdminPage() {
                 </div>
 
                 <div
-                  className={`p-5 sm:p-6 rounded-2xl border space-y-5 transition-colors ${ui.cardBg}`}
+                  className={`p-5 sm:p-6 rounded-2xl border space-y-5 ${ui.cardBg}`}
                 >
                   <div
                     className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
@@ -2629,7 +2880,7 @@ export default function AdminPage() {
                             key={tab}
                             type="button"
                             onClick={() => setSalesPeriodTab(tab)}
-                            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold capitalize transition cursor-pointer ${
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold capitalize cursor-pointer ${
                               salesPeriodTab === tab
                                 ? ui.navActive
                                 : ui.textMuted
@@ -2726,7 +2977,7 @@ export default function AdminPage() {
                               <tr
                                 key={ord._id}
                                 onClick={() => setSelectedOrder(ord)}
-                                className={`transition cursor-pointer ${ui.hoverRow}`}
+                                className={`cursor-pointer ${ui.hoverRow}`}
                               >
                                 <td
                                   className={`py-3 px-3 text-xs whitespace-nowrap ${ui.textMuted}`}
@@ -2785,9 +3036,7 @@ export default function AdminPage() {
 
             {/* ORDERS SECTION */}
             {activeSection === "orders" && (
-              <div
-                className={`p-4 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
-              >
+              <div className={`p-4 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div>
                     <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
@@ -2847,7 +3096,7 @@ export default function AdminPage() {
                       return (
                         <div
                           key={order._id}
-                          className={`border rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition ${ui.subCardBg}`}
+                          className={`border rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 ${ui.subCardBg}`}
                         >
                           <div className="space-y-1.5 min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -2895,7 +3144,7 @@ export default function AdminPage() {
                                     "Order ID কপি করা হয়েছে"
                                   )
                                 }
-                                className={`inline-flex items-center gap-1 text-[11px] font-mono border px-2 py-0.5 rounded-md transition cursor-pointer ${ui.secondaryBtn}`}
+                                className={`inline-flex items-center gap-1 text-[11px] font-mono border px-2 py-0.5 rounded-md cursor-pointer ${ui.secondaryBtn}`}
                                 title="Copy Order ID"
                               >
                                 <span>ID: {order._id}</span>
@@ -2940,9 +3189,7 @@ export default function AdminPage() {
                                 .join(", ")}
                             </p>
 
-                            <p
-                              className={`text-sm font-bold ${ui.textPrimary}`}
-                            >
+                            <p className={`text-sm font-bold ${ui.textPrimary}`}>
                               Total: ৳{Number(order.totalAmount).toLocaleString()}
                             </p>
                           </div>
@@ -2951,7 +3198,7 @@ export default function AdminPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedOrder(order)}
-                              className={`inline-flex items-center gap-1 border px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${ui.secondaryBtn}`}
+                              className={`inline-flex items-center gap-1 border px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer ${ui.secondaryBtn}`}
                             >
                               <Eye className="w-3.5 h-3.5" />
                               Details
@@ -2962,7 +3209,7 @@ export default function AdminPage() {
                               disabled={deletingOrderId === order._id}
                               onClick={() => handleDeleteOrder(order._id)}
                               title="Delete order"
-                              className={`inline-flex items-center gap-1 border px-2.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 transition cursor-pointer ${
+                              className={`inline-flex items-center gap-1 border px-2.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 cursor-pointer ${
                                 isDay
                                   ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200"
                                   : "bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border-rose-800/60"
@@ -3009,7 +3256,7 @@ export default function AdminPage() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <form
                   onSubmit={handleAddProduct}
-                  className={`p-5 sm:p-6 rounded-2xl border space-y-3 h-fit transition-colors ${ui.cardBg}`}
+                  className={`p-5 sm:p-6 rounded-2xl border space-y-3 h-fit ${ui.cardBg}`}
                 >
                   <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                     Add New Product
@@ -3020,7 +3267,7 @@ export default function AdminPage() {
                     placeholder="Product Name *"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                    className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                     required
                   />
 
@@ -3049,7 +3296,7 @@ export default function AdminPage() {
                       placeholder="Price (BDT) *"
                       value={price}
                       onChange={(e) => setPrice(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
                       required
                     />
                     <input
@@ -3057,7 +3304,7 @@ export default function AdminPage() {
                       placeholder="Old Price (optional)"
                       value={oldPrice}
                       onChange={(e) => setOldPrice(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
                     />
                   </div>
 
@@ -3067,14 +3314,14 @@ export default function AdminPage() {
                       placeholder="Badge (e.g. Best Seller)"
                       value={badge}
                       onChange={(e) => setBadge(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
                     />
                     <input
                       type="number"
                       placeholder="Stock"
                       value={stock}
                       onChange={(e) => setStock(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
                     />
                   </div>
 
@@ -3090,7 +3337,7 @@ export default function AdminPage() {
                         }
                         value={sizesText}
                         onChange={(e) => setSizesText(e.target.value)}
-                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                       />
                       <p className={`text-[11px] px-1 ${ui.textMuted}`}>
                         {isFootwearSubCategory(subCategory)
@@ -3104,7 +3351,7 @@ export default function AdminPage() {
                       placeholder="Specs (e.g. 36H Battery • Fast Charge)"
                       value={specs}
                       onChange={(e) => setSpecs(e.target.value)}
-                      className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                      className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                     />
                   ) : null}
 
@@ -3122,7 +3369,7 @@ export default function AdminPage() {
                       placeholder="e.g. Black, Silver, Midnight Blue"
                       value={colorsText}
                       onChange={(e) => setColorsText(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
                     />
                     <div className="flex flex-wrap gap-1.5 pt-0.5">
                       {QUICK_COLOR_PRESETS.map((preset) => (
@@ -3134,7 +3381,7 @@ export default function AdminPage() {
                               appendPresetToText(prev, preset)
                             )
                           }
-                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition cursor-pointer ${ui.secondaryBtn}`}
+                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full border cursor-pointer ${ui.secondaryBtn}`}
                         >
                           + {preset}
                         </button>
@@ -3177,12 +3424,12 @@ export default function AdminPage() {
                             handleAddImageUrl("add");
                           }
                         }}
-                        className={`flex-1 border rounded-xl px-3 py-2 text-xs outline-none transition ${ui.inputBg}`}
+                        className={`flex-1 border rounded-xl px-3 py-2 text-xs outline-none ${ui.inputBg}`}
                       />
                       <button
                         type="button"
                         onClick={() => handleAddImageUrl("add")}
-                        className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer shrink-0 ${ui.secondaryBtn}`}
+                        className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer shrink-0 ${ui.secondaryBtn}`}
                       >
                         <Link2 className="w-3.5 h-3.5" />
                         Add
@@ -3202,7 +3449,7 @@ export default function AdminPage() {
                       type="button"
                       disabled={processingImage}
                       onClick={() => fileInputRef.current?.click()}
-                      className={`w-full inline-flex items-center justify-center gap-1.5 border border-dashed py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50 ${ui.secondaryBtn}`}
+                      className={`w-full inline-flex items-center justify-center gap-1.5 border border-dashed py-2 px-3 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50 ${ui.secondaryBtn}`}
                     >
                       <Upload className="w-3.5 h-3.5" />
                       {processingImage
@@ -3259,14 +3506,14 @@ export default function AdminPage() {
                     placeholder="Description (optional)"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                    className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                     rows={3}
                   />
 
                   <button
                     type="submit"
                     disabled={creatingProduct || processingImage}
-                    className={`w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm disabled:opacity-50 transition cursor-pointer ${ui.primaryBtn}`}
+                    className={`w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm disabled:opacity-50 cursor-pointer ${ui.primaryBtn}`}
                   >
                     <Plus className="w-4 h-4" />
                     {creatingProduct ? "Adding..." : "Add Product"}
@@ -3275,7 +3522,7 @@ export default function AdminPage() {
 
                 {/* All Products List */}
                 <div
-                  className={`lg:col-span-2 p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+                  className={`lg:col-span-2 p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
@@ -3448,7 +3695,7 @@ export default function AdminPage() {
                                 <button
                                   type="button"
                                   onClick={() => openEditModal(prod)}
-                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl transition cursor-pointer ${ui.secondaryBtn}`}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl cursor-pointer ${ui.secondaryBtn}`}
                                 >
                                   <Pencil className="w-3 h-3" />
                                   Edit
@@ -3458,7 +3705,7 @@ export default function AdminPage() {
                                   type="button"
                                   disabled={deletingProductId === prod._id}
                                   onClick={() => handleDeleteProduct(prod._id)}
-                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl disabled:opacity-50 transition cursor-pointer ${
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl disabled:opacity-50 cursor-pointer ${
                                     isDay
                                       ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
                                       : "bg-rose-950/60 text-rose-300 border-rose-800/60 hover:bg-rose-900/70"
@@ -3482,9 +3729,7 @@ export default function AdminPage() {
 
             {/* CUSTOMERS SECTION */}
             {activeSection === "customers" && (
-              <div
-                className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
-              >
+              <div className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
@@ -3524,7 +3769,7 @@ export default function AdminPage() {
                           <tr
                             key={cust.phone}
                             onClick={() => setSelectedCustomerPhone(cust.phone)}
-                            className={`transition cursor-pointer ${ui.hoverRow}`}
+                            className={`cursor-pointer ${ui.hoverRow}`}
                           >
                             <td
                               className={`py-3 px-3 font-semibold ${ui.textPrimary}`}
@@ -3575,9 +3820,7 @@ export default function AdminPage() {
 
             {/* LOGGED-IN USERS SECTION */}
             {activeSection === "users" && (
-              <div
-                className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
-              >
+              <div className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
                 <div
                   className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
                 >
@@ -3601,7 +3844,7 @@ export default function AdminPage() {
                           "সব ইউজার ইমেইল কপি করা হয়েছে"
                         )
                       }
-                      className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto ${ui.primaryBtn}`}
+                      className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl cursor-pointer self-start sm:self-auto ${ui.primaryBtn}`}
                     >
                       {copiedId === "all-users-emails" ? (
                         <Check className="w-3.5 h-3.5" />
@@ -3640,10 +3883,7 @@ export default function AdminPage() {
                       </thead>
                       <tbody className={`divide-y ${ui.divider}`}>
                         {filteredLoggedInUsers.map((user) => (
-                          <tr
-                            key={user.id}
-                            className={`transition ${ui.hoverRow}`}
-                          >
+                          <tr key={user.id} className={ui.hoverRow}>
                             <td
                               className={`py-3 px-3 font-semibold ${ui.textPrimary}`}
                             >
@@ -3689,7 +3929,7 @@ export default function AdminPage() {
                                     )
                                   }
                                   title="Copy email"
-                                  className={`p-1.5 rounded-lg transition cursor-pointer ${ui.navIdle}`}
+                                  className={`p-1.5 rounded-lg cursor-pointer ${ui.navIdle}`}
                                 >
                                   {copiedId === user.id ? (
                                     <Check className="w-3.5 h-3.5 text-emerald-500" />
@@ -3701,7 +3941,7 @@ export default function AdminPage() {
                                   type="button"
                                   onClick={() => handleDeleteLocalUser(user)}
                                   title="Remove user"
-                                  className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                  className={`p-1.5 rounded-lg cursor-pointer ${
                                     isDay
                                       ? "text-rose-700 hover:bg-rose-50"
                                       : "text-rose-400 hover:bg-rose-950/50"
@@ -3722,9 +3962,7 @@ export default function AdminPage() {
 
             {/* NEWSLETTER SUBSCRIBERS SECTION */}
             {activeSection === "subscribers" && (
-              <div
-                className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
-              >
+              <div className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
                 <div
                   className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
                 >
@@ -3747,7 +3985,7 @@ export default function AdminPage() {
                           "সব সাবস্ক্রাইবার ইমেইল কপি করা হয়েছে"
                         )
                       }
-                      className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl transition cursor-pointer self-start sm:self-auto ${ui.primaryBtn}`}
+                      className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl cursor-pointer self-start sm:self-auto ${ui.primaryBtn}`}
                     >
                       {copiedId === "all-subscribers" ? (
                         <Check className="w-3.5 h-3.5" />
@@ -3774,7 +4012,7 @@ export default function AdminPage() {
                     {filteredSubscribers.map((sub) => (
                       <div
                         key={sub._id}
-                        className={`flex items-center justify-between gap-3 px-4 py-3 transition ${ui.subCardBg} ${ui.hoverRow}`}
+                        className={`flex items-center justify-between gap-3 px-4 py-3 ${ui.subCardBg} ${ui.hoverRow}`}
                       >
                         <div className="min-w-0">
                           <p
@@ -3802,7 +4040,7 @@ export default function AdminPage() {
                               )
                             }
                             title="Copy email"
-                            className={`p-2 rounded-xl transition cursor-pointer ${ui.navIdle}`}
+                            className={`p-2 rounded-xl cursor-pointer ${ui.navIdle}`}
                           >
                             {copiedId === sub._id ? (
                               <Check className="w-4 h-4 text-emerald-500" />
@@ -3816,7 +4054,7 @@ export default function AdminPage() {
                             disabled={deletingSubscriberId === sub._id}
                             onClick={() => handleDeleteSubscriber(sub._id)}
                             title="Delete subscriber"
-                            className={`p-2 rounded-xl transition disabled:opacity-50 cursor-pointer ${
+                            className={`p-2 rounded-xl disabled:opacity-50 cursor-pointer ${
                               isDay
                                 ? "text-rose-700 hover:bg-rose-50"
                                 : "text-rose-400 hover:bg-rose-950/50"
@@ -3834,9 +4072,7 @@ export default function AdminPage() {
 
             {/* CUSTOMER REVIEWS SECTION */}
             {activeSection === "reviews" && (
-              <div
-                className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
-              >
+              <div className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
                 <div
                   className={`flex items-center justify-between border-b pb-4 ${ui.divider}`}
                 >
@@ -3915,7 +4151,7 @@ export default function AdminPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <form
                   onSubmit={handleSaveDeliverySettings}
-                  className={`p-5 sm:p-6 rounded-2xl border space-y-4 transition-colors ${ui.cardBg}`}
+                  className={`p-5 sm:p-6 rounded-2xl border space-y-4 h-fit ${ui.cardBg}`}
                 >
                   <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
                     Mymensingh Delivery &amp; Wallet Settings
@@ -3937,7 +4173,7 @@ export default function AdminPage() {
                             insideMymensinghCharge: Number(e.target.value),
                           })
                         }
-                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                       />
                     </div>
 
@@ -3956,7 +4192,7 @@ export default function AdminPage() {
                             outsideMymensinghCharge: Number(e.target.value),
                           })
                         }
-                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                       />
                     </div>
                   </div>
@@ -3976,7 +4212,7 @@ export default function AdminPage() {
                           freeDeliveryThreshold: Number(e.target.value),
                         })
                       }
-                      className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                      className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                     />
                   </div>
 
@@ -3996,7 +4232,7 @@ export default function AdminPage() {
                             bkashNumber: e.target.value,
                           })
                         }
-                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                       />
                     </div>
 
@@ -4015,7 +4251,7 @@ export default function AdminPage() {
                             nagadNumber: e.target.value,
                           })
                         }
-                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                       />
                     </div>
 
@@ -4034,21 +4270,21 @@ export default function AdminPage() {
                             rocketNumber: e.target.value,
                           })
                         }
-                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
                       />
                     </div>
                   </div>
 
                   <button
                     type="submit"
-                    className={`text-sm px-5 py-2.5 rounded-xl transition cursor-pointer ${ui.primaryBtn}`}
+                    className={`text-sm px-5 py-2.5 rounded-xl cursor-pointer ${ui.primaryBtn}`}
                   >
                     Save Settings
                   </button>
                 </form>
 
                 <div
-                  className={`p-5 sm:p-6 rounded-2xl border space-y-4 h-fit transition-colors ${ui.cardBg}`}
+                  className={`p-5 sm:p-6 rounded-2xl border space-y-4 h-fit ${ui.cardBg}`}
                 >
                   <div className="flex items-center gap-2">
                     <ShieldCheck
@@ -4099,7 +4335,7 @@ export default function AdminPage() {
 
           {/* Footer */}
           <footer
-            className={`border-t px-4 sm:px-6 py-4 text-xs flex flex-col sm:flex-row items-center justify-between gap-2 transition-colors ${ui.footerBg}`}
+            className={`border-t px-4 sm:px-6 py-4 text-xs flex flex-col sm:flex-row items-center justify-between gap-2 ${ui.footerBg}`}
           >
             <p>
               © 2026 {BRAND_NAME} Admin Dashboard • {BRAND_TAGLINE}.
@@ -4113,7 +4349,7 @@ export default function AdminPage() {
       {selectedCustomer && (
         <div
           onClick={() => setSelectedCustomerPhone(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-2xs p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -4260,7 +4496,7 @@ export default function AdminPage() {
 
       {/* Order Details Modal */}
       {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-2xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div
             className={`rounded-3xl max-w-lg w-full p-6 shadow-xl border space-y-4 ${ui.cardBg}`}
           >
@@ -4389,7 +4625,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => handleCopyOrderSummary(selectedOrder)}
-                className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl transition cursor-pointer ${ui.primaryBtn}`}
+                className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl cursor-pointer ${ui.primaryBtn}`}
               >
                 {copiedId === `sum-${selectedOrder._id}` ? (
                   <Check className="w-3.5 h-3.5" />
@@ -4405,7 +4641,7 @@ export default function AdminPage() {
 
       {/* Edit Product Modal */}
       {editingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-2xs p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
           <form
             onSubmit={handleSaveProductEdit}
             className={`rounded-3xl max-w-lg w-full p-6 shadow-xl border space-y-3 my-auto max-h-[90vh] overflow-y-auto ${ui.cardBg}`}
@@ -4431,7 +4667,7 @@ export default function AdminPage() {
               placeholder="Product Name *"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+              className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
             />
 
             <div className="space-y-1">
@@ -4458,14 +4694,14 @@ export default function AdminPage() {
                 placeholder="Price (BDT) *"
                 value={editPrice}
                 onChange={(e) => setEditPrice(e.target.value)}
-                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
               />
               <input
                 type="number"
                 placeholder="Old Price (optional)"
                 value={editOldPrice}
                 onChange={(e) => setEditOldPrice(e.target.value)}
-                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
               />
             </div>
 
@@ -4475,14 +4711,14 @@ export default function AdminPage() {
                 placeholder="Badge"
                 value={editBadge}
                 onChange={(e) => setEditBadge(e.target.value)}
-                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
               />
               <input
                 type="number"
                 placeholder="Stock"
                 value={editStock}
                 onChange={(e) => setEditStock(e.target.value)}
-                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
               />
             </div>
 
@@ -4497,7 +4733,7 @@ export default function AdminPage() {
                 }
                 value={editSizesText}
                 onChange={(e) => setEditSizesText(e.target.value)}
-                className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
               />
             ) : editCategory === "gadget" ? (
               <input
@@ -4505,7 +4741,7 @@ export default function AdminPage() {
                 placeholder="Specs"
                 value={editSpecs}
                 onChange={(e) => setEditSpecs(e.target.value)}
-                className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
               />
             ) : null}
 
@@ -4523,7 +4759,7 @@ export default function AdminPage() {
                 placeholder="e.g. Black, Silver, Midnight Blue"
                 value={editColorsText}
                 onChange={(e) => setEditColorsText(e.target.value)}
-                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none transition ${ui.inputBg}`}
+                className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
               />
               <div className="flex flex-wrap gap-1.5 pt-0.5">
                 {QUICK_COLOR_PRESETS.map((preset) => (
@@ -4535,7 +4771,7 @@ export default function AdminPage() {
                         appendPresetToText(prev, preset)
                       )
                     }
-                    className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition cursor-pointer ${ui.secondaryBtn}`}
+                    className={`text-[11px] font-medium px-2 py-0.5 rounded-full border cursor-pointer ${ui.secondaryBtn}`}
                   >
                     + {preset}
                   </button>
@@ -4565,12 +4801,12 @@ export default function AdminPage() {
                       handleAddImageUrl("edit");
                     }
                   }}
-                  className={`flex-1 border rounded-xl px-3 py-2 text-xs outline-none transition ${ui.inputBg}`}
+                  className={`flex-1 border rounded-xl px-3 py-2 text-xs outline-none ${ui.inputBg}`}
                 />
                 <button
                   type="button"
                   onClick={() => handleAddImageUrl("edit")}
-                  className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer shrink-0 ${ui.secondaryBtn}`}
+                  className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer shrink-0 ${ui.secondaryBtn}`}
                 >
                   <Link2 className="w-3.5 h-3.5" />
                   Add
@@ -4590,7 +4826,7 @@ export default function AdminPage() {
                 type="button"
                 disabled={processingImage}
                 onClick={() => editFileInputRef.current?.click()}
-                className={`w-full inline-flex items-center justify-center gap-1.5 border border-dashed py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer ${ui.secondaryBtn}`}
+                className={`w-full inline-flex items-center justify-center gap-1.5 border border-dashed py-2 px-3 rounded-xl text-xs font-semibold cursor-pointer ${ui.secondaryBtn}`}
               >
                 <Upload className="w-3.5 h-3.5" />
                 {processingImage ? "Processing Photos..." : "Add More Photos"}
@@ -4643,7 +4879,7 @@ export default function AdminPage() {
               placeholder="Description (optional)"
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
-              className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none transition ${ui.inputBg}`}
+              className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
               rows={2}
             />
 
@@ -4651,14 +4887,14 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className={`flex-1 border py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer ${ui.secondaryBtn}`}
+                className={`flex-1 border py-2.5 rounded-xl text-sm font-semibold cursor-pointer ${ui.secondaryBtn}`}
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={savingEdit || processingImage}
-                className={`flex-1 py-2.5 rounded-xl text-sm disabled:opacity-50 transition cursor-pointer ${ui.primaryBtn}`}
+                className={`flex-1 py-2.5 rounded-xl text-sm disabled:opacity-50 cursor-pointer ${ui.primaryBtn}`}
               >
                 {savingEdit ? "Saving..." : "Save Changes"}
               </button>
