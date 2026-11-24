@@ -570,9 +570,22 @@ function sanitizeAuthenticReviews(raw: unknown): SimpleReview[] {
     );
 }
 
+function applyThemeToDocument(mode: ThemeMode) {
+  try {
+    document.documentElement.setAttribute("data-maveron-theme", mode);
+    document.documentElement.style.colorScheme =
+      mode === "light" ? "light" : "dark";
+    document.documentElement.style.backgroundColor =
+      mode === "light" ? "#F4F4F6" : "#09090B";
+  } catch {
+    // ignore DOM errors in non-browser environments
+  }
+}
+
 export default function HomeStore() {
   const [lang, setLang] = useState<Lang>("en");
   const [themeMode, setThemeMode] = useState<ThemeMode>("night");
+  const [themeMounted, setThemeMounted] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
@@ -591,7 +604,7 @@ export default function HomeStore() {
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>("home");
 
-  // Authentic Customer Reviews Only (Zero Fake/Seeded Reviews)
+  // Authentic Customer Reviews Only
   const [reviews, setReviews] = useState<SimpleReview[]>([]);
   const [reviewName, setReviewName] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
@@ -721,19 +734,26 @@ export default function HomeStore() {
     }, 2600);
   };
 
+  // Load saved theme immediately before showing content to prevent light-mode refresh blink
   useEffect(() => {
     try {
+      const attrTheme = document.documentElement.getAttribute(
+        "data-maveron-theme"
+      );
       const savedTheme = localStorage.getItem("maveron_theme_mode");
-      if (savedTheme === "night" || savedTheme === "light") {
-        setThemeMode(savedTheme);
-        document.documentElement.setAttribute("data-maveron-theme", savedTheme);
-        document.documentElement.style.colorScheme =
-          savedTheme === "light" ? "light" : "dark";
-        document.documentElement.style.backgroundColor =
-          savedTheme === "light" ? "#F4F4F6" : "#09090B";
-      }
+      const resolved: ThemeMode =
+        savedTheme === "light" || savedTheme === "night"
+          ? savedTheme
+          : attrTheme === "light" || attrTheme === "night"
+          ? attrTheme
+          : "night";
+
+      setThemeMode(resolved);
+      applyThemeToDocument(resolved);
     } catch {
       // ignore
+    } finally {
+      setThemeMounted(true);
     }
   }, []);
 
@@ -825,11 +845,7 @@ export default function HomeStore() {
     setThemeMode(next);
     try {
       localStorage.setItem("maveron_theme_mode", next);
-      document.documentElement.setAttribute("data-maveron-theme", next);
-      document.documentElement.style.colorScheme =
-        next === "light" ? "light" : "dark";
-      document.documentElement.style.backgroundColor =
-        next === "light" ? "#F4F4F6" : "#09090B";
+      applyThemeToDocument(next);
     } catch {
       // ignore
     }
@@ -1899,7 +1915,8 @@ export default function HomeStore() {
   return (
     <div
       suppressHydrationWarning
-      className={`min-h-screen pb-24 lg:pb-20 ${t.pageBg}`}
+      style={!themeMounted ? { opacity: 0 } : undefined}
+      className={`min-h-screen pb-24 lg:pb-20 transition-opacity duration-150 ${t.pageBg}`}
     >
       {/* Toast Notification */}
       {toastMessage && (
