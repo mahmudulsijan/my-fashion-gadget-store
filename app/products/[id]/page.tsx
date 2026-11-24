@@ -33,8 +33,6 @@ type ApiProduct = {
   specs?: string;
   description?: string;
   stock: number;
-  rating: number;
-  reviewCount: number;
 };
 
 type ProductReview = {
@@ -74,6 +72,50 @@ function parseStringArray(val: unknown): string[] {
       .filter(Boolean);
   }
   return [];
+}
+
+function sanitizeReviews(raw: unknown): ProductReview[] {
+  if (!Array.isArray(raw)) return [];
+  const blocked = new Set([
+    "demo",
+    "test",
+    "sample",
+    "admin",
+    "anonymous",
+    "john doe",
+    "jane doe",
+  ]);
+  return raw
+    .filter((entry): entry is Record<string, unknown> =>
+      Boolean(entry && typeof entry === "object")
+    )
+    .map((item, idx) => {
+      const name = String(item.name || "").trim();
+      const comment = String(item.comment || "").trim();
+      const num = Number(item.rating);
+      const rating =
+        Number.isFinite(num) && num >= 1 && num <= 5 ? Math.round(num) : 5;
+      const photo =
+        typeof item.photo === "string" && item.photo.trim().length > 0
+          ? item.photo.trim()
+          : undefined;
+      return {
+        id:
+          typeof item.id === "string" && item.id.trim().length > 0
+            ? item.id.trim()
+            : `pr-${idx}-${name}`,
+        name,
+        rating,
+        comment,
+        photo,
+      };
+    })
+    .filter(
+      (r) =>
+        r.name.length > 0 &&
+        r.comment.length > 0 &&
+        !blocked.has(r.name.toLowerCase())
+    );
 }
 
 function mapProduct(item: Record<string, unknown>, idx: number): ApiProduct {
@@ -146,8 +188,6 @@ function mapProduct(item: Record<string, unknown>, idx: number): ApiProduct {
         `${String(item.name || "This product")} from ${BRAND_NAME} (${BRAND_TAGLINE}) is crafted for everyday comfort, style, and reliable performance.`
     ),
     stock: item.stock !== undefined ? Number(item.stock) : 10,
-    rating: item.rating !== undefined ? Number(item.rating) : 4.8,
-    reviewCount: item.reviewCount !== undefined ? Number(item.reviewCount) : 24,
   };
 }
 
@@ -294,15 +334,19 @@ function ProductDetailsContent() {
   useEffect(() => {
     if (!productId) return;
     try {
-      const saved =
-        localStorage.getItem(`maveron_reviews_${productId}`) ||
-        localStorage.getItem(`zavero_reviews_${productId}`);
+      const saved = localStorage.getItem(`maveron_reviews_${productId}`);
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) setReviews(parsed);
+        const clean = sanitizeReviews(JSON.parse(saved));
+        setReviews(clean);
+        localStorage.setItem(
+          `maveron_reviews_${productId}`,
+          JSON.stringify(clean)
+        );
+      } else {
+        setReviews([]);
       }
     } catch {
-      // ignore
+      setReviews([]);
     }
   }, [productId]);
 
@@ -310,6 +354,12 @@ function ProductDetailsContent() {
     if (!product) return [];
     return allProducts.filter((p) => p.id !== product.id).slice(0, 2);
   }, [allProducts, product]);
+
+  const avgRating = useMemo(() => {
+    if (reviews.length === 0) return null;
+    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+    return (sum / reviews.length).toFixed(1);
+  }, [reviews]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -417,7 +467,7 @@ function ProductDetailsContent() {
   const handleReviewSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!revName.trim() || !revComment.trim()) return;
-    const next: ProductReview[] = [
+    const next = sanitizeReviews([
       {
         id: `pr-${Date.now()}`,
         name: revName.trim(),
@@ -426,7 +476,7 @@ function ProductDetailsContent() {
         photo: revPhoto || undefined,
       },
       ...reviews,
-    ];
+    ]);
     setReviews(next);
     try {
       localStorage.setItem(`maveron_reviews_${productId}`, JSON.stringify(next));
@@ -600,7 +650,9 @@ function ProductDetailsContent() {
 
           <div className="lg:col-span-6 space-y-5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className={`text-xs font-bold px-3 py-1 rounded-full ${t.chipActive}`}>
+              <span
+                className={`text-xs font-bold px-3 py-1 rounded-full ${t.chipActive}`}
+              >
                 {catLabelText(product.subCategory)}
               </span>
               {discountPct && (
@@ -638,12 +690,14 @@ function ProductDetailsContent() {
                   ৳{product.oldPrice}
                 </span>
               )}
-              <span
-                className={`inline-flex items-center gap-1 text-xs font-bold ml-auto ${t.bodyText}`}
-              >
-                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                {product.rating.toFixed(1)} ({product.reviewCount})
-              </span>
+              {avgRating && (
+                <span
+                  className={`inline-flex items-center gap-1 text-xs font-bold ml-auto ${t.bodyText}`}
+                >
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  {avgRating} ({reviews.length})
+                </span>
+              )}
             </div>
 
             <p className={`text-sm leading-relaxed ${t.bodyText}`}>
@@ -651,7 +705,9 @@ function ProductDetailsContent() {
             </p>
 
             {product.specs && (
-              <div className={`rounded-2xl p-3.5 text-xs ${t.surfaceAlt} ${t.bodyText}`}>
+              <div
+                className={`rounded-2xl p-3.5 text-xs ${t.surfaceAlt} ${t.bodyText}`}
+              >
                 <span className={`font-bold block mb-1 ${t.titleText}`}>
                   {lang === "bn" ? "স্পেসিফিকেশন:" : "Specifications:"}
                 </span>
@@ -893,7 +949,13 @@ function ProductDetailsContent() {
             </label>
           </form>
 
-          {reviews.length > 0 && (
+          {reviews.length === 0 ? (
+            <p className={`text-xs sm:text-sm ${t.mutedText}`}>
+              {lang === "bn"
+                ? "এই প্রোডাক্টে এখনো কোনো রিভিউ নেই।"
+                : "No reviews for this product yet."}
+            </p>
+          ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {reviews.map((r) => (
                 <div

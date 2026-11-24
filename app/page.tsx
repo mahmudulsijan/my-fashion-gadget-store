@@ -145,20 +145,13 @@ const CATEGORY_BN: Record<string, string> = {
 };
 
 const CATEGORY_IMAGES = {
-  mensFashion:
-   "/images/mensFashion.jpg",
-  womensFashion:
-    "/images/womensFashion.jpg",
-  mensFootwear:
-    "/images/mensFootwear.jpg",
-  womensFootwear:
-    "/images/womensFootwear.jpg",
-  gadgets:
-    "/images/gadgets.jpg",
-  beautyProducts:
-    "/images/beautyProducts.jpg",
-  mobileAccessories:
-    "/images/mobile-accessories.jpg",
+  mensFashion: "/images/mensFashion.jpg",
+  womensFashion: "/images/womensFashion.jpg",
+  mensFootwear: "/images/mensFootwear.jpg",
+  womensFootwear: "/images/womensFootwear.jpg",
+  gadgets: "/images/gadgets.jpg",
+  beautyProducts: "/images/beautyProducts.jpg",
+  mobileAccessories: "/images/mobile-accessories.jpg",
 };
 
 const FEATURED_CATEGORIES = [
@@ -471,7 +464,6 @@ function resolveAdminColorImages(
     }
   }
 
-  // Map colors by index to available gallery images when explicit map is missing
   colors.forEach((col, idx) => {
     const key = col.trim().toLowerCase();
     if (!map[key] && images[idx]) {
@@ -490,11 +482,9 @@ function getImageForColor(product: Product, color?: string): string {
     return product.colorImages[key];
   }
 
-  // Partial key match (e.g. "Midnight Blue" vs "blue")
   if (product.colorImages) {
     const matchedEntry = Object.entries(product.colorImages).find(
-      ([k, v]) =>
-        Boolean(v) && (k.includes(key) || key.includes(k))
+      ([k, v]) => Boolean(v) && (k.includes(key) || key.includes(k))
     );
     if (matchedEntry) return matchedEntry[1];
   }
@@ -527,6 +517,60 @@ function getDiscountPercent(price: number, oldPrice?: number): number | null {
   return Math.round(((oldPrice - price) / oldPrice) * 100);
 }
 
+// Sanitize stored reviews so fake/placeholder/seeded entries never appear
+function sanitizeAuthenticReviews(raw: unknown): SimpleReview[] {
+  if (!Array.isArray(raw)) return [];
+  const blockedNames = new Set([
+    "demo",
+    "test",
+    "sample",
+    "admin",
+    "anonymous",
+    "john doe",
+    "jane doe",
+  ]);
+  return raw
+    .filter((entry): entry is Record<string, unknown> =>
+      Boolean(entry && typeof entry === "object")
+    )
+    .map((item, idx) => {
+      const name = String(item.name || "").trim();
+      const comment = String(item.comment || "").trim();
+      const ratingNum = Number(item.rating);
+      const validRating =
+        Number.isFinite(ratingNum) && ratingNum >= 1 && ratingNum <= 5
+          ? Math.round(ratingNum)
+          : 5;
+      const photo =
+        typeof item.photo === "string" && item.photo.trim().length > 0
+          ? item.photo.trim()
+          : undefined;
+      const productId =
+        typeof item.productId === "string" && item.productId.trim().length > 0
+          ? item.productId.trim()
+          : undefined;
+      const id =
+        typeof item.id === "string" && item.id.trim().length > 0
+          ? item.id.trim()
+          : `rev-${idx}-${name}`;
+
+      return {
+        id,
+        productId,
+        name,
+        rating: validRating,
+        comment,
+        photo,
+      };
+    })
+    .filter(
+      (rev) =>
+        rev.name.length > 0 &&
+        rev.comment.length > 0 &&
+        !blockedNames.has(rev.name.toLowerCase())
+    );
+}
+
 export default function HomeStore() {
   const [lang, setLang] = useState<Lang>("en");
   const [themeMode, setThemeMode] = useState<ThemeMode>("night");
@@ -548,7 +592,7 @@ export default function HomeStore() {
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>("home");
 
-  // Real Customer Reviews State (No Demo Reviews)
+  // Authentic Customer Reviews Only (Zero Fake/Seeded Reviews)
   const [reviews, setReviews] = useState<SimpleReview[]>([]);
   const [reviewName, setReviewName] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
@@ -734,12 +778,17 @@ export default function HomeStore() {
     if (savedReviews) {
       try {
         const parsed = JSON.parse(savedReviews);
-        if (Array.isArray(parsed)) {
-          setReviews(parsed);
-        }
+        const cleanReviews = sanitizeAuthenticReviews(parsed);
+        setReviews(cleanReviews);
+        localStorage.setItem(
+          "maveron_simple_reviews",
+          JSON.stringify(cleanReviews)
+        );
       } catch {
-        // ignore
+        setReviews([]);
       }
+    } else {
+      setReviews([]);
     }
   }, []);
 
@@ -909,6 +958,7 @@ export default function HomeStore() {
               );
               const rawBadge = String(item.badge || "").trim();
 
+              // Strip any fake/demo rating or review count fields from product records
               return {
                 id: String(item._id || item.id || idx),
                 name: String(item.name || "MAVÉRON Product"),
@@ -1468,7 +1518,7 @@ export default function HomeStore() {
       photo: reviewPhoto || undefined,
     };
 
-    const updated = [item, ...reviews];
+    const updated = sanitizeAuthenticReviews([item, ...reviews]);
     setReviews(updated);
     try {
       localStorage.setItem("maveron_simple_reviews", JSON.stringify(updated));
@@ -1923,7 +1973,9 @@ export default function HomeStore() {
               aria-label="Open Search Overlay"
               className={`w-8 h-8 sm:w-auto sm:h-10 sm:px-3.5 rounded-full flex items-center justify-center gap-1.5 text-xs font-semibold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
             >
-              <Search className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${t.mutedText}`} />
+              <Search
+                className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${t.mutedText}`}
+              />
               <span className="hidden md:inline">
                 {lang === "bn" ? "সার্চ" : "Search"}
               </span>
@@ -2012,7 +2064,9 @@ export default function HomeStore() {
               </button>
             </div>
 
-            <div className={`flex flex-col gap-1.5 text-sm font-medium ${t.bodyText}`}>
+            <div
+              className={`flex flex-col gap-1.5 text-sm font-medium ${t.bodyText}`}
+            >
               {STORE_CATEGORIES.map((catName) => (
                 <button
                   key={catName}
@@ -2122,7 +2176,9 @@ export default function HomeStore() {
                         </p>
                       </div>
                     </div>
-                    <span className={`text-sm font-extrabold shrink-0 ${t.bodyText}`}>
+                    <span
+                      className={`text-sm font-extrabold shrink-0 ${t.bodyText}`}
+                    >
                       ৳{item.price}
                     </span>
                   </Link>
@@ -2219,7 +2275,9 @@ export default function HomeStore() {
                     : `${flashSaleCount} discounted items available`}
                 </span>
               </div>
-              <h2 className={`text-sm sm:text-lg font-bold mt-0.5 ${t.titleText}`}>
+              <h2
+                className={`text-sm sm:text-lg font-bold mt-0.5 ${t.titleText}`}
+              >
                 {lang === "bn"
                   ? "বিশেষ ছাড়ে ফ্যাশন, ফুটওয়্যার, বিউটি, গ্যাজেটস ও মোবাইল অ্যাক্সেসরিজ অফার"
                   : "Special Discounts on Fashion, Footwear, Beauty, Gadgets & Mobile Accessories"}
@@ -2561,8 +2619,12 @@ export default function HomeStore() {
                   ? product.secondaryImage
                   : colorSelectedImage;
 
+              // Only count genuine user-submitted reviews matching this productId
               const productReviews = reviews.filter(
-                (r) => r.productId === product.id
+                (r) =>
+                  r.productId === product.id &&
+                  r.name.trim().length > 0 &&
+                  r.comment.trim().length > 0
               );
 
               return (
@@ -2573,10 +2635,14 @@ export default function HomeStore() {
                   className={
                     viewMode === "grid"
                       ? `group flex flex-col justify-between rounded-2xl sm:rounded-3xl p-2.5 sm:p-3 transition ${t.surface} ${
-                          isLight ? "hover:border-zinc-400" : "hover:border-zinc-600"
+                          isLight
+                            ? "hover:border-zinc-400"
+                            : "hover:border-zinc-600"
                         }`
                       : `group flex flex-col sm:flex-row items-center gap-5 rounded-3xl p-4 transition ${t.surface} ${
-                          isLight ? "hover:border-zinc-400" : "hover:border-zinc-600"
+                          isLight
+                            ? "hover:border-zinc-400"
+                            : "hover:border-zinc-600"
                         }`
                   }
                 >
@@ -2709,7 +2775,9 @@ export default function HomeStore() {
                         href={`/products/${product.id}`}
                         onClick={rememberCurrentScroll}
                         className={`font-bold text-xs sm:text-base lg:text-lg mt-0.5 leading-snug line-clamp-2 block ${t.titleText} ${
-                          isLight ? "hover:text-zinc-600" : "hover:text-zinc-300"
+                          isLight
+                            ? "hover:text-zinc-600"
+                            : "hover:text-zinc-300"
                         }`}
                       >
                         {product.name}
@@ -2726,7 +2794,9 @@ export default function HomeStore() {
                           ৳{product.price}
                         </span>
                         {product.oldPrice && product.oldPrice > product.price && (
-                          <span className={`text-[11px] sm:text-xs line-through ${t.mutedText}`}>
+                          <span
+                            className={`text-[11px] sm:text-xs line-through ${t.mutedText}`}
+                          >
                             ৳{product.oldPrice}
                           </span>
                         )}
@@ -2735,7 +2805,9 @@ export default function HomeStore() {
                       {isFilteredCollectionView && (
                         <div className="mt-1.5 flex items-center justify-between text-[10px] sm:text-[11px]">
                           <span className="font-semibold text-emerald-500">
-                            {lang === "bn" ? "ক্যাশ অন ডেলিভারি" : "Cash on Delivery"}
+                            {lang === "bn"
+                              ? "ক্যাশ অন ডেলিভারি"
+                              : "Cash on Delivery"}
                           </span>
                           <span className={t.mutedText}>
                             {isOutOfStock
@@ -2782,7 +2854,9 @@ export default function HomeStore() {
 
                       {product.colors && product.colors.length > 0 && (
                         <div className="mt-2 flex flex-wrap items-center gap-1 sm:gap-1.5">
-                          <span className={`text-[11px] sm:text-xs mr-0.5 ${t.mutedText}`}>
+                          <span
+                            className={`text-[11px] sm:text-xs mr-0.5 ${t.mutedText}`}
+                          >
                             {lang === "bn" ? "কালার:" : "Color:"}
                           </span>
                           {product.colors.map((col) => (
@@ -2931,7 +3005,9 @@ export default function HomeStore() {
             : `Why Choose ${BRAND_NAME}`}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className={`p-5 rounded-2xl flex items-start gap-3.5 ${t.surface}`}>
+          <div
+            className={`p-5 rounded-2xl flex items-start gap-3.5 ${t.surface}`}
+          >
             <ShieldCheck className={`w-6 h-6 shrink-0 mt-0.5 ${t.titleText}`} />
             <div>
               <h4 className={`font-bold text-sm ${t.titleText}`}>
@@ -2947,7 +3023,9 @@ export default function HomeStore() {
             </div>
           </div>
 
-          <div className={`p-5 rounded-2xl flex items-start gap-3.5 ${t.surface}`}>
+          <div
+            className={`p-5 rounded-2xl flex items-start gap-3.5 ${t.surface}`}
+          >
             <Truck className={`w-6 h-6 shrink-0 mt-0.5 ${t.titleText}`} />
             <div>
               <h4 className={`font-bold text-sm ${t.titleText}`}>
@@ -2963,7 +3041,9 @@ export default function HomeStore() {
             </div>
           </div>
 
-          <div className={`p-5 rounded-2xl flex items-start gap-3.5 ${t.surface}`}>
+          <div
+            className={`p-5 rounded-2xl flex items-start gap-3.5 ${t.surface}`}
+          >
             <Sparkles className={`w-6 h-6 shrink-0 mt-0.5 ${t.titleText}`} />
             <div>
               <h4 className={`font-bold text-sm ${t.titleText}`}>
@@ -4205,7 +4285,9 @@ export default function HomeStore() {
                       type="button"
                       onClick={() => setQuickViewProduct(rel)}
                       className={`text-left p-2 rounded-2xl transition cursor-pointer ${t.surface} ${
-                        isLight ? "hover:border-zinc-400" : "hover:border-zinc-600"
+                        isLight
+                          ? "hover:border-zinc-400"
+                          : "hover:border-zinc-600"
                       }`}
                     >
                       <div className="aspect-square rounded-xl overflow-hidden bg-zinc-800 mb-1.5">
@@ -4215,7 +4297,9 @@ export default function HomeStore() {
                           className="w-full h-full object-cover"
                         />
                       </div>
-                      <p className={`text-xs font-semibold truncate ${t.titleText}`}>
+                      <p
+                        className={`text-xs font-semibold truncate ${t.titleText}`}
+                      >
                         {rel.name}
                       </p>
                       <p className={`text-xs font-extrabold ${t.bodyText}`}>
@@ -4267,8 +4351,9 @@ export default function HomeStore() {
                 </button>
               </div>
 
-              {/* Breadcrumb: Home > Shopping Cart */}
-              <div className={`flex items-center gap-1.5 text-xs mt-3 ${t.mutedText}`}>
+              <div
+                className={`flex items-center gap-1.5 text-xs mt-3 ${t.mutedText}`}
+              >
                 <button
                   type="button"
                   onClick={() => {
@@ -4323,16 +4408,16 @@ export default function HomeStore() {
                   </button>
                 </div>
               ) : cart.length === 0 ? (
-                <div className={`text-center my-14 text-sm space-y-3 ${t.mutedText}`}>
+                <div
+                  className={`text-center my-14 text-sm space-y-3 ${t.mutedText}`}
+                >
                   <div
                     className={`w-14 h-14 rounded-full mx-auto flex items-center justify-center ${t.surfaceAlt}`}
                   >
                     <ShoppingBag className={`w-6 h-6 ${t.mutedText}`} />
                   </div>
                   <p className={`font-semibold ${t.titleText}`}>
-                    {lang === "bn"
-                      ? "আপনার কার্ট খালি।"
-                      : "Your cart is empty"}
+                    {lang === "bn" ? "আপনার কার্ট খালি।" : "Your cart is empty"}
                   </p>
                   <p className={`text-xs ${t.mutedText}`}>
                     {lang === "bn"
@@ -4347,7 +4432,9 @@ export default function HomeStore() {
                     }}
                     className={`text-xs font-extrabold px-5 py-2.5 rounded-xl cursor-pointer inline-flex items-center gap-1.5 ${t.silverCta}`}
                   >
-                    <span>{lang === "bn" ? "শপিং শুরু করুন" : "Start shopping"}</span>
+                    <span>
+                      {lang === "bn" ? "শপিং শুরু করুন" : "Start shopping"}
+                    </span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -4379,7 +4466,9 @@ export default function HomeStore() {
                               ? `• ${item.selectedColor}`
                               : ""}
                           </span>
-                          <p className={`text-sm font-bold mt-0.5 ${t.bodyText}`}>
+                          <p
+                            className={`text-sm font-bold mt-0.5 ${t.bodyText}`}
+                          >
                             ৳{item.product.price * item.quantity}
                           </p>
                         </div>
@@ -4548,7 +4637,9 @@ export default function HomeStore() {
                         >
                           <p className={`font-semibold ${t.bodyText}`}>
                             {paymentMethod} Send Money Number:{" "}
-                            <span className={`font-mono font-bold ${t.titleText}`}>
+                            <span
+                              className={`font-mono font-bold ${t.titleText}`}
+                            >
                               {activeWalletNumber}
                             </span>
                           </p>
@@ -4572,7 +4663,9 @@ export default function HomeStore() {
                       )}
                     </div>
 
-                    <div className={`rounded-2xl p-4 space-y-2 text-sm ${t.surface}`}>
+                    <div
+                      className={`rounded-2xl p-4 space-y-2 text-sm ${t.surface}`}
+                    >
                       <div className={`flex justify-between ${t.mutedText}`}>
                         <span>{lang === "bn" ? "সাবটোটাল" : "Subtotal"}</span>
                         <span className={`font-semibold ${t.titleText}`}>
@@ -4581,9 +4674,7 @@ export default function HomeStore() {
                       </div>
                       <div className={`flex justify-between ${t.mutedText}`}>
                         <span>
-                          {lang === "bn"
-                            ? "ডেলিভারি চার্জ"
-                            : "Delivery Charge"}
+                          {lang === "bn" ? "ডেলিভারি চার্জ" : "Delivery Charge"}
                         </span>
                         <span className={`font-semibold ${t.titleText}`}>
                           {deliveryCharge === 0
