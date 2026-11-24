@@ -517,7 +517,6 @@ function getDiscountPercent(price: number, oldPrice?: number): number | null {
   return Math.round(((oldPrice - price) / oldPrice) * 100);
 }
 
-// Sanitize stored reviews so fake/placeholder/seeded entries never appear
 function sanitizeAuthenticReviews(raw: unknown): SimpleReview[] {
   if (!Array.isArray(raw)) return [];
   const blockedNames = new Set([
@@ -722,6 +721,22 @@ export default function HomeStore() {
     }, 2600);
   };
 
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem("maveron_theme_mode");
+      if (savedTheme === "night" || savedTheme === "light") {
+        setThemeMode(savedTheme);
+        document.documentElement.setAttribute("data-maveron-theme", savedTheme);
+        document.documentElement.style.colorScheme =
+          savedTheme === "light" ? "light" : "dark";
+        document.documentElement.style.backgroundColor =
+          savedTheme === "light" ? "#F4F4F6" : "#09090B";
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // Preserve & restore previous scroll position when navigating to product details and coming back
   useEffect(() => {
     if ("scrollRestoration" in window.history) {
@@ -769,11 +784,6 @@ export default function HomeStore() {
       setLang(savedLang);
     }
 
-    const savedTheme = localStorage.getItem("maveron_theme_mode");
-    if (savedTheme === "night" || savedTheme === "light") {
-      setThemeMode(savedTheme);
-    }
-
     const savedReviews = localStorage.getItem("maveron_simple_reviews");
     if (savedReviews) {
       try {
@@ -815,6 +825,11 @@ export default function HomeStore() {
     setThemeMode(next);
     try {
       localStorage.setItem("maveron_theme_mode", next);
+      document.documentElement.setAttribute("data-maveron-theme", next);
+      document.documentElement.style.colorScheme =
+        next === "light" ? "light" : "dark";
+      document.documentElement.style.backgroundColor =
+        next === "light" ? "#F4F4F6" : "#09090B";
     } catch {
       // ignore
     }
@@ -958,7 +973,6 @@ export default function HomeStore() {
               );
               const rawBadge = String(item.badge || "").trim();
 
-              // Strip any fake/demo rating or review count fields from product records
               return {
                 id: String(item._id || item.id || idx),
                 name: String(item.name || "MAVÉRON Product"),
@@ -1885,7 +1899,7 @@ export default function HomeStore() {
   return (
     <div
       suppressHydrationWarning
-      className={`min-h-screen transition-colors duration-200 pb-24 lg:pb-20 ${t.pageBg}`}
+      className={`min-h-screen pb-24 lg:pb-20 ${t.pageBg}`}
     >
       {/* Toast Notification */}
       {toastMessage && (
@@ -1903,7 +1917,7 @@ export default function HomeStore() {
       {/* Clean Single-Row Sticky Navigation Bar */}
       <header
         suppressHydrationWarning
-        className={`sticky top-0 z-30 transition-all ${t.headerBg}`}
+        className={`sticky top-0 z-30 ${t.headerBg}`}
       >
         <div className="max-w-7xl mx-auto px-2.5 sm:px-4 h-15 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -2619,7 +2633,6 @@ export default function HomeStore() {
                   ? product.secondaryImage
                   : colorSelectedImage;
 
-              // Only count genuine user-submitted reviews matching this productId
               const productReviews = reviews.filter(
                 (r) =>
                   r.productId === product.id &&
