@@ -36,56 +36,73 @@ function isValidBdPhone11(phone: string): boolean {
   return /^01[3-9]\d{8}$/.test(phone);
 }
 
+function escapeRegex(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
 
     const { searchParams } = new URL(req.url);
+    const hasOrderIdParam = searchParams.has("orderId");
+    const hasPhoneParam = searchParams.has("phone");
+
     const rawOrderId = String(searchParams.get("orderId") || "").trim();
     const rawPhone = String(searchParams.get("phone") || "").trim();
 
-    const cleanOrderId = rawOrderId.replace(/^#/, "").trim();
-    const cleanPhone = normalizePhone(rawPhone);
+    // Public order tracking mode when orderId/phone params are passed
+    if (hasOrderIdParam || hasPhoneParam) {
+      const cleanOrderId = rawOrderId.replace(/^#/, "").trim();
+      const cleanPhone = normalizePhone(rawPhone);
 
-    // Require BOTH Order ID and Phone Number for public order tracking
-    if (!cleanOrderId || !cleanPhone) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Both Order ID and Phone Number are required to track an order.",
-        },
-        { status: 400 }
+      if (!cleanOrderId || !cleanPhone) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Both Order ID and Phone Number are required to track an order.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (!isValidBdPhone11(cleanPhone)) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Please enter a valid 11-digit phone number.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const filter: Record<string, unknown> = mongoose.Types.ObjectId.isValid(
+        cleanOrderId
+      )
+        ? { _id: cleanOrderId }
+        : { orderId: new RegExp(`^${escapeRegex(cleanOrderId)}$`, "i") };
+
+      const candidates = await Order.find(filter)
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const matchedOrders = candidates.filter(
+        (ord: Record<string, unknown>) => {
+          const ordPhone = normalizePhone(String(ord?.phone || ""));
+          return ordPhone.length > 0 && ordPhone === cleanPhone;
+        }
       );
+
+      return NextResponse.json({
+        success: true,
+        orders: matchedOrders,
+      });
     }
 
-    if (!isValidBdPhone11(cleanPhone)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Please enter a valid 11-digit phone number.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const filter: Record<string, unknown> = mongoose.Types.ObjectId.isValid(
-      cleanOrderId
-    )
-      ? { _id: cleanOrderId }
-      : { orderId: new RegExp(`^${escapeRegex(cleanOrderId)}$`, "i") };
-
-    const candidates = await Order.find(filter).sort({ createdAt: -1 }).lean();
-
-    const matchedOrders = candidates.filter((ord: Record<string, unknown>) => {
-      const ordPhone = normalizePhone(String(ord?.phone || ""));
-      return ordPhone.length > 0 && ordPhone === cleanPhone;
-    });
-
-    return NextResponse.json({
-      success: true,
-      orders: matchedOrders,
-    });
+    // Default fetch (e.g., Admin dashboard)
+    const orders = await Order.find({}).sort({ createdAt: -1 });
+    return NextResponse.json({ success: true, orders });
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
@@ -93,10 +110,6 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function escapeRegex(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export async function POST(req: NextRequest) {
@@ -140,7 +153,10 @@ export async function POST(req: NextRequest) {
 
     if (rawItems.length === 0) {
       return NextResponse.json(
-        { success: false, message: "At least one item is required to place an order." },
+        {
+          success: false,
+          message: "At least one item is required to place an order.",
+        },
         { status: 400 }
       );
     }

@@ -2,9 +2,11 @@ import mongoose, { Schema, model, models } from "mongoose";
 
 const OrderSchema = new Schema(
   {
-    customerName: { type: String, required: true },
-    phone: { type: String, required: true },
-    address: { type: String, required: true },
+    customerName: { type: String, required: true, trim: true },
+    phone: { type: String, required: true, trim: true },
+    address: { type: String, required: true, trim: true },
+    district: { type: String, trim: true },
+    paymentMethod: { type: String, trim: true },
     items: [
       {
         productId: String,
@@ -12,6 +14,7 @@ const OrderSchema = new Schema(
         price: Number,
         quantity: Number,
         size: String,
+        color: String,
         image: String,
       },
     ],
