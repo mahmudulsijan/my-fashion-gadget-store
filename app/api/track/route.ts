@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
-import dbConnect from "@/lib/mongodb";
-import Order from "@/models/Order";
+import { connectDB } from "../../lib/mongodb";
+import { Order } from "../../models/Order";
 
 function normalizePhone(raw: string): string {
   const digits = String(raw || "").replace(/\D/g, "");
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    await dbConnect();
+    await connectDB();
 
     const queryConditions: Record<string, unknown>[] = [{ orderId: rawOrderId }];
     if (mongoose.Types.ObjectId.isValid(rawOrderId)) {
@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
       orders: matchedOrders,
     });
   } catch (error) {
-    console.error("GET /api/orders/track error:", error);
+    console.error("GET /api/track error:", error);
     return NextResponse.json(
       { success: false, message: "Failed to track order." },
       { status: 500 }
