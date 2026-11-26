@@ -762,7 +762,10 @@ export default function AdminPage() {
     }
 
     try {
-      const res = await fetch("/api/reviews", { cache: "no-store" });
+      const res = await fetch("/api/reviews", {
+        cache: "no-store",
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await safeParseJson(res);
         const apiArr = extractArrayFromReviewPayload(data);
@@ -840,7 +843,10 @@ export default function AdminPage() {
     }
 
     try {
-      const res = await fetch("/api/users", { cache: "no-store" });
+      const res = await fetch("/api/users", {
+        cache: "no-store",
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await safeParseJson(res);
         const apiUsers = Array.isArray(data?.users)
@@ -882,10 +888,25 @@ export default function AdminPage() {
     setLoadingData(true);
     try {
       const [prodRes, ordRes, subRes] = await Promise.all([
-        fetch("/api/products", { cache: "no-store" }),
-        fetch("/api/orders", { cache: "no-store" }),
-        fetch(`/api/subscribers?t=${Date.now()}`, { cache: "no-store" }),
+        fetch("/api/products", { cache: "no-store", credentials: "include" }),
+        fetch("/api/orders", { cache: "no-store", credentials: "include" }),
+        fetch(`/api/subscribers?t=${Date.now()}`, {
+          cache: "no-store",
+          credentials: "include",
+        }),
       ]);
+
+      if (ordRes.status === 401) {
+        try {
+          sessionStorage.removeItem("admin_authed");
+        } catch {
+          // ignore
+        }
+        setIsAuthenticated(false);
+        setAuthChecked(true);
+        showToast("অ্যাডমিন সেশন যাচাই করা যায়নি—আবার লগইন করুন");
+        return;
+      }
 
       const [prodData, ordData, subData] = await Promise.all([
         safeParseJson(prodRes),
@@ -994,6 +1015,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ password }),
       });
       const data = await safeParseJson(res);
@@ -1020,7 +1042,15 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/admin/login", {
+        method: "DELETE",
+        credentials: "include",
+      });
+    } catch {
+      // ignore
+    }
     try {
       sessionStorage.removeItem("admin_authed");
     } catch {
@@ -1204,6 +1234,7 @@ export default function AdminPage() {
       const res = await fetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           name: name.trim(),
           category,
@@ -1328,6 +1359,7 @@ export default function AdminPage() {
       const res = await fetch(`/api/products/${editingProduct._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
       const data = await safeParseJson(res);
@@ -1362,6 +1394,7 @@ export default function AdminPage() {
       const res = await fetch(`/api/products/${prod._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ stock: nextStock }),
       });
       const data = await safeParseJson(res);
@@ -1386,7 +1419,10 @@ export default function AdminPage() {
   const handleDeleteProduct = async (id: string) => {
     setDeletingProductId(id);
     try {
-      const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/products/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
       const data = await safeParseJson(res);
       if (data.success) {
         setProducts((prev) => prev.filter((item) => item._id !== id));
@@ -1426,6 +1462,7 @@ export default function AdminPage() {
         const res = await fetch(`/api/products/${prod._id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ stock: nextStock }),
         });
         const data = await safeParseJson(res);
@@ -1462,6 +1499,7 @@ export default function AdminPage() {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ status }),
       });
       const data = await safeParseJson(res);
@@ -1495,7 +1533,10 @@ export default function AdminPage() {
   const handleDeleteOrder = async (orderId: string) => {
     setDeletingOrderId(orderId);
     try {
-      const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
       const data = await safeParseJson(res);
       if (res.ok && data.success) {
         setOrders((prev) => prev.filter((o) => o._id !== orderId));
@@ -1520,6 +1561,7 @@ export default function AdminPage() {
         {
           method: "DELETE",
           cache: "no-store",
+          credentials: "include",
         }
       );
       const data = await safeParseJson(res);
@@ -1542,6 +1584,7 @@ export default function AdminPage() {
       if (!user.isLocalOnly && user.id) {
         await fetch(`/api/users?id=${encodeURIComponent(user.id)}`, {
           method: "DELETE",
+          credentials: "include",
         });
       }
       const rawRegistered = localStorage.getItem(REGISTERED_ACCOUNTS_KEY);
@@ -1603,6 +1646,7 @@ export default function AdminPage() {
       try {
         await fetch(`/api/reviews?id=${encodeURIComponent(id)}`, {
           method: "DELETE",
+          credentials: "include",
         });
       } catch {
         // ignore

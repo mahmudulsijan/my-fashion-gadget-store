@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/app/lib/mongodb";
 import Product from "@/app/models/Product";
+import { isAdminRequest } from "@/app/lib/adminAuth";
 
 function parseStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -69,6 +70,13 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    if (!isAdminRequest(req)) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized: Admin access required" },
+        { status: 401 }
+      );
+    }
+
     await connectDB();
     const { id } = await context.params;
 
@@ -185,7 +193,7 @@ export async function PATCH(
 
     if (Object.keys(mongoUpdate).length === 0) {
       return NextResponse.json(
-        { success: false, message: "আপডেট করার মতো কোনো ডেটা পাওয়া যায়নি" },
+        { success: false, message: "আপডেট করার মতো কোনো ডেটা পাওয়া যায়নি" },
         { status: 400 }
       );
     }
@@ -209,7 +217,7 @@ export async function PATCH(
       error instanceof mongoose.Error.CastError
     ) {
       return NextResponse.json(
-        { success: false, message: "ইনপুট ডেটা সঠিক নয়" },
+        { success: false, message: "ইনপুট ডেটা সঠিক নয়" },
         { status: 400 }
       );
     }
@@ -222,10 +230,17 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    if (!isAdminRequest(req)) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized: Admin access required" },
+        { status: 401 }
+      );
+    }
+
     await connectDB();
     const { id } = await context.params;
 

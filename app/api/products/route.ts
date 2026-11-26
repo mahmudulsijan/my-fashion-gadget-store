@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/app/lib/mongodb";
 import Product from "@/app/models/Product";
+import { isAdminRequest } from "@/app/lib/adminAuth";
 
 function normalizeSizes(rawSizes: unknown): string[] {
   if (Array.isArray(rawSizes)) {
@@ -53,7 +54,7 @@ export async function GET() {
   } catch (error) {
     console.error("GET /api/products error:", error);
     return NextResponse.json(
-      { success: false, message: "প্রোডাক্ট লোড করতে সমস্যা হয়েছে" },
+      { success: false, message: "প্রোডাক্ট লোড করতে সমস্যা হয়েছে" },
       { status: 500 }
     );
   }
@@ -61,6 +62,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!isAdminRequest(req)) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized: Admin access required" },
+        { status: 401 }
+      );
+    }
+
     await connectDB();
     const body = await req.json();
 
@@ -110,7 +118,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("POST /api/products error:", error);
     return NextResponse.json(
-      { success: false, message: "প্রোডাক্ট তৈরি করতে সমস্যা হয়েছে" },
+      { success: false, message: "প্রোডাক্ট তৈরি করতে সমস্যা হয়েছে" },
       { status: 500 }
     );
   }

@@ -33,8 +33,8 @@ interface TrackedOrder {
   _id: string;
   orderId?: string;
   customerName: string;
-  phone: string;
-  address: string;
+  maskedPhone: string;
+  maskedAddress: string;
   items: TrackedOrderItem[];
   totalAmount: number;
   status: string;
@@ -78,19 +78,6 @@ function normalizePhone(raw: string): string {
     return "0" + digits.slice(3, 13);
   }
   return digits;
-}
-
-function maskPhone(raw: string): string {
-  const clean = normalizePhone(raw);
-  if (clean.length < 7) return raw;
-  return `${clean.slice(0, 3)}****${clean.slice(-4)}`;
-}
-
-function maskAddress(raw: string): string {
-  const text = String(raw || "").trim();
-  if (!text) return "";
-  if (text.length <= 12) return `${text.slice(0, 3)}***${text.slice(-2)}`;
-  return `${text.slice(0, 8)} •••••• ${text.slice(-6)}`;
 }
 
 export default function TrackOrderPage() {
@@ -227,7 +214,7 @@ export default function TrackOrderPage() {
     setSearched(true);
 
     try {
-      const url = `/api/orders?orderId=${encodeURIComponent(
+      const url = `/api/orders/track?orderId=${encodeURIComponent(
         cleanOrderId
       )}&phone=${encodeURIComponent(cleanPhone)}`;
       const res = await fetch(url, { cache: "no-store" });
@@ -237,18 +224,7 @@ export default function TrackOrderPage() {
         throw new Error(data.message || "Could not verify order.");
       }
 
-      // Extra client-side strict verification that both Order ID and Phone match
-      const strictlyMatched = (data.orders as TrackedOrder[]).filter((ord) => {
-        const ordIdStr = String(ord._id || "").trim().toLowerCase();
-        const customIdStr = String(ord.orderId || "").trim().toLowerCase();
-        const targetIdLower = cleanOrderId.toLowerCase();
-        const idMatches =
-          ordIdStr === targetIdLower || customIdStr === targetIdLower;
-        const phoneMatches = normalizePhone(String(ord.phone || "")) === cleanPhone;
-        return idMatches && phoneMatches;
-      });
-
-      setOrders(strictlyMatched);
+      setOrders(data.orders as TrackedOrder[]);
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "Failed to search order status.";
@@ -596,7 +572,7 @@ export default function TrackOrderPage() {
                         </div>
 
                         <h2 className={`text-base font-bold ${t.titleText}`}>
-                          {order.customerName} • {maskPhone(order.phone)}
+                          {order.customerName} • {order.maskedPhone}
                         </h2>
 
                         {formattedDate && (
@@ -665,7 +641,7 @@ export default function TrackOrderPage() {
                         <span className={`font-semibold ${t.titleText}`}>
                           {lang === "bn" ? "ঠিকানা:" : "Address:"}
                         </span>{" "}
-                        {maskAddress(order.address)}
+                        {order.maskedAddress}
                       </p>
                       <p>
                         <span className={`font-semibold ${t.titleText}`}>

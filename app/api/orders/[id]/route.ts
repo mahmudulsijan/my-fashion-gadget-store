@@ -1,51 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
+import { connectDB } from "@/app/lib/mongodb";
+import { Order } from "@/app/models/Order";
+import { isAdminRequest } from "@/app/lib/adminAuth";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getOrderModel = (): any => {
-  if (mongoose.models.Order) {
-    return mongoose.models.Order;
-  }
-  const OrderSchema = new mongoose.Schema(
-    {
-      customerName: { type: String, required: true },
-      phone: { type: String, required: true },
-      address: { type: String, required: true },
-      items: [
-        {
-          productId: String,
-          name: String,
-          price: Number,
-          quantity: Number,
-          size: String,
-          image: String,
-        },
-      ],
-      totalAmount: { type: Number, required: true },
-      status: { type: String, default: "Pending" },
-    },
-    { timestamps: true }
-  );
-  return mongoose.model("Order", OrderSchema);
-};
-
-async function ensureDbConnected() {
-  if (mongoose.connection.readyState >= 1) return;
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error("MONGODB_URI is not defined in environment variables");
-  }
-  await mongoose.connect(uri);
-}
+const ALLOWED_STATUSES = [
+  "Pending",
+  "Confirmed",
+  "Processing",
+  "Shipped",
+  "Delivered",
+  "Cancelled",
+];
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await ensureDbConnected();
+    if (!isAdminRequest(req)) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized: Admin access required" },
+        { status: 401 }
+      );
+    }
+
+    await connectDB();
     const { id } = await context.params;
-    const Order = getOrderModel();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(
@@ -76,9 +57,15 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await ensureDbConnected();
+    if (!isAdminRequest(req)) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized: Admin access required" },
+        { status: 401 }
+      );
+    }
+
+    await connectDB();
     const { id } = await context.params;
-    const Order = getOrderModel();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(
@@ -91,10 +78,25 @@ export async function PATCH(
     const updates: Record<string, unknown> = {};
 
     if (typeof body.status === "string" && body.status.trim()) {
-      updates.status = body.status.trim();
+      const nextStatus = body.status.trim();
+      if (!ALLOWED_STATUSES.includes(nextStatus)) {
+        return NextResponse.json(
+          { success: false, message: "Invalid order status" },
+          { status: 400 }
+        );
+      }
+      updates.status = nextStatus;
     }
+
     if (typeof body.address === "string" && body.address.trim()) {
       updates.address = body.address.trim();
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { success: false, message: "No valid fields to update" },
+        { status: 400 }
+      );
     }
 
     const updatedOrder = await Order.findByIdAndUpdate(
@@ -124,13 +126,19 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await ensureDbConnected();
+    if (!isAdminRequest(req)) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized: Admin access required" },
+        { status: 401 }
+      );
+    }
+
+    await connectDB();
     const { id } = await context.params;
-    const Order = getOrderModel();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(

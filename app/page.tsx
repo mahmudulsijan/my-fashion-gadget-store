@@ -3283,6 +3283,7 @@ export default function HomeStore() {
               <input
                 type="text"
                 required
+                suppressHydrationWarning
                 placeholder={
                   isMounted && lang === "bn" ? "আপনার নাম *" : "Your name *"
                 }
