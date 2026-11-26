@@ -34,6 +34,8 @@ import {
   Moon,
   EyeOff,
   KeyRound,
+  Wallet,
+  Settings,
 } from "lucide-react";
 
 type Product = {
@@ -72,6 +74,18 @@ type CustomerProfile = {
   verified?: boolean;
 };
 
+type UserOrderRecord = {
+  _id: string;
+  orderId?: string;
+  customerName?: string;
+  phone?: string;
+  address?: string;
+  totalAmount: number;
+  status: string;
+  createdAt?: string;
+  items?: Array<{ name: string; quantity: number; price?: number }>;
+};
+
 type DeliveryConfig = {
   insideMymensingh: number;
   outsideMymensingh: number;
@@ -96,6 +110,15 @@ type Lang = "en" | "bn";
 type ThemeMode = "night" | "light";
 type PaymentOption = "Cash on Delivery" | "bKash" | "Nagad" | "Rocket";
 type AuthMode = "login" | "register" | "forgot";
+type AccountSubSection =
+  | "menu"
+  | "orders"
+  | "dues"
+  | "wishlist"
+  | "reviews"
+  | "addresses"
+  | "profile"
+  | "settings";
 
 const BRAND_NAME = "MAVÉRON";
 const BRAND_TAGLINE = "ELEVATE YOUR EVERYDAY";
@@ -572,6 +595,19 @@ function sanitizeAuthenticReviews(raw: unknown): SimpleReview[] {
     );
 }
 
+function readInitialTheme(): ThemeMode {
+  if (typeof window === "undefined") return "light";
+  try {
+    const saved = localStorage.getItem("maveron_theme_mode");
+    if (saved === "night" || saved === "light") return saved;
+    const attr = document.documentElement.getAttribute("data-maveron-theme");
+    if (attr === "night" || attr === "light") return attr;
+  } catch {
+    // ignore
+  }
+  return "light";
+}
+
 function applyThemeToDocument(mode: ThemeMode) {
   try {
     document.documentElement.setAttribute("data-maveron-theme", mode);
@@ -580,14 +616,15 @@ function applyThemeToDocument(mode: ThemeMode) {
     document.documentElement.style.backgroundColor =
       mode === "light" ? "#F4F4F6" : "#09090B";
   } catch {
-    // ignore DOM errors in non-browser environments
+    // ignore
   }
 }
 
 export default function HomeStore() {
   const [isMounted, setIsMounted] = useState(false);
   const [lang, setLang] = useState<Lang>("en");
-  const [themeMode, setThemeMode] = useState<ThemeMode>("night");
+  // Default to Light Mode ("light") so there is no night-to-light blink on reload
+  const [themeMode, setThemeMode] = useState<ThemeMode>("light");
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
@@ -626,6 +663,18 @@ export default function HomeStore() {
     null
   );
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [accountSection, setAccountSection] =
+    useState<AccountSubSection>("menu");
+  const [userOrders, setUserOrders] = useState<UserOrderRecord[]>([]);
+  const [loadingUserOrders, setLoadingUserOrders] = useState(false);
+
+  // Profile / Address / Settings editable fields
+  const [profileNameInput, setProfileNameInput] = useState("");
+  const [profilePhoneInput, setProfilePhoneInput] = useState("");
+  const [profileDistrictInput, setProfileDistrictInput] = useState("Mymensingh");
+  const [profileAddressInput, setProfileAddressInput] = useState("");
+  const [accountSavedNotice, setAccountSavedNotice] = useState("");
+
   const [authMode, setAuthMode] = useState<AuthMode>("login");
 
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -682,7 +731,7 @@ export default function HomeStore() {
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterStatus, setNewsletterStatus] = useState<string>("");
 
-  const isLight = isMounted && themeMode === "light";
+  const isLight = isMounted ? themeMode === "light" : true;
   const isAuthenticatedCustomer = Boolean(
     customerUser?.email && customerUser?.verified
   );
@@ -791,24 +840,10 @@ export default function HomeStore() {
   };
 
   useEffect(() => {
+    const initialTheme = readInitialTheme();
+    setThemeMode(initialTheme);
+    applyThemeToDocument(initialTheme);
     setIsMounted(true);
-    try {
-      const attrTheme = document.documentElement.getAttribute(
-        "data-maveron-theme"
-      );
-      const savedTheme = localStorage.getItem("maveron_theme_mode");
-      const resolved: ThemeMode =
-        savedTheme === "light" || savedTheme === "night"
-          ? savedTheme
-          : attrTheme === "light" || attrTheme === "night"
-          ? attrTheme
-          : "night";
-
-      setThemeMode(resolved);
-      applyThemeToDocument(resolved);
-    } catch {
-      // ignore
-    }
   }, []);
 
   useEffect(() => {
@@ -875,7 +910,7 @@ export default function HomeStore() {
   };
 
   const toggleThemeMode = () => {
-    const next: ThemeMode = themeMode === "night" ? "light" : "night";
+    const next: ThemeMode = themeMode === "light" ? "night" : "light";
     setThemeMode(next);
     try {
       localStorage.setItem("maveron_theme_mode", next);
@@ -908,6 +943,18 @@ export default function HomeStore() {
     }
 
     try {
+      const savedWishlist = localStorage.getItem("maveron_wishlist");
+      if (savedWishlist) {
+        const parsedWish = JSON.parse(savedWishlist);
+        if (Array.isArray(parsedWish)) {
+          setWishlist(parsedWish.map(String));
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
       const savedUser =
         localStorage.getItem("maveron_user") ||
         sessionStorage.getItem("maveron_user");
@@ -917,8 +964,11 @@ export default function HomeStore() {
           setCustomerUser(parsed);
           setCustomerName(parsed.name || "");
           setCustomerPhone(parsed.phone || "");
+          setProfileNameInput(parsed.name || "");
+          setProfilePhoneInput(parsed.phone || "");
           if (parsed.district) {
             setCustomerDistrict(parsed.district);
+            setProfileDistrictInput(parsed.district);
             setDeliveryLocation(parsed.district);
             setDeliveryZone(
               parsed.district.toLowerCase().includes("mymensingh")
@@ -928,6 +978,7 @@ export default function HomeStore() {
           }
           if (parsed.address) {
             setCustomerAddress(parsed.address);
+            setProfileAddressInput(parsed.address);
           }
         }
       }
@@ -935,6 +986,15 @@ export default function HomeStore() {
       console.error("Failed to load customer user:", err);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    try {
+      localStorage.setItem("maveron_wishlist", JSON.stringify(wishlist));
+    } catch {
+      // ignore
+    }
+  }, [wishlist, isMounted]);
 
   useEffect(() => {
     try {
@@ -1090,6 +1150,47 @@ export default function HomeStore() {
     };
   }, []);
 
+  const loadAccountOrders = async (profile: CustomerProfile | null) => {
+    if (!profile) {
+      setUserOrders([]);
+      return;
+    }
+    setLoadingUserOrders(true);
+    try {
+      const localRaw = localStorage.getItem("maveron_my_orders");
+      const localOrders: UserOrderRecord[] = localRaw ? JSON.parse(localRaw) : [];
+
+      const queryPhone = encodeURIComponent(profile.phone || customerPhone || "");
+      const res = await fetch(`/api/orders?phone=${queryPhone}`, {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.orders)) {
+          const mapById = new Map<string, UserOrderRecord>();
+          for (const ord of [...data.orders, ...localOrders]) {
+            const key = String(ord._id || ord.orderId || "");
+            if (key && !mapById.has(key)) {
+              mapById.set(key, ord);
+            }
+          }
+          setUserOrders(Array.from(mapById.values()));
+          return;
+        }
+      }
+      setUserOrders(localOrders);
+    } catch {
+      try {
+        const localRaw = localStorage.getItem("maveron_my_orders");
+        setUserOrders(localRaw ? JSON.parse(localRaw) : []);
+      } catch {
+        setUserOrders([]);
+      }
+    } finally {
+      setLoadingUserOrders(false);
+    }
+  };
+
   const isValidBdPhone = (phone: string) => {
     const cleaned = phone.replace(/[\s-]/g, "");
     return /^(?:\+?88)?01[3-9]\d{8}$/.test(cleaned);
@@ -1107,6 +1208,7 @@ export default function HomeStore() {
         body: JSON.stringify({
           name: profile.name,
           email: profile.email,
+          phone: profile.phone,
           district: profile.district,
           address: profile.address,
           provider: profile.provider || "email",
@@ -1123,9 +1225,14 @@ export default function HomeStore() {
 
     setCustomerUser(profile);
     setCustomerName(profile.name || "");
-    if (profile.phone) setCustomerPhone(profile.phone);
+    setProfileNameInput(profile.name || "");
+    if (profile.phone) {
+      setCustomerPhone(profile.phone);
+      setProfilePhoneInput(profile.phone);
+    }
     if (profile.district) {
       setCustomerDistrict(profile.district);
+      setProfileDistrictInput(profile.district);
       setDeliveryLocation(profile.district);
       setDeliveryZone(
         profile.district.toLowerCase().includes("mymensingh")
@@ -1133,7 +1240,10 @@ export default function HomeStore() {
           : "outside"
       );
     }
-    if (profile.address) setCustomerAddress(profile.address);
+    if (profile.address) {
+      setCustomerAddress(profile.address);
+      setProfileAddressInput(profile.address);
+    }
 
     try {
       if (rememberMe) {
@@ -1245,11 +1355,41 @@ export default function HomeStore() {
   const openAccountModal = () => {
     setLoginError("");
     setForgotNotice("");
+    setAccountSavedNotice("");
+    setAccountSection("menu");
     setAuthMode("login");
     setLoginIdentifier(customerUser?.email || "");
     setLoginPassword("");
+    if (customerUser) {
+      setProfileNameInput(customerUser.name || "");
+      setProfilePhoneInput(customerUser.phone || customerPhone || "");
+      setProfileDistrictInput(customerUser.district || customerDistrict || "Mymensingh");
+      setProfileAddressInput(customerUser.address || customerAddress || "");
+      void loadAccountOrders(customerUser);
+    }
     setActiveBottomTab("account");
     setIsAccountModalOpen(true);
+  };
+
+  const handleSaveAccountProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerUser) return;
+    const updated: CustomerProfile = {
+      ...customerUser,
+      name: profileNameInput.trim() || customerUser.name,
+      phone: profilePhoneInput.trim(),
+      district: profileDistrictInput.trim() || "Mymensingh",
+      address: profileAddressInput.trim(),
+    };
+    persistCustomerProfile(updated);
+    setAccountSavedNotice(
+      lang === "bn"
+        ? "প্রোফাইল ও ঠিকানা সফলভাবে সংরক্ষিত হয়েছে।"
+        : "Profile & address details saved successfully."
+    );
+    notify(
+      lang === "bn" ? "অ্যাকাউন্ট তথ্য আপডেট হয়েছে" : "Account details updated"
+    );
   };
 
   const handleStandardLogin = async (e: React.FormEvent) => {
@@ -1310,6 +1450,7 @@ export default function HomeStore() {
           idVal.split("@")[0] ||
           `${BRAND_NAME} Member`,
         email: String(data.user.email).trim().toLowerCase(),
+        phone: String(data.user.phone || ""),
         district: String(data.user.district || customerDistrict || "Mymensingh"),
         address: String(data.user.address || customerAddress || ""),
         provider: "email",
@@ -1317,8 +1458,7 @@ export default function HomeStore() {
       });
 
       setLoginPassword("");
-      setIsAccountModalOpen(false);
-      setActiveBottomTab("home");
+      setAccountSection("menu");
       notify(
         lang === "bn"
           ? `${BRAND_NAME}-এ লগইন সফল হয়েছে!`
@@ -1505,8 +1645,7 @@ export default function HomeStore() {
       setRegEmail("");
       setRegPassword("");
       setRegConfirmPassword("");
-      setIsAccountModalOpen(false);
-      setActiveBottomTab("home");
+      setAccountSection("menu");
       notify(
         lang === "bn"
           ? "পাসওয়ার্ড সেট হয়ে অ্যাকাউন্ট তৈরি ও লগইন সম্পন্ন হয়েছে!"
@@ -1525,6 +1664,8 @@ export default function HomeStore() {
 
   const handleCustomerLogout = () => {
     setCustomerUser(null);
+    setAccountSection("menu");
+    setUserOrders([]);
     try {
       localStorage.removeItem("maveron_user");
       sessionStorage.removeItem("maveron_user");
@@ -1655,6 +1796,13 @@ export default function HomeStore() {
       (p) => typeof p.oldPrice === "number" && p.oldPrice > p.price
     ).length;
   }, [products]);
+
+  const inProgressOrdersCount = useMemo(() => {
+    return userOrders.filter((ord) => {
+      const st = String(ord.status || "Pending").toLowerCase();
+      return st !== "delivered" && st !== "cancelled";
+    }).length;
+  }, [userOrders]);
 
   const relatedProducts = useMemo(() => {
     if (!quickViewProduct) {
@@ -1916,6 +2064,33 @@ export default function HomeStore() {
         data.order?._id ||
         data.orderId ||
         `MVR-${Date.now().toString().slice(-6)}`;
+
+      const createdRecord: UserOrderRecord = {
+        _id: String(generatedId),
+        orderId: String(data.order?.orderId || generatedId),
+        customerName: customerName.trim(),
+        phone: customerPhone.trim(),
+        address: fullAddress,
+        totalAmount: grandTotal,
+        status: "Pending",
+        createdAt: new Date().toISOString(),
+        items: cart.map((item) => ({
+          name: item.product.name,
+          quantity: item.quantity,
+          price: item.product.price,
+        })),
+      };
+
+      setUserOrders((prev) => {
+        const next = [createdRecord, ...prev];
+        try {
+          localStorage.setItem("maveron_my_orders", JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+
       setConfirmedOrderId(String(generatedId));
       setCart([]);
       setSenderNumber("");
@@ -2090,9 +2265,7 @@ export default function HomeStore() {
               onClick={toggleThemeMode}
               aria-label="Toggle Light or Night Mode"
               title={
-                themeMode === "night"
-                  ? "Switch to Light Mode"
-                  : "Switch to Night Mode"
+                isLight ? "Switch to Night Mode" : "Switch to Light Mode"
               }
               className={`h-8 sm:h-10 px-2 sm:px-3 rounded-full flex items-center justify-center gap-1 text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${t.pillBtn}`}
             >
@@ -2541,13 +2714,13 @@ export default function HomeStore() {
       >
         <div
           suppressHydrationWarning
-          className={`rounded-3xl p-4 sm:p-6 mb-7 space-y-4 ${t.surface}`}
+          className={`rounded-3xl p-3.5 sm:p-6 mb-7 space-y-3.5 ${t.surface}`}
         >
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <h2
                 suppressHydrationWarning
-                className={`text-xl sm:text-2xl font-bold tracking-tight mr-2 ${t.titleText}`}
+                className={`text-lg sm:text-2xl font-bold tracking-tight mr-1.5 ${t.titleText}`}
               >
                 {isMounted && showWishlistOnly
                   ? lang === "bn"
@@ -2573,7 +2746,7 @@ export default function HomeStore() {
                   setSelectedCategory("all");
                   setSelectedSubCategory("all");
                 }}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wide border transition cursor-pointer ${
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-[11px] sm:text-xs font-bold tracking-wide border transition cursor-pointer ${
                   !showWishlistOnly &&
                   !flashSaleOnly &&
                   selectedSubCategory === "all" &&
@@ -2602,7 +2775,7 @@ export default function HomeStore() {
                       setSelectedSubCategory(catLabel);
                       setSelectedCategory(normalizeCategory(catLabel));
                     }}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide border transition cursor-pointer ${
+                    className={`px-3 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-xs font-bold tracking-wide border transition cursor-pointer ${
                       isCatSelected ? t.chipActive : t.chipIdle
                     }`}
                   >
@@ -2612,13 +2785,14 @@ export default function HomeStore() {
               })}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
+            {/* Mobile-safe Sort + Grid/List row */}
+            <div className="flex items-center justify-between sm:justify-end gap-2 w-full md:w-auto">
               <select
                 value={sortBy}
                 suppressHydrationWarning
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
                 aria-label="Sort products"
-                className={`rounded-xl px-3 py-2 text-xs sm:text-sm font-medium outline-none cursor-pointer ${t.input}`}
+                className={`flex-1 sm:flex-initial min-w-0 rounded-xl px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-medium outline-none cursor-pointer ${t.input}`}
               >
                 <option value="featured">
                   {isMounted && lang === "bn"
@@ -2644,7 +2818,7 @@ export default function HomeStore() {
 
               <div
                 suppressHydrationWarning
-                className={`flex items-center p-1 rounded-xl ${t.surfaceAlt}`}
+                className={`flex items-center p-1 rounded-xl shrink-0 ${t.surfaceAlt}`}
               >
                 <button
                   type="button"
@@ -2675,7 +2849,7 @@ export default function HomeStore() {
 
         {/* Products List / Grid */}
         {loadingProducts ? (
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
             {[1, 2, 3, 4].map((n) => (
               <div
                 key={n}
@@ -2742,9 +2916,7 @@ export default function HomeStore() {
           <div
             className={
               viewMode === "grid"
-                ? isFilteredCollectionView
-                  ? "grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6"
-                  : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6"
+                ? "grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6"
                 : "space-y-4"
             }
           >
@@ -3655,7 +3827,7 @@ export default function HomeStore() {
         </a>
       </div>
 
-      {/* Floating Bottom Navigation Bar */}
+      {/* Floating Bottom Navigation Bar (Clean single-layer icons) */}
       <nav
         suppressHydrationWarning
         className={`fixed bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-xl z-40 rounded-full px-2 sm:px-3 py-1.5 ${t.navBg}`}
@@ -3886,104 +4058,564 @@ export default function HomeStore() {
         </div>
       )}
 
-      {/* Email + Password Login / Password Create (Register) / Forgot Password Modal */}
+      {/* Account Dashboard (p3 + p4 layout without crossed items) & Auth Modal */}
       {isMounted && isAccountModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
-          <div
-            className="relative w-full max-w-[440px] rounded-[28px] overflow-hidden border border-zinc-700/70 shadow-[0_25px_80px_rgba(0,0,0,0.9)] my-auto text-white"
-            style={{
-              backgroundColor: "#09090B",
-              backgroundImage: `
-                radial-gradient(ellipse 85% 55% at 88% 12%, rgba(228,228,231,0.28), transparent 60%),
-                radial-gradient(ellipse 75% 50% at 12% 38%, rgba(161,161,170,0.18), transparent 65%),
-                radial-gradient(ellipse 90% 60% at 78% 92%, rgba(212,212,216,0.22), transparent 65%),
-                url('${LOGIN_SILK_BG_SRC}')
-              `,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/45 to-black/75 pointer-events-none" />
-
-            <button
-              type="button"
-              onClick={() => {
-                setIsAccountModalOpen(false);
-                setActiveBottomTab("home");
-              }}
-              aria-label="Close modal"
-              className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/80 text-zinc-200 flex items-center justify-center transition cursor-pointer"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+          {customerUser ? (
+            <div
+              className={`relative w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl my-auto ${t.surface}`}
             >
-              <X className="w-4 h-4" />
-            </button>
-
-            {customerUser ? (
-              <div className="relative z-10 p-6 sm:p-7 space-y-5">
-                <div className="text-center pt-1 space-y-1">
-                  <img
-                    src={LOGO_SRC}
-                    alt={BRAND_NAME}
-                    className="h-11 w-auto mx-auto object-contain"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display =
-                        "none";
-                    }}
-                  />
-                  <h3 className="text-2xl font-serif tracking-[0.2em] text-white">
-                    {BRAND_NAME}
-                  </h3>
-                  <p className="text-[10px] tracking-[0.28em] text-zinc-300 uppercase">
-                    {BRAND_TAGLINE}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-black/65 backdrop-blur-md border border-zinc-700/70 p-4 space-y-1.5 text-center">
-                  <p className="text-base font-bold text-white">
-                    {customerUser.name}
-                  </p>
-                  {customerUser.email && (
-                    <p className="text-xs text-zinc-300">{customerUser.email}</p>
-                  )}
-                  <p className="text-xs text-zinc-400">
-                    District: {customerUser.district}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  <Link
-                    href="/track-order"
-                    onClick={() => {
-                      rememberCurrentScroll();
-                      setIsAccountModalOpen(false);
-                    }}
-                    className="bg-gradient-to-b from-zinc-200 via-zinc-300 to-zinc-500 hover:brightness-105 text-zinc-950 text-xs font-extrabold py-3 px-4 rounded-xl text-center transition shadow-md"
-                  >
-                    {lang === "bn" ? "অর্ডার ট্র্যাক করুন" : "Track My Orders"}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={handleCustomerLogout}
-                    className="inline-flex items-center justify-center gap-1.5 bg-zinc-900/90 hover:bg-rose-950/80 text-rose-200 border border-zinc-700 text-xs font-semibold py-3 px-4 rounded-xl transition cursor-pointer"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    {lang === "bn" ? "সাইন আউট" : "Sign Out"}
-                  </button>
-                </div>
-
+              {/* Top Profile Hero Card (inspired by 3rd image) */}
+              <div
+                className="relative p-5 sm:p-6 text-white"
+                style={{
+                  background:
+                    "linear-gradient(125deg, #090D16 0%, #161B2E 52%, #3B0D18 100%)",
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => {
                     setIsAccountModalOpen(false);
+                    setAccountSection("menu");
                     setActiveBottomTab("home");
                   }}
-                  className="w-full bg-black/55 hover:bg-zinc-900/80 border border-zinc-700/80 text-zinc-200 text-xs font-semibold py-2.5 rounded-xl cursor-pointer transition"
+                  aria-label="Close account modal"
+                  className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer"
                 >
-                  {lang === "bn"
-                    ? "স্টোরে ফিরে যান"
-                    : "Continue Shopping"}
+                  <X className="w-4 h-4" />
                 </button>
+
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full p-[2px] bg-gradient-to-tr from-amber-400 via-rose-500 to-sky-400 shrink-0">
+                    <div className="w-full h-full rounded-full bg-[#0C101D] flex items-center justify-center text-xl sm:text-2xl font-black uppercase text-white">
+                      {(customerUser.name || "U").charAt(0)}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold tracking-[0.22em] uppercase text-zinc-300">
+                      {lang === "bn" ? "আমার অ্যাকাউন্ট" : "MY ACCOUNT"}
+                    </p>
+                    <h3 className="text-xl sm:text-2xl font-extrabold truncate mt-0.5">
+                      {customerUser.name}
+                    </h3>
+                    {customerUser.email && (
+                      <p className="text-xs sm:text-sm text-zinc-300 truncate">
+                        {customerUser.email}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3 Stat Cards: Orders | In progress | Wishlist */}
+                <div className="grid grid-cols-3 gap-2.5 sm:gap-3 mt-5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountSection("orders");
+                      void loadAccountOrders(customerUser);
+                    }}
+                    className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 p-3 text-left transition cursor-pointer"
+                  >
+                    <p className="text-lg sm:text-xl font-black text-white">
+                      {userOrders.length}
+                    </p>
+                    <p className="text-[11px] sm:text-xs text-zinc-200 mt-0.5">
+                      {lang === "bn" ? "অর্ডার" : "Orders"}
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountSection("orders");
+                      void loadAccountOrders(customerUser);
+                    }}
+                    className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 p-3 text-left transition cursor-pointer"
+                  >
+                    <p className="text-lg sm:text-xl font-black text-white">
+                      {inProgressOrdersCount}
+                    </p>
+                    <p className="text-[11px] sm:text-xs text-zinc-200 mt-0.5">
+                      {lang === "bn" ? "চলমান" : "In progress"}
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAccountSection("wishlist")}
+                    className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 p-3 text-left transition cursor-pointer"
+                  >
+                    <p className="text-lg sm:text-xl font-black text-white">
+                      {wishlist.length}
+                    </p>
+                    <p className="text-[11px] sm:text-xs text-zinc-200 mt-0.5">
+                      {lang === "bn" ? "উইশলিস্ট" : "Wishlist"}
+                    </p>
+                  </button>
+                </div>
               </div>
-            ) : (
+
+              {/* Account Body */}
+              <div className="p-4 sm:p-6 space-y-4 max-h-[62vh] overflow-y-auto">
+                {accountSection !== "menu" && (
+                  <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountSection("menu");
+                        setAccountSavedNotice("");
+                      }}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-xl cursor-pointer ${t.pillBtn}`}
+                    >
+                      {lang === "bn"
+                        ? "← অ্যাকাউন্ট মেনু"
+                        : "← Back to Account Menu"}
+                    </button>
+                    <span className={`text-xs font-bold uppercase ${t.mutedText}`}>
+                      {accountSection}
+                    </span>
+                  </div>
+                )}
+
+                {accountSection === "menu" && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                    {/* 1. My Orders */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountSection("orders");
+                        void loadAccountOrders(customerUser);
+                      }}
+                      className={`p-3.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition cursor-pointer ${t.surfaceAlt} ${
+                        isLight
+                          ? "hover:border-zinc-400"
+                          : "hover:border-zinc-500"
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-xs">
+                        <Package className="w-5 h-5" />
+                      </div>
+                      <span className={`text-xs font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "আমার অর্ডার" : "My Orders"}
+                      </span>
+                    </button>
+
+                    {/* 2. Old Dues */}
+                    <button
+                      type="button"
+                      onClick={() => setAccountSection("dues")}
+                      className={`p-3.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition cursor-pointer ${t.surfaceAlt} ${
+                        isLight
+                          ? "hover:border-zinc-400"
+                          : "hover:border-zinc-500"
+                      }`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center ${t.pillBtn}`}
+                      >
+                        <Wallet className="w-5 h-5" />
+                      </div>
+                      <span className={`text-xs font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "বকেয়া হিসাব" : "Old Dues"}
+                      </span>
+                    </button>
+
+                    {/* 3. Wishlist */}
+                    <button
+                      type="button"
+                      onClick={() => setAccountSection("wishlist")}
+                      className={`p-3.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition cursor-pointer ${t.surfaceAlt} ${
+                        isLight
+                          ? "hover:border-zinc-400"
+                          : "hover:border-zinc-500"
+                      }`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center ${t.pillBtn}`}
+                      >
+                        <Heart className="w-5 h-5 text-rose-500" />
+                      </div>
+                      <span className={`text-xs font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "উইশলিস্ট" : "Wishlist"}
+                      </span>
+                    </button>
+
+                    {/* 4. My Reviews */}
+                    <button
+                      type="button"
+                      onClick={() => setAccountSection("reviews")}
+                      className={`p-3.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition cursor-pointer ${t.surfaceAlt} ${
+                        isLight
+                          ? "hover:border-zinc-400"
+                          : "hover:border-zinc-500"
+                      }`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center ${t.pillBtn}`}
+                      >
+                        <Star className="w-5 h-5 text-amber-500" />
+                      </div>
+                      <span className={`text-xs font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "আমার রিভিউ" : "My Reviews"}
+                      </span>
+                    </button>
+
+                    {/* 5. Addresses */}
+                    <button
+                      type="button"
+                      onClick={() => setAccountSection("addresses")}
+                      className={`p-3.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition cursor-pointer ${t.surfaceAlt} ${
+                        isLight
+                          ? "hover:border-zinc-400"
+                          : "hover:border-zinc-500"
+                      }`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center ${t.pillBtn}`}
+                      >
+                        <MapPin className="w-5 h-5" />
+                      </div>
+                      <span className={`text-xs font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "ঠিকানা" : "Addresses"}
+                      </span>
+                    </button>
+
+                    {/* 6. Profile */}
+                    <button
+                      type="button"
+                      onClick={() => setAccountSection("profile")}
+                      className={`p-3.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition cursor-pointer ${t.surfaceAlt} ${
+                        isLight
+                          ? "hover:border-zinc-400"
+                          : "hover:border-zinc-500"
+                      }`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center ${t.pillBtn}`}
+                      >
+                        <User className="w-5 h-5" />
+                      </div>
+                      <span className={`text-xs font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "প্রোফাইল" : "Profile"}
+                      </span>
+                    </button>
+
+                    {/* 7. Settings */}
+                    <button
+                      type="button"
+                      onClick={() => setAccountSection("settings")}
+                      className={`p-3.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition cursor-pointer ${t.surfaceAlt} ${
+                        isLight
+                          ? "hover:border-zinc-400"
+                          : "hover:border-zinc-500"
+                      }`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center ${t.pillBtn}`}
+                      >
+                        <Settings className="w-5 h-5" />
+                      </div>
+                      <span className={`text-xs font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "সেটিংস" : "Settings"}
+                      </span>
+                    </button>
+
+                    {/* 8. Sign out */}
+                    <button
+                      type="button"
+                      onClick={handleCustomerLogout}
+                      className={`p-3.5 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition cursor-pointer ${t.surfaceAlt} hover:border-rose-500/60`}
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-500 flex items-center justify-center">
+                        <LogOut className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs font-bold text-rose-500">
+                        {lang === "bn" ? "সাইন আউট" : "Sign out"}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {accountSection === "orders" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className={`text-sm font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "আমার অর্ডারসমূহ" : "My Orders"}
+                      </h4>
+                      <Link
+                        href="/track-order"
+                        onClick={() => {
+                          rememberCurrentScroll();
+                          setIsAccountModalOpen(false);
+                        }}
+                        className="text-xs font-bold underline"
+                      >
+                        {lang === "bn"
+                          ? "বিস্তারিত ট্র্যাক করুন →"
+                          : "Full Track Order Page →"}
+                      </Link>
+                    </div>
+                    {loadingUserOrders ? (
+                      <p className={`text-xs ${t.mutedText}`}>
+                        {lang === "bn" ? "অর্ডার লোড হচ্ছে..." : "Loading orders..."}
+                      </p>
+                    ) : userOrders.length === 0 ? (
+                      <div className={`p-4 rounded-2xl text-xs ${t.surfaceAlt} ${t.mutedText}`}>
+                        {lang === "bn"
+                          ? "এখনো কোনো অর্ডার পাওয়া যায়নি।"
+                          : "No orders found for your account yet."}
+                      </div>
+                    ) : (
+                      userOrders.map((ord) => (
+                        <div
+                          key={ord._id}
+                          className={`p-3.5 rounded-2xl flex items-center justify-between gap-3 ${t.surfaceAlt}`}
+                        >
+                          <div className="min-w-0">
+                            <p className={`text-xs font-bold truncate ${t.titleText}`}>
+                              #{ord.orderId || ord._id} • {ord.status || "Pending"}
+                            </p>
+                            <p className={`text-[11px] truncate ${t.mutedText}`}>
+                              {(ord.items || [])
+                                .map((i) => `${i.name} ×${i.quantity}`)
+                                .join(", ")}
+                            </p>
+                          </div>
+                          <span className={`text-xs font-extrabold shrink-0 ${t.titleText}`}>
+                            ৳{Number(ord.totalAmount || 0).toLocaleString()}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {accountSection === "dues" && (
+                  <div className={`p-4 rounded-2xl space-y-2 ${t.surfaceAlt}`}>
+                    <h4 className={`text-sm font-bold ${t.titleText}`}>
+                      {lang === "bn" ? "বকেয়া হিসাব (Old Dues)" : "Old Dues"}
+                    </h4>
+                    <p className={`text-xs ${t.mutedText}`}>
+                      {lang === "bn"
+                        ? "আপনার অ্যাকাউন্টে কোনো পূর্বের বকেয়া (৳0) নেই।"
+                        : "You have no pending old dues (৳0) on your account."}
+                    </p>
+                  </div>
+                )}
+
+                {accountSection === "wishlist" && (
+                  <div className="space-y-2.5">
+                    <h4 className={`text-sm font-bold ${t.titleText}`}>
+                      {lang === "bn"
+                        ? `সেভ করা উইশলিস্ট (${wishlist.length})`
+                        : `Saved Wishlist (${wishlist.length})`}
+                    </h4>
+                    {wishlist.length === 0 ? (
+                      <p className={`text-xs ${t.mutedText}`}>
+                        {lang === "bn"
+                          ? "উইশলিস্টে কোনো প্রোডাক্ট নেই।"
+                          : "Your wishlist is currently empty."}
+                      </p>
+                    ) : (
+                      products
+                        .filter((p) => wishlist.includes(p.id))
+                        .map((item) => (
+                          <div
+                            key={item.id}
+                            className={`p-3 rounded-2xl flex items-center justify-between gap-3 ${t.surfaceAlt}`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <img
+                                src={item.image}
+                                alt={item.name}
+                                className="w-11 h-11 rounded-xl object-cover shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <p className={`text-xs font-bold truncate ${t.titleText}`}>
+                                  {item.name}
+                                </p>
+                                <p className={`text-xs ${t.mutedText}`}>
+                                  ৳{item.price}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAccountModalOpen(false);
+                                addToCart(item, true);
+                              }}
+                              className={`text-xs font-extrabold px-3 py-1.5 rounded-xl cursor-pointer ${t.silverCta}`}
+                            >
+                              {lang === "bn" ? "কার্টে নিন" : "Add"}
+                            </button>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                )}
+
+                {accountSection === "reviews" && (
+                  <div className="space-y-2.5">
+                    <h4 className={`text-sm font-bold ${t.titleText}`}>
+                      {lang === "bn" ? "কাস্টমার ও আমার রিভিউ" : "Reviews"}
+                    </h4>
+                    {reviews.length === 0 ? (
+                      <p className={`text-xs ${t.mutedText}`}>
+                        {lang === "bn"
+                          ? "এখনো কোনো রিভিউ পোস্ট করা হয়নি।"
+                          : "No reviews posted yet."}
+                      </p>
+                    ) : (
+                      reviews.slice(0, 6).map((r) => (
+                        <div
+                          key={r.id}
+                          className={`p-3 rounded-2xl space-y-1 ${t.surfaceAlt}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className={`text-xs font-bold ${t.titleText}`}>
+                              {r.name}
+                            </span>
+                            <span className="text-xs text-amber-500 font-bold">
+                              {r.rating} ★
+                            </span>
+                          </div>
+                          <p className={`text-xs ${t.bodyText}`}>{r.comment}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {(accountSection === "profile" ||
+                  accountSection === "addresses") && (
+                  <form
+                    onSubmit={handleSaveAccountProfile}
+                    className="space-y-3"
+                  >
+                    <h4 className={`text-sm font-bold ${t.titleText}`}>
+                      {accountSection === "addresses"
+                        ? lang === "bn"
+                          ? "ডেলিভারি ঠিকানা আপডেট"
+                          : "Saved Delivery Address"
+                        : lang === "bn"
+                        ? "প্রোফাইল তথ্য"
+                        : "Profile Information"}
+                    </h4>
+                    <input
+                      type="text"
+                      value={profileNameInput}
+                      onChange={(e) => setProfileNameInput(e.target.value)}
+                      placeholder={lang === "bn" ? "পুরো নাম" : "Full Name"}
+                      className={`w-full rounded-xl px-3.5 py-2.5 text-xs sm:text-sm outline-none ${t.input}`}
+                    />
+                    <input
+                      type="tel"
+                      value={profilePhoneInput}
+                      onChange={(e) => setProfilePhoneInput(e.target.value)}
+                      placeholder={
+                        lang === "bn" ? "মোবাইল নম্বর" : "Phone Number"
+                      }
+                      className={`w-full rounded-xl px-3.5 py-2.5 text-xs sm:text-sm outline-none ${t.input}`}
+                    />
+                    <input
+                      type="text"
+                      value={profileDistrictInput}
+                      onChange={(e) => setProfileDistrictInput(e.target.value)}
+                      placeholder={lang === "bn" ? "জেলা" : "District"}
+                      className={`w-full rounded-xl px-3.5 py-2.5 text-xs sm:text-sm outline-none ${t.input}`}
+                    />
+                    <textarea
+                      rows={2}
+                      value={profileAddressInput}
+                      onChange={(e) => setProfileAddressInput(e.target.value)}
+                      placeholder={
+                        lang === "bn" ? "বিস্তারিত ঠিকানা" : "Full Address"
+                      }
+                      className={`w-full rounded-xl px-3.5 py-2.5 text-xs sm:text-sm outline-none ${t.input}`}
+                    />
+                    {accountSavedNotice && (
+                      <p className="text-xs text-emerald-500 font-semibold">
+                        {accountSavedNotice}
+                      </p>
+                    )}
+                    <button
+                      type="submit"
+                      className={`text-xs sm:text-sm font-extrabold px-5 py-2.5 rounded-xl cursor-pointer ${t.silverCta}`}
+                    >
+                      {lang === "bn" ? "সেভ করুন" : "Save Changes"}
+                    </button>
+                  </form>
+                )}
+
+                {accountSection === "settings" && (
+                  <div className="space-y-3">
+                    <h4 className={`text-sm font-bold ${t.titleText}`}>
+                      {lang === "bn" ? "অ্যাকাউন্ট ও অ্যাপ সেটিংস" : "Settings"}
+                    </h4>
+                    <div
+                      className={`p-3.5 rounded-2xl flex items-center justify-between ${t.surfaceAlt}`}
+                    >
+                      <span className={`text-xs font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "থিম মোড" : "Theme Mode"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={toggleThemeMode}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-xl cursor-pointer ${t.pillBtn}`}
+                      >
+                        {isLight ? "Light → Night" : "Night → Light"}
+                      </button>
+                    </div>
+                    <div
+                      className={`p-3.5 rounded-2xl flex items-center justify-between ${t.surfaceAlt}`}
+                    >
+                      <span className={`text-xs font-bold ${t.titleText}`}>
+                        {lang === "bn" ? "ভাষা (Language)" : "Language"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={toggleLanguage}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-xl cursor-pointer ${t.pillBtn}`}
+                      >
+                        {lang === "bn" ? "বাংলা → English" : "English → বাংলা"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Logged-out Auth Modal */
+            <div
+              className="relative w-full max-w-[440px] rounded-[28px] overflow-hidden border border-zinc-700/70 shadow-[0_25px_80px_rgba(0,0,0,0.9)] my-auto text-white"
+              style={{
+                backgroundColor: "#09090B",
+                backgroundImage: `
+                  radial-gradient(ellipse 85% 55% at 88% 12%, rgba(228,228,231,0.28), transparent 60%),
+                  radial-gradient(ellipse 75% 50% at 12% 38%, rgba(161,161,170,0.18), transparent 65%),
+                  radial-gradient(ellipse 90% 60% at 78% 92%, rgba(212,212,216,0.22), transparent 65%),
+                  url('${LOGIN_SILK_BG_SRC}')
+                `,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/45 to-black/75 pointer-events-none" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAccountModalOpen(false);
+                  setActiveBottomTab("home");
+                }}
+                aria-label="Close modal"
+                className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/80 text-zinc-200 flex items-center justify-center transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
               <div className="relative z-10 px-5 sm:px-7 pt-7 pb-6">
                 <div className="flex flex-col items-center text-center mb-5">
                   <img
@@ -4358,8 +4990,8 @@ export default function HomeStore() {
                   )}
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
