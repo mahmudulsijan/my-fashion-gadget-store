@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/app/lib/mongodb";
 import { Order } from "@/app/models/Order";
-import { isAdminRequest } from "@/app/lib/adminAuth";
+import { getAdminSession, hasAdminAccess } from "@/app/lib/adminAuth";
 
 const ALLOWED_STATUSES = [
   "Pending",
@@ -18,9 +18,9 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!isAdminRequest(req)) {
+    if (!hasAdminAccess(req, ["admin", "staff"])) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized: Admin access required" },
+        { success: false, message: "Unauthorized: Admin or Staff access required" },
         { status: 401 }
       );
     }
@@ -57,9 +57,10 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!isAdminRequest(req)) {
+    const session = getAdminSession(req);
+    if (!session || !["admin", "staff"].includes(session.role)) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized: Admin access required" },
+        { success: false, message: "Unauthorized: Admin or Staff access required" },
         { status: 401 }
       );
     }
@@ -76,6 +77,7 @@ export async function PATCH(
 
     const body = await req.json();
     const updates: Record<string, unknown> = {};
+    const nowIso = new Date().toISOString();
 
     if (typeof body.status === "string" && body.status.trim()) {
       const nextStatus = body.status.trim();
@@ -86,6 +88,7 @@ export async function PATCH(
         );
       }
       updates.status = nextStatus;
+      updates.statusUpdatedAt = nowIso;
     }
 
     if (typeof body.address === "string" && body.address.trim()) {
@@ -98,6 +101,10 @@ export async function PATCH(
         { status: 400 }
       );
     }
+
+    updates.lastUpdatedByRole = session.role;
+    updates.lastUpdatedById = session.adminId;
+    updates.lastUpdatedAt = nowIso;
 
     const updatedOrder = await Order.findByIdAndUpdate(
       id,
@@ -115,6 +122,11 @@ export async function PATCH(
     return NextResponse.json({
       success: true,
       order: updatedOrder,
+      updatedBy: {
+        role: session.role,
+        adminId: session.adminId,
+        at: nowIso,
+      },
       message: "Order updated successfully",
     });
   } catch (err: unknown) {
@@ -130,10 +142,13 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!isAdminRequest(req)) {
+    if (!hasAdminAccess(req, ["admin"])) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized: Admin access required" },
-        { status: 401 }
+        {
+          success: false,
+          message: "Forbidden: Only Admin can delete orders",
+        },
+        { status: 403 }
       );
     }
 

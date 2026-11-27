@@ -35,6 +35,10 @@ import {
   Link2,
   Sun,
   Moon,
+  Printer,
+  Truck,
+  Clock,
+  Activity,
 } from "lucide-react";
 
 interface ProductItem {
@@ -50,6 +54,13 @@ interface ProductItem {
   badge?: string;
   sizes?: string[];
   colors?: string[];
+  variantStock?: Record<string, number>;
+  flashSale?: {
+    enabled?: boolean;
+    discountPercent?: number;
+    startsAt?: string;
+    endsAt?: string;
+  };
   specs?: string;
   description?: string;
   stock?: number;
@@ -73,6 +84,10 @@ interface OrderItem {
   items: OrderProductLine[];
   totalAmount: number;
   status: string;
+  paymentVerified?: boolean;
+  courierName?: string;
+  courierTrackingCode?: string;
+  checkoutAt?: string;
   createdAt?: string;
 }
 
@@ -89,6 +104,8 @@ interface CustomerReviewItem {
   rating: number;
   comment: string;
   photo?: string;
+  status?: "pending" | "approved" | "rejected";
+  createdAt?: string;
 }
 
 interface LoggedInUserRecord {
@@ -119,6 +136,17 @@ interface DeliverySettings {
   bkashNumber: string;
   nagadNumber: string;
   rocketNumber: string;
+  flashSaleDiscountPercent: number;
+  flashSaleEndsAt: string;
+}
+
+interface ActivityLogItem {
+  id: string;
+  type: "Login" | "Checkout" | "Order" | "Review" | "Audit";
+  actor: string;
+  role?: "admin" | "staff" | "customer";
+  detail: string;
+  timestamp: string;
 }
 
 type AdminSection =
@@ -130,10 +158,12 @@ type AdminSection =
   | "users"
   | "subscribers"
   | "reviews"
+  | "activity"
   | "settings";
 
 type SalesPeriodTab = "daily" | "monthly" | "yearly";
 type ThemeMode = "night" | "day";
+type AdminRole = "admin" | "staff";
 
 const VALID_SECTIONS: AdminSection[] = [
   "overview",
@@ -144,6 +174,7 @@ const VALID_SECTIONS: AdminSection[] = [
   "users",
   "subscribers",
   "reviews",
+  "activity",
   "settings",
 ];
 
@@ -151,11 +182,11 @@ const BRAND_NAME = "MAVÉRON";
 const BRAND_TAGLINE = "ELEVATE YOUR EVERYDAY";
 const SUPPORT_EMAIL = "maveron.store@gmail.com";
 const LOGO_SRC = "/images/maveron-logo.png";
-const REVIEWS_STORAGE_KEY = "maveron_simple_reviews";
 const REGISTERED_ACCOUNTS_KEY = "maveron_registered_accounts";
 const CUSTOMER_PROFILE_KEY = "maveron_user";
 const THEME_STORAGE_KEY = "fg_admin_theme_mode";
 const SECTION_STORAGE_KEY = "fg_admin_active_section";
+const ACTIVITY_STORAGE_KEY = "fg_admin_activity_timeline";
 
 const STORE_SUBCATEGORIES = [
   "Men's Fashion",
@@ -178,8 +209,10 @@ const QUICK_COLOR_PRESETS = [
 const ORDER_STATUSES = [
   "Pending",
   "Confirmed",
+  "Packed",
   "Shipped",
   "Delivered",
+  "Returned",
   "Cancelled",
 ] as const;
 
@@ -190,6 +223,8 @@ const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = {
   bkashNumber: "01782141520",
   nagadNumber: "01782141520",
   rocketNumber: "015339196489",
+  flashSaleDiscountPercent: 15,
+  flashSaleEndsAt: "",
 };
 
 function isValidSection(val: string | null | undefined): val is AdminSection {
@@ -263,13 +298,42 @@ function applyThemeImmediate(mode: ThemeMode) {
   }
 }
 
-async function safeParseJson(res: Response) {
+async function safeParseJson(res: Response): Promise<Record<string, unknown>> {
   const text = await res.text();
   if (!text) return {};
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : {};
   } catch {
     return { success: false, message: text };
+  }
+}
+
+async function safeFetchJson(url: string): Promise<{
+  ok: boolean;
+  status: number;
+  data: Record<string, unknown>;
+}> {
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    const data = await safeParseJson(res);
+    return {
+      ok: res.ok,
+      status: res.status,
+      data,
+    };
+  } catch (err) {
+    console.warn(`Network fetch warning for ${url}:`, err);
+    return {
+      ok: false,
+      status: 0,
+      data: {},
+    };
   }
 }
 
@@ -289,6 +353,11 @@ function normalizeReviewRecord(
 
   const ratingNum = Number(raw?.rating ?? raw?.stars ?? 5);
   const photoVal = raw?.photo ?? raw?.image ?? raw?.photoUrl ?? raw?.img;
+  const statusVal = String(raw?.status || "pending").toLowerCase();
+  const normStatus: "pending" | "approved" | "rejected" =
+    statusVal === "approved" || statusVal === "rejected"
+      ? statusVal
+      : "pending";
 
   return {
     id: String(
@@ -304,6 +373,8 @@ function normalizeReviewRecord(
       typeof photoVal === "string" && photoVal.trim()
         ? photoVal.trim()
         : undefined,
+    status: normStatus,
+    createdAt: raw?.createdAt ? String(raw.createdAt) : undefined,
   };
 }
 
@@ -333,6 +404,20 @@ function parseOrderDate(raw?: string): Date {
   if (!raw) return new Date(0);
   const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? new Date(0) : d;
+}
+
+function formatDateTimeBD(raw?: string): string {
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 function isSameLocalDay(d: Date, ref: Date): boolean {
@@ -478,10 +563,12 @@ function getStatusBadgeStyle(status: string, isDay: boolean) {
       case "Delivered":
         return "bg-emerald-50 text-emerald-700 border-emerald-200";
       case "Shipped":
+      case "Packed":
         return "bg-sky-50 text-sky-700 border-sky-200";
       case "Confirmed":
         return "bg-indigo-50 text-indigo-700 border-indigo-200";
       case "Cancelled":
+      case "Returned":
         return "bg-rose-50 text-rose-700 border-rose-200";
       default:
         return "bg-amber-50 text-amber-700 border-amber-200";
@@ -492,10 +579,12 @@ function getStatusBadgeStyle(status: string, isDay: boolean) {
     case "Delivered":
       return "bg-emerald-950/70 text-emerald-300 border-emerald-800/60";
     case "Shipped":
+    case "Packed":
       return "bg-sky-950/70 text-sky-300 border-sky-800/60";
     case "Confirmed":
       return "bg-indigo-950/70 text-indigo-300 border-indigo-800/60";
     case "Cancelled":
+    case "Returned":
       return "bg-rose-950/70 text-rose-300 border-rose-800/60";
     default:
       return "bg-amber-950/70 text-amber-300 border-amber-800/60";
@@ -560,6 +649,8 @@ export default function AdminPage() {
 
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [adminRole, setAdminRole] = useState<AdminRole>("admin");
+  const [adminActorName, setAdminActorName] = useState("Store Owner");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -575,6 +666,8 @@ export default function AdminPage() {
   const [subscribers, setSubscribers] = useState<SubscriberItem[]>([]);
   const [reviews, setReviews] = useState<CustomerReviewItem[]>([]);
   const [loggedInUsers, setLoggedInUsers] = useState<LoggedInUserRecord[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
+  const [activityFilter, setActivityFilter] = useState<string>("All");
   const [loadingData, setLoadingData] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -588,6 +681,12 @@ export default function AdminPage() {
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
+  const [packingSlipOrder, setPackingSlipOrder] = useState<OrderItem | null>(
+    null
+  );
+  const [courierDrafts, setCourierDrafts] = useState<
+    Record<string, { courierName: string; trackingCode: string }>
+  >({});
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState<
     string | null
   >(null);
@@ -598,6 +697,7 @@ export default function AdminPage() {
   const [productSearch, setProductSearch] = useState("");
   const [productCatFilter, setProductCatFilter] = useState<string>("all");
   const [stockUpdatingId, setStockUpdatingId] = useState<string | null>(null);
+  const [flashDiscountInput, setFlashDiscountInput] = useState("15");
 
   // Add Product Form State
   const [name, setName] = useState("");
@@ -611,6 +711,9 @@ export default function AdminPage() {
   const [badge, setBadge] = useState("New Arrival");
   const [sizesText, setSizesText] = useState("M, L, XL");
   const [colorsText, setColorsText] = useState("");
+  const [variantStockText, setVariantStockText] = useState("");
+  const [flashSaleEnabled, setFlashSaleEnabled] = useState(false);
+  const [flashSaleEndsAt, setFlashSaleEndsAt] = useState("");
   const [specs, setSpecs] = useState("");
   const [description, setDescription] = useState("");
   const [stock, setStock] = useState("10");
@@ -635,6 +738,9 @@ export default function AdminPage() {
   const [editBadge, setEditBadge] = useState("");
   const [editSizesText, setEditSizesText] = useState("");
   const [editColorsText, setEditColorsText] = useState("");
+  const [editVariantStockText, setEditVariantStockText] = useState("");
+  const [editFlashSaleEnabled, setEditFlashSaleEnabled] = useState(false);
+  const [editFlashSaleEndsAt, setEditFlashSaleEndsAt] = useState("");
   const [editSpecs, setEditSpecs] = useState("");
   const [editImagesList, setEditImagesList] = useState<string[]>([]);
   const [editImageUrlInput, setEditImageUrlInput] = useState("");
@@ -648,6 +754,13 @@ export default function AdminPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
+  const ordersRef = useRef<OrderItem[]>([]);
+  const activityEndpointMissingRef = useRef(false);
+  const initialMountRef = useRef(false);
+
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
 
   const rootStyle = useMemo<React.CSSProperties>(
     () => ({
@@ -723,153 +836,190 @@ export default function AdminPage() {
     }, 2800);
   }, []);
 
-  const loadLocalReviews = useCallback(async () => {
-    const collected: CustomerReviewItem[] = [];
-    const seenKeys = new Set<string>();
-
-    const pushNormalized = (
-      list: Record<string, unknown>[],
-      sourceKey: string
+  const appendActivityLog = useCallback(
+    (
+      type: ActivityLogItem["type"],
+      detail: string,
+      actor = adminActorName,
+      role: ActivityLogItem["role"] = adminRole,
+      timestamp = new Date().toISOString()
     ) => {
-      list.forEach((item, idx) => {
-        const norm = normalizeReviewRecord(item, idx, sourceKey);
-        if (!norm) return;
-        const dedupKey = `${norm.id}::${norm.name}::${norm.comment}`;
-        if (seenKeys.has(dedupKey)) return;
-        seenKeys.add(dedupKey);
-        collected.push(norm);
-      });
-    };
+      const entry: ActivityLogItem = {
+        id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type,
+        actor,
+        role,
+        detail,
+        timestamp,
+      };
 
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const storageKey = localStorage.key(i);
-        if (!storageKey || !storageKey.toLowerCase().includes("review")) {
-          continue;
-        }
-        const rawVal = localStorage.getItem(storageKey);
-        if (!rawVal) continue;
+      setActivityLogs((prev) => {
+        const deduped = prev.filter(
+          (item) =>
+            !(
+              item.type === type &&
+              item.detail === detail &&
+              item.timestamp === timestamp
+            )
+        );
+        const next = [entry, ...deduped].slice(0, 120);
         try {
-          const parsed = JSON.parse(rawVal);
-          const arr = extractArrayFromReviewPayload(parsed);
-          pushNormalized(arr, storageKey);
+          localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(next));
         } catch {
-          // ignore non-JSON review keys
+          // ignore storage quota errors
         }
-      }
-    } catch (err) {
-      console.error("Failed to scan localStorage reviews:", err);
-    }
-
-    try {
-      const res = await fetch("/api/reviews", {
-        cache: "no-store",
-        credentials: "include",
+        return next;
       });
-      if (res.ok) {
-        const data = await safeParseJson(res);
-        const apiArr = extractArrayFromReviewPayload(data);
+    },
+    [adminActorName, adminRole]
+  );
+
+  const loadLocalReviews = useCallback(
+    async (): Promise<CustomerReviewItem[]> => {
+      const collected: CustomerReviewItem[] = [];
+      const seenKeys = new Set<string>();
+
+      const pushNormalized = (
+        list: Record<string, unknown>[],
+        sourceKey: string
+      ) => {
+        list.forEach((item, idx) => {
+          const norm = normalizeReviewRecord(item, idx, sourceKey);
+          if (!norm) return;
+          const dedupKey = `${norm.id}::${norm.name}::${norm.comment}`;
+          if (seenKeys.has(dedupKey)) return;
+          seenKeys.add(dedupKey);
+          collected.push(norm);
+        });
+      };
+
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const storageKey = localStorage.key(i);
+          if (!storageKey || !storageKey.toLowerCase().includes("review")) {
+            continue;
+          }
+          const rawVal = localStorage.getItem(storageKey);
+          if (!rawVal) continue;
+          try {
+            const parsed = JSON.parse(rawVal);
+            const arr = extractArrayFromReviewPayload(parsed);
+            pushNormalized(arr, storageKey);
+          } catch {
+            // ignore non-JSON review keys
+          }
+        }
+      } catch (err) {
+        console.error("Failed to scan localStorage reviews:", err);
+      }
+
+      const apiRes = await safeFetchJson("/api/reviews");
+      if (apiRes.ok) {
+        const apiArr = extractArrayFromReviewPayload(apiRes.data);
         pushNormalized(apiArr, "api-reviews");
       }
-    } catch {
-      // ignore if /api/reviews does not exist
-    }
 
-    setReviews(collected);
-  }, []);
+      setReviews(collected);
+      return collected;
+    },
+    []
+  );
 
-  const loadLoggedInUsers = useCallback(async () => {
-    const mergedMap = new Map<string, LoggedInUserRecord>();
+  const loadLoggedInUsers = useCallback(
+    async (): Promise<LoggedInUserRecord[]> => {
+      const mergedMap = new Map<string, LoggedInUserRecord>();
 
-    try {
-      const rawRegistered = localStorage.getItem(REGISTERED_ACCOUNTS_KEY);
-      if (rawRegistered) {
-        const parsedReg = JSON.parse(rawRegistered);
-        if (Array.isArray(parsedReg)) {
-          parsedReg.forEach((acc: Record<string, unknown>, idx: number) => {
-            const email = String(acc?.email || "").trim().toLowerCase();
-            if (!email) return;
+      try {
+        const rawRegistered = localStorage.getItem(REGISTERED_ACCOUNTS_KEY);
+        if (rawRegistered) {
+          const parsedReg = JSON.parse(rawRegistered);
+          if (Array.isArray(parsedReg)) {
+            parsedReg.forEach((acc: Record<string, unknown>, idx: number) => {
+              const email = String(acc?.email || "").trim().toLowerCase();
+              if (!email) return;
+              mergedMap.set(email, {
+                id: `reg-${email}-${idx}`,
+                name: String(acc?.name || email.split("@")[0]),
+                email,
+                provider: String(acc?.provider || "email"),
+                district: acc?.district ? String(acc.district) : undefined,
+                address: acc?.address ? String(acc.address) : undefined,
+                verified: Boolean(acc?.verified ?? true),
+                lastActiveAt: acc?.lastActiveAt
+                  ? String(acc.lastActiveAt)
+                  : acc?.createdAt
+                  ? String(acc.createdAt)
+                  : undefined,
+                isLocalOnly: true,
+              });
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to read registered accounts:", err);
+      }
+
+      try {
+        const rawCurrent = localStorage.getItem(CUSTOMER_PROFILE_KEY);
+        if (rawCurrent) {
+          const parsedCur = JSON.parse(rawCurrent);
+          const email = String(parsedCur?.email || "").trim().toLowerCase();
+          if (email) {
+            const prev = mergedMap.get(email);
             mergedMap.set(email, {
-              id: `reg-${email}-${idx}`,
-              name: String(acc?.name || email.split("@")[0]),
+              id: prev?.id || `cur-${email}`,
+              name: String(
+                parsedCur?.name || prev?.name || email.split("@")[0]
+              ),
               email,
-              provider: String(acc?.provider || "email"),
-              district: acc?.district ? String(acc.district) : undefined,
-              address: acc?.address ? String(acc.address) : undefined,
-              verified: Boolean(acc?.verified ?? true),
-              lastActiveAt: acc?.lastActiveAt
-                ? String(acc.lastActiveAt)
-                : acc?.createdAt
-                ? String(acc.createdAt)
-                : undefined,
+              provider: String(
+                parsedCur?.provider || prev?.provider || "email"
+              ),
+              district: parsedCur?.district
+                ? String(parsedCur.district)
+                : prev?.district,
+              address: parsedCur?.address
+                ? String(parsedCur.address)
+                : prev?.address,
+              verified: Boolean(parsedCur?.verified ?? prev?.verified ?? true),
+              lastActiveAt:
+                parsedCur?.loggedInAt ||
+                parsedCur?.updatedAt ||
+                prev?.lastActiveAt,
               isLocalOnly: true,
             });
-          });
+          }
         }
+      } catch (err) {
+        console.error("Failed to read active customer profile:", err);
       }
-    } catch (err) {
-      console.error("Failed to read registered accounts:", err);
-    }
 
-    try {
-      const rawCurrent = localStorage.getItem(CUSTOMER_PROFILE_KEY);
-      if (rawCurrent) {
-        const parsedCur = JSON.parse(rawCurrent);
-        const email = String(parsedCur?.email || "").trim().toLowerCase();
-        if (email) {
-          const prev = mergedMap.get(email);
-          mergedMap.set(email, {
-            id: prev?.id || `cur-${email}`,
-            name: String(parsedCur?.name || prev?.name || email.split("@")[0]),
-            email,
-            provider: String(parsedCur?.provider || prev?.provider || "email"),
-            district: parsedCur?.district
-              ? String(parsedCur.district)
-              : prev?.district,
-            address: parsedCur?.address
-              ? String(parsedCur.address)
-              : prev?.address,
-            verified: Boolean(parsedCur?.verified ?? prev?.verified ?? true),
-            lastActiveAt:
-              parsedCur?.loggedInAt ||
-              parsedCur?.updatedAt ||
-              prev?.lastActiveAt,
-            isLocalOnly: true,
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Failed to read active customer profile:", err);
-    }
-
-    try {
-      const res = await fetch("/api/users", {
-        cache: "no-store",
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await safeParseJson(res);
+      const apiRes = await safeFetchJson("/api/users");
+      if (apiRes.ok) {
+        const data = apiRes.data;
         const apiUsers = Array.isArray(data?.users)
           ? data.users
           : Array.isArray(data?.data)
           ? data.data
           : [];
-        apiUsers.forEach((u: Record<string, unknown>, idx: number) => {
-          const email = String(u?.email || "").trim().toLowerCase();
+        apiUsers.forEach((u: unknown, idx: number) => {
+          if (!u || typeof u !== "object") return;
+          const rec = u as Record<string, unknown>;
+          const email = String(rec?.email || "").trim().toLowerCase();
           if (!email) return;
           const prev = mergedMap.get(email);
           mergedMap.set(email, {
-            id: String(u?._id || u?.id || prev?.id || `api-user-${idx}`),
-            name: String(u?.name || prev?.name || email.split("@")[0]),
+            id: String(rec?._id || rec?.id || prev?.id || `api-user-${idx}`),
+            name: String(rec?.name || prev?.name || email.split("@")[0]),
             email,
-            provider: String(u?.provider || prev?.provider || "email"),
-            district: u?.district ? String(u.district) : prev?.district,
-            address: u?.address ? String(u.address) : prev?.address,
-            verified: Boolean(u?.verified ?? prev?.verified ?? true),
+            provider: String(rec?.provider || prev?.provider || "email"),
+            district: rec?.district ? String(rec.district) : prev?.district,
+            address: rec?.address ? String(rec.address) : prev?.address,
+            verified: Boolean(rec?.verified ?? prev?.verified ?? true),
             lastActiveAt: String(
-              u?.lastLoginAt ||
-                u?.updatedAt ||
-                u?.createdAt ||
+              rec?.lastLoginAt ||
+                rec?.updatedAt ||
+                rec?.createdAt ||
                 prev?.lastActiveAt ||
                 ""
             ),
@@ -877,24 +1027,138 @@ export default function AdminPage() {
           });
         });
       }
-    } catch {
-      // ignore if /api/users is not available
-    }
 
-    setLoggedInUsers(Array.from(mergedMap.values()));
-  }, []);
+      const list = Array.from(mergedMap.values());
+      setLoggedInUsers(list);
+      return list;
+    },
+    []
+  );
+
+  const buildTimelineFromSources = useCallback(
+    (
+      loadedOrders: OrderItem[],
+      loadedReviews: CustomerReviewItem[],
+      loadedUsers: LoggedInUserRecord[]
+    ) => {
+      const persisted: ActivityLogItem[] = [];
+      try {
+        const rawAct = localStorage.getItem(ACTIVITY_STORAGE_KEY);
+        if (rawAct) {
+          const parsed = JSON.parse(rawAct);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((item: unknown, idx: number) => {
+              if (!item || typeof item !== "object") return;
+              const rec = item as Record<string, unknown>;
+              if (rec?.type && rec?.detail) {
+                persisted.push({
+                  id: String(rec.id || `stored-act-${idx}`),
+                  type: rec.type as ActivityLogItem["type"],
+                  actor: String(rec.actor || "System"),
+                  role: (rec.role as ActivityLogItem["role"]) || "admin",
+                  detail: String(rec.detail),
+                  timestamp: String(rec.timestamp || new Date().toISOString()),
+                });
+              }
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      const derived: ActivityLogItem[] = [...persisted];
+
+      for (const u of loadedUsers) {
+        if (u.lastActiveAt) {
+          derived.push({
+            id: `login-${u.id}-${u.lastActiveAt}`,
+            type: "Login",
+            actor: `${u.name} (${u.email})`,
+            role: "customer",
+            detail: `Logged in via ${u.provider.toUpperCase()}`,
+            timestamp: u.lastActiveAt,
+          });
+        }
+      }
+
+      for (const ord of loadedOrders) {
+        const ordTime = ord.createdAt || new Date().toISOString();
+        if (ord.checkoutAt && ord.checkoutAt !== ord.createdAt) {
+          derived.push({
+            id: `checkout-${ord._id}`,
+            type: "Checkout",
+            actor: `${ord.customerName} (${ord.phone})`,
+            role: "customer",
+            detail: `Checkout initiated for ৳${Number(
+              ord.totalAmount || 0
+            ).toLocaleString()}`,
+            timestamp: ord.checkoutAt,
+          });
+        }
+        derived.push({
+          id: `order-${ord._id}`,
+          type: "Order",
+          actor: `${ord.customerName} (${ord.phone})`,
+          role: "customer",
+          detail: `Order #${ord._id.slice(-6)} placed — ৳${Number(
+            ord.totalAmount || 0
+          ).toLocaleString()} [${ord.status || "Pending"}]`,
+          timestamp: ordTime,
+        });
+      }
+
+      for (const rev of loadedReviews) {
+        if (rev.createdAt) {
+          derived.push({
+            id: `review-${rev.id}`,
+            type: "Review",
+            actor: rev.name,
+            role: "customer",
+            detail: `Posted ${rev.rating}★ review: "${rev.comment.slice(0, 60)}"`,
+            timestamp: rev.createdAt,
+          });
+        }
+      }
+
+      const mapById = new Map<string, ActivityLogItem>();
+      for (const item of derived) {
+        if (!mapById.has(item.id)) {
+          mapById.set(item.id, item);
+        }
+      }
+
+      const sorted = Array.from(mapById.values()).sort(
+        (a, b) =>
+          parseOrderDate(b.timestamp).getTime() -
+          parseOrderDate(a.timestamp).getTime()
+      );
+      setActivityLogs(sorted);
+    },
+    []
+  );
 
   const fetchDashboardData = useCallback(async () => {
     setLoadingData(true);
     try {
-      const [prodRes, ordRes, subRes] = await Promise.all([
-        fetch("/api/products", { cache: "no-store", credentials: "include" }),
-        fetch("/api/orders", { cache: "no-store", credentials: "include" }),
-        fetch(`/api/subscribers?t=${Date.now()}`, {
-          cache: "no-store",
-          credentials: "include",
-        }),
+      const shouldFetchActivity = !activityEndpointMissingRef.current;
+
+      const [prodRes, ordRes, subRes, actRes] = await Promise.all([
+        safeFetchJson("/api/products"),
+        safeFetchJson("/api/orders"),
+        safeFetchJson("/api/subscribers"),
+        shouldFetchActivity
+          ? safeFetchJson("/api/activity")
+          : Promise.resolve({
+              ok: false,
+              status: 404,
+              data: {} as Record<string, unknown>,
+            }),
       ]);
+
+      if (shouldFetchActivity && actRes.status === 404) {
+        activityEndpointMissingRef.current = true;
+      }
 
       if (ordRes.status === 401) {
         try {
@@ -908,31 +1172,65 @@ export default function AdminPage() {
         return;
       }
 
-      const [prodData, ordData, subData] = await Promise.all([
-        safeParseJson(prodRes),
-        safeParseJson(ordRes),
-        safeParseJson(subRes),
+      const prodData = prodRes.data;
+      const ordData = ordRes.data;
+      const subData = subRes.data;
+      const actData = actRes.data;
+
+      let resolvedOrders = ordersRef.current;
+
+      if (prodRes.ok && prodData.success && Array.isArray(prodData.products)) {
+        setProducts(prodData.products as ProductItem[]);
+      }
+
+      if (ordRes.ok && ordData.success && Array.isArray(ordData.orders)) {
+        resolvedOrders = ordData.orders as OrderItem[];
+        ordersRef.current = resolvedOrders;
+        setOrders(resolvedOrders);
+      }
+
+      if (subRes.ok && subData.success && Array.isArray(subData.subscribers)) {
+        setSubscribers(subData.subscribers as SubscriberItem[]);
+      }
+
+      if (actRes.ok && actData?.success && Array.isArray(actData.logs)) {
+        try {
+          localStorage.setItem(
+            ACTIVITY_STORAGE_KEY,
+            JSON.stringify(actData.logs)
+          );
+        } catch {
+          // ignore
+        }
+      }
+
+      const [latestReviews, latestUsers] = await Promise.all([
+        loadLocalReviews(),
+        loadLoggedInUsers(),
       ]);
 
-      if (prodData.success && Array.isArray(prodData.products)) {
-        setProducts(prodData.products);
+      buildTimelineFromSources(resolvedOrders, latestReviews, latestUsers);
+
+      if (!prodRes.ok && !ordRes.ok) {
+        showToast("ডাটা লোড করতে সমস্যা হয়েছে");
       }
-      if (ordData.success && Array.isArray(ordData.orders)) {
-        setOrders(ordData.orders);
-      }
-      if (subData.success && Array.isArray(subData.subscribers)) {
-        setSubscribers(subData.subscribers);
-      }
-      await Promise.all([loadLocalReviews(), loadLoggedInUsers()]);
     } catch (err) {
       console.error("Failed to load admin data:", err);
       showToast("ডাটা লোড করতে সমস্যা হয়েছে");
     } finally {
       setLoadingData(false);
     }
-  }, [loadLocalReviews, loadLoggedInUsers, showToast]);
+  }, [
+    buildTimelineFromSources,
+    loadLocalReviews,
+    loadLoggedInUsers,
+    showToast,
+  ]);
 
   useEffect(() => {
+    if (initialMountRef.current) return;
+    initialMountRef.current = true;
+
     setCurrentDate(new Date());
 
     const resolvedTheme = readThemeFromBrowser();
@@ -955,7 +1253,7 @@ export default function AdminPage() {
       const savedSettings = localStorage.getItem("fg_admin_delivery_settings");
       if (savedSettings) {
         const parsed = JSON.parse(savedSettings);
-        setDeliverySettings({
+        const mergedSettings: DeliverySettings = {
           insideMymensinghCharge: Number(
             parsed.insideMymensinghCharge ?? parsed.insideDhakaCharge ?? 70
           ),
@@ -972,7 +1270,13 @@ export default function AdminPage() {
           rocketNumber: String(
             parsed.rocketNumber || DEFAULT_DELIVERY_SETTINGS.rocketNumber
           ),
-        });
+          flashSaleDiscountPercent: Number(
+            parsed.flashSaleDiscountPercent ?? 15
+          ),
+          flashSaleEndsAt: String(parsed.flashSaleEndsAt || ""),
+        };
+        setDeliverySettings(mergedSettings);
+        setFlashDiscountInput(String(mergedSettings.flashSaleDiscountPercent));
       }
       void loadLocalReviews();
       void loadLoggedInUsers();
@@ -991,7 +1295,7 @@ export default function AdminPage() {
     setAuthChecked(true);
 
     if (authed) {
-      fetchDashboardData();
+      void fetchDashboardData();
     }
 
     const handleHashOrPop = () => {
@@ -1019,7 +1323,24 @@ export default function AdminPage() {
         body: JSON.stringify({ password }),
       });
       const data = await safeParseJson(res);
+      const userObj =
+        data.user && typeof data.user === "object"
+          ? (data.user as Record<string, unknown>)
+          : null;
+
       if (data.success) {
+        const resolvedRole: AdminRole =
+          data.role === "staff" || userObj?.role === "staff"
+            ? "staff"
+            : "admin";
+        const resolvedActor = String(
+          userObj?.name ||
+            data.adminId ||
+            (resolvedRole === "staff" ? "Order/Inventory Staff" : "Store Owner")
+        );
+        setAdminRole(resolvedRole);
+        setAdminActorName(resolvedActor);
+
         try {
           sessionStorage.setItem("admin_authed", "true");
         } catch {
@@ -1031,9 +1352,15 @@ export default function AdminPage() {
         const sec = readPersistedSectionFromBrowser();
         setActiveSection(sec);
         persistSection(sec);
-        fetchDashboardData();
+        appendActivityLog(
+          "Login",
+          `Signed in to Admin Panel (${resolvedRole.toUpperCase()})`,
+          resolvedActor,
+          resolvedRole
+        );
+        void fetchDashboardData();
       } else {
-        setAuthError(data.message || "ভুল পাসওয়ার্ড!");
+        setAuthError(String(data.message || "ভুল পাসওয়ার্ড!"));
       }
     } catch {
       setAuthError("লগইন করতে সমস্যা হয়েছে");
@@ -1043,6 +1370,12 @@ export default function AdminPage() {
   };
 
   const handleLogout = async () => {
+    appendActivityLog(
+      "Login",
+      `Logged out from Admin Panel (${adminRole.toUpperCase()})`,
+      adminActorName,
+      adminRole
+    );
     try {
       await fetch("/api/admin/login", {
         method: "DELETE",
@@ -1213,6 +1546,26 @@ export default function AdminPage() {
     return list;
   };
 
+  const parseVariantStockMap = (
+    rawText: string,
+    fallbackStock: number
+  ): Record<string, number> => {
+    const map: Record<string, number> = {};
+    for (const part of rawText.split(",")) {
+      const cleaned = part.trim();
+      if (!cleaned) continue;
+      const [k, v] = cleaned.split(":");
+      if (k && v !== undefined) {
+        const qty = Math.max(0, Number(v.trim()) || 0);
+        map[k.trim()] = qty;
+      }
+    }
+    if (Object.keys(map).length === 0) {
+      map.Default = fallbackStock;
+    }
+    return map;
+  };
+
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalImages = getFinalAddImages();
@@ -1229,6 +1582,17 @@ export default function AdminPage() {
         : [];
     const parsedColors = parseCommaList(colorsText);
     const colorImageMap = buildColorImageMap(parsedColors, finalImages);
+    const totalStockNum = Math.max(0, Number(stock) || 0);
+    const numericPrice = Number(price);
+    const flashPct = Math.max(
+      1,
+      Math.min(80, Number(flashDiscountInput) || 15)
+    );
+    const computedOldPrice = oldPrice
+      ? Number(oldPrice)
+      : flashSaleEnabled
+      ? Math.round(numericPrice / (1 - flashPct / 100))
+      : undefined;
 
     try {
       const res = await fetch("/api/products", {
@@ -1239,27 +1603,43 @@ export default function AdminPage() {
           name: name.trim(),
           category,
           subCategory,
-          price: Number(price),
-          oldPrice: oldPrice ? Number(oldPrice) : undefined,
+          price: numericPrice,
+          oldPrice: computedOldPrice,
           image: finalImages[0],
           images: finalImages,
           colorImages:
             Object.keys(colorImageMap).length > 0 ? colorImageMap : undefined,
-          badge: badge.trim() || undefined,
+          badge:
+            flashSaleEnabled && !badge.trim()
+              ? "Flash Sale"
+              : badge.trim() || undefined,
           sizes: parsedSizes.length > 0 ? parsedSizes : undefined,
           colors: parsedColors.length > 0 ? parsedColors : undefined,
+          variantStock: parseVariantStockMap(variantStockText, totalStockNum),
+          flashSale: {
+            enabled: flashSaleEnabled,
+            discountPercent: flashPct,
+            endsAt: flashSaleEndsAt || undefined,
+          },
           specs:
             category === "gadget" && specs.trim() ? specs.trim() : undefined,
           description: description.trim(),
-          stock: Number(stock) || 10,
+          stock: totalStockNum,
         }),
       });
       const data = await safeParseJson(res);
       if (data.success) {
+        appendActivityLog(
+          "Audit",
+          `Created product "${name.trim()}" (৳${numericPrice}, stock: ${totalStockNum})`
+        );
         setName("");
         setPrice("");
         setOldPrice("");
         setColorsText("");
+        setVariantStockText("");
+        setFlashSaleEnabled(false);
+        setFlashSaleEndsAt("");
         handleClearAllAddImages();
         setSpecs("");
         setDescription("");
@@ -1267,9 +1647,9 @@ export default function AdminPage() {
         showToast(
           `"${subCategory}" ক্যাটাগরিতে ${finalImages.length}টি ছবিসহ প্রোডাক্ট যোগ হয়েছে`
         );
-        fetchDashboardData();
+        void fetchDashboardData();
       } else {
-        showToast(data.message || "প্রোডাক্ট যোগ করা যায়নি");
+        showToast(String(data.message || "প্রোডাক্ট যোগ করা যায়নি"));
       }
     } catch (err) {
       console.error("Add product failed:", err);
@@ -1301,6 +1681,15 @@ export default function AdminPage() {
     setEditColorsText(
       prod.colors && prod.colors.length > 0 ? prod.colors.join(", ") : ""
     );
+    setEditVariantStockText(
+      prod.variantStock
+        ? Object.entries(prod.variantStock)
+            .map(([k, v]) => `${k}:${v}`)
+            .join(", ")
+        : ""
+    );
+    setEditFlashSaleEnabled(Boolean(prod.flashSale?.enabled));
+    setEditFlashSaleEndsAt(prod.flashSale?.endsAt || "");
     setEditSpecs(prod.specs || "");
     setEditImagesList(collectProductImages(prod));
     setEditImageUrlInput("");
@@ -1333,17 +1722,25 @@ export default function AdminPage() {
         : [];
     const parsedColors = parseCommaList(editColorsText);
     const colorImageMap = buildColorImageMap(parsedColors, mergedEditImages);
+    const nextStockNum = Math.max(0, Number(editStock) || 0);
+    const nextPriceNum = Number(editPrice);
 
     const payload = {
       name: editName.trim(),
       category: editCategory,
       subCategory: editSubCategory,
-      price: Number(editPrice),
+      price: nextPriceNum,
       oldPrice: editOldPrice ? Number(editOldPrice) : undefined,
-      stock: Math.max(0, Number(editStock) || 0),
+      stock: nextStockNum,
       badge: editBadge.trim() || undefined,
       sizes: parsedSizes.length > 0 ? parsedSizes : [],
       colors: parsedColors.length > 0 ? parsedColors : [],
+      variantStock: parseVariantStockMap(editVariantStockText, nextStockNum),
+      flashSale: {
+        enabled: editFlashSaleEnabled,
+        discountPercent: Number(flashDiscountInput) || 15,
+        endsAt: editFlashSaleEndsAt || undefined,
+      },
       colorImages:
         Object.keys(colorImageMap).length > 0 ? colorImageMap : undefined,
       specs:
@@ -1364,17 +1761,25 @@ export default function AdminPage() {
       });
       const data = await safeParseJson(res);
       if (res.ok && data.success) {
+        const updatedServerProd =
+          data.product && typeof data.product === "object"
+            ? (data.product as Partial<ProductItem>)
+            : {};
         setProducts((prev) =>
           prev.map((item) =>
             item._id === editingProduct._id
-              ? { ...item, ...payload, ...(data.product || {}) }
+              ? { ...item, ...payload, ...updatedServerProd }
               : item
           )
         );
+        appendActivityLog(
+          "Audit",
+          `Updated "${editName.trim()}" (price: ৳${nextPriceNum}, stock: ${nextStockNum})`
+        );
         setEditingProduct(null);
-        showToast("প্রোডাক্ট, ছবি ও কালার আপডেট হয়েছে");
+        showToast("প্রোডাক্ট, স্টক, ফ্ল্যাশ সেল ও কালার আপডেট হয়েছে");
       } else {
-        showToast(data.message || "আপডেট করা যায়নি (API PATCH চেক করুন)");
+        showToast(String(data.message || "আপডেট করা যায়নি (API PATCH চেক করুন)"));
       }
     } catch (err) {
       console.error("Edit product failed:", err);
@@ -1404,9 +1809,13 @@ export default function AdminPage() {
             item._id === prod._id ? { ...item, stock: nextStock } : item
           )
         );
+        appendActivityLog(
+          "Audit",
+          `Stock changed for "${prod.name}": ${currentStock} → ${nextStock}`
+        );
         showToast(`${prod.name} স্টক: ${nextStock}`);
       } else {
-        showToast(data.message || "স্টক আপডেট হয়নি");
+        showToast(String(data.message || "স্টক আপডেট হয়নি"));
       }
     } catch (err) {
       console.error("Quick stock failed:", err);
@@ -1416,7 +1825,50 @@ export default function AdminPage() {
     }
   };
 
+  const handleApplyFlashSaleToAll = async () => {
+    const pct = Math.max(1, Math.min(75, Number(flashDiscountInput) || 15));
+    if (products.length === 0) return;
+
+    const updatedList = products.map((p) => {
+      const baseOld = p.oldPrice && p.oldPrice > p.price ? p.oldPrice : p.price;
+      const salePrice = Math.max(1, Math.round(baseOld * (1 - pct / 100)));
+      return {
+        ...p,
+        oldPrice: baseOld,
+        price: salePrice,
+        badge: p.badge || "Flash Sale",
+        flashSale: {
+          enabled: true,
+          discountPercent: pct,
+          endsAt: deliverySettings.flashSaleEndsAt || undefined,
+        },
+      };
+    });
+
+    setProducts(updatedList);
+    appendActivityLog(
+      "Audit",
+      `Applied ${pct}% Flash Sale discount across ${products.length} products`
+    );
+    showToast(`${pct}% ফ্ল্যাশ সেল ডিসকাউন্ট আপডেট হয়েছে`);
+
+    for (const item of updatedList) {
+      fetch(`/api/products/${item._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          price: item.price,
+          oldPrice: item.oldPrice,
+          badge: item.badge,
+          flashSale: item.flashSale,
+        }),
+      }).catch(() => {});
+    }
+  };
+
   const handleDeleteProduct = async (id: string) => {
+    const target = products.find((p) => p._id === id);
     setDeletingProductId(id);
     try {
       const res = await fetch(`/api/products/${id}`, {
@@ -1426,9 +1878,13 @@ export default function AdminPage() {
       const data = await safeParseJson(res);
       if (data.success) {
         setProducts((prev) => prev.filter((item) => item._id !== id));
+        appendActivityLog(
+          "Audit",
+          `Deleted product "${target?.name || id}"`
+        );
         showToast("প্রোডাক্ট ডিলিট করা হয়েছে");
       } else {
-        showToast(data.message || "ডিলিট করা যায়নি");
+        showToast(String(data.message || "ডিলিট করা যায়নি"));
       }
     } catch (err) {
       console.error("Delete product failed:", err);
@@ -1513,14 +1969,23 @@ export default function AdminPage() {
 
         if (
           targetOrder &&
-          (status === "Confirmed" || status === "Delivered")
+          (status === "Confirmed" ||
+            status === "Packed" ||
+            status === "Shipped" ||
+            status === "Delivered")
         ) {
           await applyAutoStockForOrder(targetOrder);
         }
 
+        appendActivityLog(
+          "Order",
+          `Order #${orderId.slice(-6)} (${
+            targetOrder?.customerName || "Customer"
+          }) marked as "${status}"`
+        );
         showToast(`অর্ডার স্ট্যাটাস "${status}" আপডেট হয়েছে`);
       } else {
-        showToast(data.message || "স্ট্যাটাস আপডেট হয়নি");
+        showToast(String(data.message || "স্ট্যাটাস আপডেট হয়নি"));
       }
     } catch (err) {
       console.error("Order status update failed:", err);
@@ -1528,6 +1993,78 @@ export default function AdminPage() {
     } finally {
       setUpdatingOrderId(null);
     }
+  };
+
+  const handleTogglePaymentVerified = async (order: OrderItem) => {
+    const nextVerified = !order.paymentVerified;
+    setOrders((prev) =>
+      prev.map((o) =>
+        o._id === order._id ? { ...o, paymentVerified: nextVerified } : o
+      )
+    );
+    setSelectedOrder((prev) =>
+      prev && prev._id === order._id
+        ? { ...prev, paymentVerified: nextVerified }
+        : prev
+    );
+    appendActivityLog(
+      "Order",
+      `Order #${order._id.slice(-6)} payment marked ${
+        nextVerified ? "Paid / Verified" : "COD Due"
+      }`
+    );
+    showToast(
+      nextVerified ? "পেমেন্ট Paid হিসেবে ভেরিফাইড" : "COD Due হিসেবে চিহ্নিত"
+    );
+
+    fetch(`/api/orders/${order._id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ paymentVerified: nextVerified }),
+    }).catch(() => {});
+  };
+
+  const handleSaveCourierTracking = async (order: OrderItem) => {
+    const draft = courierDrafts[order._id] || {
+      courierName: order.courierName || "Pathao / Steadfast",
+      trackingCode: order.courierTrackingCode || "",
+    };
+    const nextStatus =
+      draft.trackingCode.trim() && order.status === "Packed"
+        ? "Shipped"
+        : order.status;
+
+    setOrders((prev) =>
+      prev.map((o) =>
+        o._id === order._id
+          ? {
+              ...o,
+              courierName: draft.courierName.trim(),
+              courierTrackingCode: draft.trackingCode.trim(),
+              status: nextStatus,
+            }
+          : o
+      )
+    );
+    appendActivityLog(
+      "Order",
+      `Courier tracking updated for #${order._id.slice(-6)}: ${
+        draft.courierName
+      } (${draft.trackingCode || "no code"})`
+    );
+    showToast("কুরিয়ার ট্র্যাকিং তথ্য সেভ হয়েছে");
+
+    fetch(`/api/orders/${order._id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        courierName: draft.courierName.trim(),
+        courierTrackingCode: draft.trackingCode.trim(),
+        status: nextStatus,
+      }),
+    }).catch(() => {});
   };
 
   const handleDeleteOrder = async (orderId: string) => {
@@ -1541,9 +2078,12 @@ export default function AdminPage() {
       if (res.ok && data.success) {
         setOrders((prev) => prev.filter((o) => o._id !== orderId));
         if (selectedOrder?._id === orderId) setSelectedOrder(null);
+        appendActivityLog("Audit", `Deleted order #${orderId.slice(-6)}`);
         showToast("অর্ডার ডিলিট করা হয়েছে");
       } else {
-        showToast(data.message || "অর্ডার ডিলিট হয়নি (DELETE API চেক করুন)");
+        showToast(
+          String(data.message || "অর্ডার ডিলিট হয়নি (DELETE API চেক করুন)")
+        );
       }
     } catch (err) {
       console.error("Delete order failed:", err);
@@ -1569,7 +2109,7 @@ export default function AdminPage() {
         setSubscribers((prev) => prev.filter((item) => item._id !== id));
         showToast("সাবস্ক্রাইবার ডিলিট করা হয়েছে");
       } else {
-        showToast(data.message || "সাবস্ক্রাইবার ডিলিট করা যায়নি");
+        showToast(String(data.message || "সাবস্ক্রাইবার ডিলিট করা যায়নি"));
       }
     } catch (err) {
       console.error("Delete subscriber failed:", err);
@@ -1604,7 +2144,9 @@ export default function AdminPage() {
       const rawCurrent = localStorage.getItem(CUSTOMER_PROFILE_KEY);
       if (rawCurrent) {
         const cur = JSON.parse(rawCurrent);
-        if (String(cur?.email || "").toLowerCase() === user.email.toLowerCase()) {
+        if (
+          String(cur?.email || "").toLowerCase() === user.email.toLowerCase()
+        ) {
           localStorage.removeItem(CUSTOMER_PROFILE_KEY);
         }
       }
@@ -1613,6 +2155,32 @@ export default function AdminPage() {
     } catch {
       showToast("ইউজার তথ্য মুছতে সমস্যা হয়েছে");
     }
+  };
+
+  const handleModerateReview = async (
+    id: string,
+    nextStatus: "approved" | "rejected"
+  ) => {
+    const target = reviews.find((r) => r.id === id);
+    setReviews((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
+    );
+    appendActivityLog(
+      "Review",
+      `Review by ${target?.name || id} marked as "${nextStatus}"`
+    );
+    showToast(
+      nextStatus === "approved"
+        ? "রিভিউ Approved (Live) হয়েছে"
+        : "রিভিউ Rejected হয়েছে"
+    );
+
+    fetch(`/api/reviews/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ status: nextStatus }),
+    }).catch(() => {});
   };
 
   const handleDeleteReview = async (id: string) => {
@@ -1652,6 +2220,7 @@ export default function AdminPage() {
         // ignore
       }
 
+      appendActivityLog("Audit", `Deleted review #${id}`);
       showToast("রিভিউ মুছে ফেলা হয়েছে");
     } catch {
       showToast("রিভিউ মুছতে সমস্যা হয়েছে");
@@ -1689,13 +2258,20 @@ export default function AdminPage() {
       `Store: ${BRAND_NAME}`,
       `Order ID: ${ord._id}`,
       `Status: ${ord.status || "Pending"}`,
-      `Payment: ${pay.method}${pay.trxId ? ` (TrxID: ${pay.trxId})` : ""}`,
+      `Payment: ${pay.method}${pay.trxId ? ` (TrxID: ${pay.trxId})` : ""} (${
+        ord.paymentVerified ? "Paid" : "COD Due"
+      })`,
+      ord.courierTrackingCode
+        ? `Courier: ${ord.courierName || "Courier"} (${ord.courierTrackingCode})`
+        : "",
       `Customer: ${ord.customerName}`,
       `Phone: ${ord.phone}`,
       `Address: ${ord.address}`,
       `Items:\n${itemsText}`,
       `Total: ৳${Number(ord.totalAmount).toLocaleString()}`,
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
     handleCopyText(summary, `sum-${ord._id}`, "অর্ডার সামারি কপি করা হয়েছে");
   };
 
@@ -1723,14 +2299,24 @@ export default function AdminPage() {
       rocketNumber:
         deliverySettings.rocketNumber.trim() ||
         DEFAULT_DELIVERY_SETTINGS.rocketNumber,
+      flashSaleDiscountPercent: Math.max(
+        1,
+        Math.min(80, Number(deliverySettings.flashSaleDiscountPercent) || 15)
+      ),
+      flashSaleEndsAt: deliverySettings.flashSaleEndsAt || "",
     };
     setDeliverySettings(cleaned);
+    setFlashDiscountInput(String(cleaned.flashSaleDiscountPercent));
     try {
       localStorage.setItem(
         "fg_admin_delivery_settings",
         JSON.stringify(cleaned)
       );
-      showToast("ডেলিভারি ও মোবাইল ওয়ালেট সেটিংস সেভ হয়েছে");
+      appendActivityLog(
+        "Audit",
+        `Updated delivery (৳${cleaned.insideMymensinghCharge}/৳${cleaned.outsideMymensinghCharge}) & flash sale (${cleaned.flashSaleDiscountPercent}%) settings`
+      );
+      showToast("ডেলিভারি, ওয়ালেট ও ফ্ল্যাশ সেল সেটিংস সেভ হয়েছে");
     } catch {
       showToast("সেটিংস সেভ করা যায়নি");
     }
@@ -1751,7 +2337,10 @@ export default function AdminPage() {
         ord._id.toLowerCase().includes(effectiveOrderQuery) ||
         ord.customerName.toLowerCase().includes(effectiveOrderQuery) ||
         ord.phone.toLowerCase().includes(effectiveOrderQuery) ||
-        (ord.address || "").toLowerCase().includes(effectiveOrderQuery);
+        (ord.address || "").toLowerCase().includes(effectiveOrderQuery) ||
+        (ord.courierTrackingCode || "")
+          .toLowerCase()
+          .includes(effectiveOrderQuery);
       return matchesStatus && matchesQuery;
     });
   }, [orders, statusFilter, effectiveOrderQuery]);
@@ -1802,8 +2391,24 @@ export default function AdminPage() {
     );
   }, [loggedInUsers, globalSearch]);
 
+  const filteredActivityLogs = useMemo(() => {
+    const q = globalSearch.trim().toLowerCase();
+    return activityLogs.filter((item) => {
+      const matchesType =
+        activityFilter === "All" || item.type === activityFilter;
+      const matchesQuery =
+        !q ||
+        item.actor.toLowerCase().includes(q) ||
+        item.detail.toLowerCase().includes(q) ||
+        item.type.toLowerCase().includes(q);
+      return matchesType && matchesQuery;
+    });
+  }, [activityLogs, activityFilter, globalSearch]);
+
   const salesReport = useMemo(() => {
-    const activeOrders = orders.filter((o) => o.status !== "Cancelled");
+    const activeOrders = orders.filter(
+      (o) => o.status !== "Cancelled" && o.status !== "Returned"
+    );
 
     const sumOrders = (list: OrderItem[]) =>
       list.reduce((acc, item) => acc + (Number(item.totalAmount) || 0), 0);
@@ -1870,7 +2475,9 @@ export default function AdminPage() {
 
     const periodUnits = countUnits(periodOrders);
     const avgOrderValue =
-      periodOrders.length > 0 ? Math.round(periodRevenue / periodOrders.length) : 0;
+      periodOrders.length > 0
+        ? Math.round(periodRevenue / periodOrders.length)
+        : 0;
 
     return {
       dailyRevenue,
@@ -1896,7 +2503,10 @@ export default function AdminPage() {
     for (const ord of orders) {
       const key = (ord.phone || ord.customerName || "unknown").trim();
       const existing = map.get(key);
-      const amt = ord.status === "Cancelled" ? 0 : Number(ord.totalAmount) || 0;
+      const amt =
+        ord.status === "Cancelled" || ord.status === "Returned"
+          ? 0
+          : Number(ord.totalAmount) || 0;
       if (existing) {
         existing.orderCount += 1;
         existing.totalSpent += amt;
@@ -1932,7 +2542,9 @@ export default function AdminPage() {
   }, [customersList, selectedCustomerPhone]);
 
   const stats = useMemo(() => {
-    const activeOrders = orders.filter((o) => o.status !== "Cancelled");
+    const activeOrders = orders.filter(
+      (o) => o.status !== "Cancelled" && o.status !== "Returned"
+    );
     const revenue = activeOrders.reduce(
       (sum, o) => sum + (Number(o.totalAmount) || 0),
       0
@@ -2050,14 +2662,14 @@ export default function AdminPage() {
 
           <div className="space-y-1.5">
             <label className={`block text-xs font-medium ${ui.textSecondary}`}>
-              Admin Password
+              Admin / Staff Password
             </label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter admin password"
+                placeholder="Enter admin or staff password"
                 className={`w-full border rounded-xl px-3.5 py-2.5 pr-10 text-sm outline-none ${ui.inputBg}`}
                 required
               />
@@ -2111,11 +2723,12 @@ export default function AdminPage() {
     );
   }
 
-  const navItems: {
+  const allNavItems: {
     key: AdminSection;
     label: string;
     icon: React.ReactNode;
     badge?: number;
+    adminOnly?: boolean;
   }[] = [
     {
       key: "overview",
@@ -2126,6 +2739,7 @@ export default function AdminPage() {
       key: "sales",
       label: "Sales",
       icon: <BarChart3 className="w-4 h-4" />,
+      adminOnly: true,
     },
     {
       key: "orders",
@@ -2144,18 +2758,21 @@ export default function AdminPage() {
       label: "Customers",
       icon: <Users className="w-4 h-4" />,
       badge: customersList.length,
+      adminOnly: true,
     },
     {
       key: "users",
       label: "Users",
       icon: <UserCheck className="w-4 h-4" />,
       badge: loggedInUsers.length,
+      adminOnly: true,
     },
     {
       key: "subscribers",
       label: "Subscribers",
       icon: <Mail className="w-4 h-4" />,
       badge: subscribers.length,
+      adminOnly: true,
     },
     {
       key: "reviews",
@@ -2164,24 +2781,35 @@ export default function AdminPage() {
       badge: reviews.length,
     },
     {
+      key: "activity",
+      label: "Timeline",
+      icon: <Activity className="w-4 h-4" />,
+      badge: activityLogs.length,
+    },
+    {
       key: "settings",
       label: "Settings",
       icon: <Settings className="w-4 h-4" />,
+      adminOnly: true,
     },
   ];
 
+  const navItems = allNavItems.filter(
+    (item) => !(adminRole === "staff" && item.adminOnly)
+  );
+
   const handleSelectSection = (sec: AdminSection) => {
+    if (
+      adminRole === "staff" &&
+      allNavItems.find((n) => n.key === sec)?.adminOnly
+    ) {
+      showToast("এই সেকশনটি শুধুমাত্র Store Owner / Admin-এর জন্য");
+      return;
+    }
     setActiveSection(sec);
     persistSection(sec);
 
-    if (
-      sec === "subscribers" ||
-      sec === "orders" ||
-      sec === "customers" ||
-      sec === "sales"
-    ) {
-      fetchDashboardData();
-    } else if (sec === "users") {
+    if (sec === "users") {
       void loadLoggedInUsers();
     } else if (sec === "reviews") {
       void loadLocalReviews();
@@ -2208,27 +2836,40 @@ export default function AdminPage() {
           className={`hidden lg:flex w-64 shrink-0 flex-col justify-between p-4 border-r ${ui.sidebarBg}`}
         >
           <div className="space-y-6">
-            <div className="px-2 pt-1 flex items-center gap-2.5">
-              <img
-                src={LOGO_SRC}
-                alt={BRAND_NAME}
-                className="h-8 w-auto object-contain rounded-md shrink-0"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
-              <div>
-                <p
-                  className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${ui.textMuted}`}
-                >
-                  {BRAND_TAGLINE}
-                </p>
-                <h2
-                  className={`text-lg font-bold tracking-wider leading-tight ${ui.textPrimary}`}
-                >
-                  {BRAND_NAME}
-                </h2>
+            <div className="px-2 pt-1 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img
+                  src={LOGO_SRC}
+                  alt={BRAND_NAME}
+                  className="h-8 w-auto object-contain rounded-md shrink-0"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                  }}
+                />
+                <div className="min-w-0">
+                  <p
+                    className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${ui.textMuted}`}
+                  >
+                    {BRAND_TAGLINE}
+                  </p>
+                  <h2
+                    className={`text-lg font-bold tracking-wider leading-tight ${ui.textPrimary}`}
+                  >
+                    {BRAND_NAME}
+                  </h2>
+                </div>
               </div>
+              <span
+                className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border shrink-0 ${
+                  adminRole === "admin"
+                    ? isDay
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                    : ui.secondaryBtn
+                }`}
+              >
+                {adminRole}
+              </span>
             </div>
 
             <nav className="space-y-1">
@@ -2285,7 +2926,7 @@ export default function AdminPage() {
               }`}
             >
               <LogOut className="w-4 h-4" />
-              Logout
+              Logout ({adminActorName})
             </button>
           </div>
         </aside>
@@ -2302,7 +2943,7 @@ export default function AdminPage() {
                     <p
                       className={`text-[10px] font-semibold uppercase tracking-wider ${ui.textMuted}`}
                     >
-                      Admin Menu
+                      Admin ({adminRole})
                     </p>
                     <h2
                       className={`text-base font-bold tracking-wider ${ui.textPrimary}`}
@@ -2390,12 +3031,17 @@ export default function AdminPage() {
               >
                 <Menu className="w-4 h-4" />
               </button>
-              <div className="truncate">
+              <div className="truncate flex items-center gap-2">
                 <h1
                   className={`text-base sm:text-lg font-bold capitalize truncate ${ui.textPrimary}`}
                 >
                   {activeSection}
                 </h1>
+                <span
+                  className={`hidden sm:inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase ${ui.secondaryBtn}`}
+                >
+                  {adminRole}
+                </span>
               </div>
             </div>
 
@@ -2443,7 +3089,7 @@ export default function AdminPage() {
 
               <button
                 type="button"
-                onClick={fetchDashboardData}
+                onClick={() => void fetchDashboardData()}
                 title="Refresh data"
                 className={`p-2 rounded-xl border cursor-pointer ${ui.secondaryBtn}`}
               >
@@ -2467,82 +3113,83 @@ export default function AdminPage() {
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
               <div className={`p-4 sm:p-5 rounded-2xl border ${ui.cardBg}`}>
                 <p className={`text-xs font-medium ${ui.textMuted}`}>
-                  Total Revenue
+                  Today&apos;s Orders &amp; Revenue
                 </p>
                 <p
                   className={`text-xl sm:text-2xl font-bold mt-1 ${ui.textPrimary}`}
                 >
-                  ৳{stats.revenue.toLocaleString()}
+                  ৳{salesReport.dailyRevenue.toLocaleString()}{" "}
+                  <span className={`text-xs font-semibold ${ui.textMuted}`}>
+                    ({salesReport.dailyCount})
+                  </span>
                 </p>
                 <p
                   className={`text-[11px] font-medium mt-1 ${
                     isDay ? "text-emerald-700" : "text-emerald-400"
                   }`}
                 >
-                  Today: ৳{salesReport.dailyRevenue.toLocaleString()} • Month: ৳
+                  Total: ৳{stats.revenue.toLocaleString()} • Month: ৳
                   {salesReport.monthlyRevenue.toLocaleString()}
                 </p>
               </div>
 
               <div className={`p-4 sm:p-5 rounded-2xl border ${ui.cardBg}`}>
                 <p className={`text-xs font-medium ${ui.textMuted}`}>
-                  Total Orders
+                  Pending / Unpaid Orders
                 </p>
                 <p
                   className={`text-xl sm:text-2xl font-bold mt-1 ${ui.textPrimary}`}
                 >
-                  {orders.length}
+                  {stats.pendingCount}{" "}
+                  <span className={`text-xs font-semibold ${ui.textMuted}`}>
+                    / {orders.length} total
+                  </span>
                 </p>
                 <p
                   className={`text-[11px] font-medium mt-1 ${
                     isDay ? "text-amber-700" : "text-amber-400"
                   }`}
                 >
-                  {stats.pendingCount} pending review
+                  {stats.deliveredCount} delivered
                 </p>
               </div>
 
               <div className={`p-4 sm:p-5 rounded-2xl border ${ui.cardBg}`}>
                 <p className={`text-xs font-medium ${ui.textMuted}`}>
-                  Logged-in Users
+                  Low Stock Items
+                </p>
+                <p
+                  className={`text-xl sm:text-2xl font-bold mt-1 ${
+                    stats.lowStockCount > 0
+                      ? isDay
+                        ? "text-rose-700"
+                        : "text-rose-400"
+                      : ui.textPrimary
+                  }`}
+                >
+                  {stats.lowStockCount}{" "}
+                  <span className={`text-xs font-semibold ${ui.textMuted}`}>
+                    / {products.length} items
+                  </span>
+                </p>
+                <p className={`text-[11px] font-medium mt-1 ${ui.textMuted}`}>
+                  Stock ≤ 3 flagged for restock
+                </p>
+              </div>
+
+              <div className={`p-4 sm:p-5 rounded-2xl border ${ui.cardBg}`}>
+                <p className={`text-xs font-medium ${ui.textMuted}`}>
+                  Monthly Revenue &amp; Users
                 </p>
                 <p
                   className={`text-xl sm:text-2xl font-bold mt-1 ${
                     isDay ? "text-emerald-700" : "text-emerald-400"
                   }`}
                 >
-                  {loggedInUsers.length}{" "}
-                  <span
-                    className={`text-xs font-semibold ${
-                      isDay ? "text-amber-700" : "text-amber-400"
-                    }`}
-                  >
-                    / {subscribers.length} sub
-                  </span>
+                  ৳{salesReport.monthlyRevenue.toLocaleString()}
                 </p>
                 <p className={`text-[11px] font-medium mt-1 ${ui.textMuted}`}>
-                  Accounts &amp; newsletter subscribers
-                </p>
-              </div>
-
-              <div className={`p-4 sm:p-5 rounded-2xl border ${ui.cardBg}`}>
-                <p className={`text-xs font-medium ${ui.textMuted}`}>
-                  Inventory &amp; Low Stock
-                </p>
-                <p
-                  className={`text-xl sm:text-2xl font-bold mt-1 ${ui.textPrimary}`}
-                >
-                  {products.length}{" "}
-                  <span
-                    className={`text-xs font-semibold ${
-                      isDay ? "text-rose-700" : "text-rose-400"
-                    }`}
-                  >
-                    ({stats.lowStockCount} low)
-                  </span>
-                </p>
-                <p className={`text-[11px] font-medium mt-1 ${ui.textMuted}`}>
-                  Stock ≤ 3 highlighted
+                  {loggedInUsers.length} users • {subscribers.length} subscribers
                 </p>
               </div>
             </div>
@@ -2568,13 +3215,15 @@ export default function AdminPage() {
                           Recent Active Orders Value
                         </h2>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectSection("sales")}
-                        className={`text-xs font-semibold border px-3 py-1 rounded-full cursor-pointer ${ui.secondaryBtn}`}
-                      >
-                        Full Sales Report →
-                      </button>
+                      {adminRole === "admin" && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSection("sales")}
+                          className={`text-xs font-semibold border px-3 py-1 rounded-full cursor-pointer ${ui.secondaryBtn}`}
+                        >
+                          Full Sales Report →
+                        </button>
+                      )}
                     </div>
 
                     {stats.recentSeries.length === 0 ? (
@@ -2686,6 +3335,59 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                {/* Live Activity Timeline Preview on Overview */}
+                <div className={`p-5 rounded-2xl border space-y-4 ${ui.cardBg}`}>
+                  <div className="flex items-center justify-between">
+                    <h2
+                      className={`text-base sm:text-lg font-bold flex items-center gap-2 ${ui.textPrimary}`}
+                    >
+                      <Clock className="w-4 h-4" />
+                      Recent Activity Timeline (Login, Checkout, Order, Review)
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSection("activity")}
+                      className={`text-xs font-semibold hover:underline cursor-pointer ${ui.textSecondary}`}
+                    >
+                      Full Timeline →
+                    </button>
+                  </div>
+
+                  {activityLogs.length === 0 ? (
+                    <p className={`text-sm py-4 text-center ${ui.textMuted}`}>
+                      কোনো সাম্প্রতিক অ্যাক্টিভিটি লগ নেই।
+                    </p>
+                  ) : (
+                    <div className={`divide-y ${ui.divider}`}>
+                      {activityLogs.slice(0, 5).map((act) => (
+                        <div
+                          key={act.id}
+                          className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`font-bold px-2 py-0.5 rounded-full border shrink-0 ${ui.secondaryBtn}`}
+                            >
+                              {act.type}
+                            </span>
+                            <span
+                              className={`font-semibold truncate ${ui.textPrimary}`}
+                            >
+                              {act.actor}
+                            </span>
+                            <span className={`truncate ${ui.textMuted}`}>
+                              — {act.detail}
+                            </span>
+                          </div>
+                          <span className={`font-mono shrink-0 ${ui.textMuted}`}>
+                            {formatDateTimeBD(act.timestamp)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className={`p-5 rounded-2xl border space-y-4 ${ui.cardBg}`}>
                   <div className="flex items-center justify-between">
                     <h2
@@ -2738,13 +3440,18 @@ export default function AdminPage() {
                                 {isWalletMethod(pay.method) && (
                                   <span
                                     className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                                      isDay
+                                      ord.paymentVerified
+                                        ? isDay
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                          : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                                        : isDay
                                         ? "bg-amber-50 text-amber-700 border-amber-200"
                                         : "bg-amber-950/70 text-amber-300 border-amber-800/60"
                                     }`}
                                   >
                                     {pay.method}
-                                    {pay.trxId ? ` • ${pay.trxId}` : ""}
+                                    {pay.trxId ? ` • ${pay.trxId}` : ""} •{" "}
+                                    {ord.paymentVerified ? "Paid" : "COD Due"}
                                   </span>
                                 )}
                               </div>
@@ -2911,7 +3618,7 @@ export default function AdminPage() {
                         {salesPeriodTab} Sales Detailed Report
                       </h2>
                       <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
-                        Cancelled অর্ডার বাদ দিয়ে প্রকৃত বিক্রির হিসাব দেখানো হচ্ছে।
+                        Cancelled ও Returned অর্ডার বাদ দিয়ে প্রকৃত বিক্রির হিসাব দেখানো হচ্ছে।
                       </p>
                     </div>
 
@@ -3080,14 +3787,16 @@ export default function AdminPage() {
 
             {/* ORDERS SECTION */}
             {activeSection === "orders" && (
-              <div className={`p-4 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
+              <div
+                className={`p-4 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}
+              >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div>
                     <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
-                      Customer Orders ({filteredOrders.length})
+                      Customer Orders &amp; Dispatch ({filteredOrders.length})
                     </h2>
                     <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
-                      Confirmed বা Delivered করলে অটো-স্টক গার্ড সক্রিয় থাকে।
+                      Pipeline: Pending → Confirmed → Packed → Shipped → Delivered / Returned / Cancelled
                     </p>
                   </div>
 
@@ -3098,7 +3807,7 @@ export default function AdminPage() {
                       <Search className={`w-4 h-4 mr-2 ${ui.textMuted}`} />
                       <input
                         type="text"
-                        placeholder="Search phone, name or ID..."
+                        placeholder="Phone, ID or tracking..."
                         value={orderSearch}
                         onChange={(e) => setOrderSearch(e.target.value)}
                         className={`bg-transparent text-xs sm:text-sm outline-none w-full sm:w-52 ${ui.textPrimary}`}
@@ -3129,162 +3838,256 @@ export default function AdminPage() {
                     কোনো অর্ডার পাওয়া যায়নি।
                   </p>
                 ) : (
-                  <div className="space-y-3.5">
+                  <div className="space-y-4">
                     {filteredOrders.map((order) => {
                       const pay = extractPaymentInfo(order.address);
                       const wallet = isWalletMethod(pay.method);
                       const isStockDeducted = deductedOrderIds.includes(
                         order._id
                       );
+                      const cDraft = courierDrafts[order._id] || {
+                        courierName: order.courierName || "Pathao / Steadfast",
+                        trackingCode: order.courierTrackingCode || "",
+                      };
 
                       return (
                         <div
                           key={order._id}
-                          className={`border rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 ${ui.subCardBg}`}
+                          className={`border rounded-2xl p-4 space-y-3.5 ${ui.subCardBg}`}
                         >
-                          <div className="space-y-1.5 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span
-                                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${getStatusBadgeStyle(
-                                  order.status || "Pending",
-                                  isDay
-                                )}`}
-                              >
-                                {order.status || "Pending"}
-                              </span>
-
-                              <span
-                                className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
-                                  wallet
-                                    ? isDay
-                                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                                      : "bg-amber-950/70 text-amber-300 border-amber-800/60"
-                                    : ui.secondaryBtn
-                                }`}
-                              >
-                                <CreditCard className="w-3 h-3" />
-                                {pay.method}
-                                {pay.trxId ? ` • TrxID: ${pay.trxId}` : ""}
-                              </span>
-
-                              {isStockDeducted && (
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="space-y-1.5 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span
-                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                  className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${getStatusBadgeStyle(
+                                    order.status || "Pending",
                                     isDay
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                      : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                                  )}`}
+                                >
+                                  {order.status || "Pending"}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleTogglePaymentVerified(order)
+                                  }
+                                  title="Toggle Paid / COD Due badge"
+                                  className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border cursor-pointer ${
+                                    order.paymentVerified
+                                      ? isDay
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                                      : wallet
+                                      ? isDay
+                                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                                        : "bg-amber-950/70 text-amber-300 border-amber-800/60"
+                                      : ui.secondaryBtn
                                   }`}
                                 >
-                                  Stock Deducted
+                                  <CreditCard className="w-3 h-3" />
+                                  {pay.method}
+                                  {pay.trxId ? ` • TrxID: ${pay.trxId}` : ""} •{" "}
+                                  {order.paymentVerified ? "Paid" : "COD Due"}
+                                </button>
+
+                                {isStockDeducted && (
+                                  <span
+                                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                      isDay
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                                    }`}
+                                  >
+                                    Stock Deducted
+                                  </span>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleCopyText(
+                                      order._id,
+                                      order._id,
+                                      "Order ID কপি করা হয়েছে"
+                                    )
+                                  }
+                                  className={`inline-flex items-center gap-1 text-[11px] font-mono border px-2 py-0.5 rounded-md cursor-pointer ${ui.secondaryBtn}`}
+                                  title="Copy Order ID"
+                                >
+                                  <span>ID: {order._id}</span>
+                                  {copiedId === order._id ? (
+                                    <Check className="w-3 h-3 text-emerald-500" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                </button>
+                              </div>
+
+                              <p
+                                className={`font-bold text-sm sm:text-base ${ui.textPrimary}`}
+                              >
+                                {order.customerName} —{" "}
+                                <span
+                                  className={`font-mono ${ui.textSecondary}`}
+                                >
+                                  {order.phone}
                                 </span>
-                              )}
+                              </p>
+
+                              <p
+                                className={`text-xs sm:text-sm break-words ${ui.textMuted}`}
+                              >
+                                {order.address}
+                              </p>
+
+                              <p
+                                className={`text-xs sm:text-sm ${ui.textSecondary}`}
+                              >
+                                <span
+                                  className={`font-semibold ${ui.textMuted}`}
+                                >
+                                  Items:
+                                </span>{" "}
+                                {order.items
+                                  ?.map((i) => {
+                                    const meta = [i.size, i.color]
+                                      .filter(Boolean)
+                                      .join(", ");
+                                    return `${i.name}${
+                                      meta ? ` (${meta})` : ""
+                                    } ×${i.quantity}`;
+                                  })
+                                  .join(", ")}
+                              </p>
+
+                              <p
+                                className={`text-sm font-bold ${ui.textPrimary}`}
+                              >
+                                Total: ৳
+                                {Number(order.totalAmount).toLocaleString()}
+                                {order.createdAt ? (
+                                  <span
+                                    className={`text-xs font-normal ml-2 ${ui.textMuted}`}
+                                  >
+                                    • {formatDateTimeBD(order.createdAt)}
+                                  </span>
+                                ) : null}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-wrap sm:flex-nowrap items-end gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setPackingSlipOrder(order)}
+                                className={`inline-flex items-center gap-1 border px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer ${ui.secondaryBtn}`}
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                Packing Slip
+                              </button>
 
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleCopyText(
-                                    order._id,
-                                    order._id,
-                                    "Order ID কপি করা হয়েছে"
-                                  )
-                                }
-                                className={`inline-flex items-center gap-1 text-[11px] font-mono border px-2 py-0.5 rounded-md cursor-pointer ${ui.secondaryBtn}`}
-                                title="Copy Order ID"
+                                onClick={() => setSelectedOrder(order)}
+                                className={`inline-flex items-center gap-1 border px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer ${ui.secondaryBtn}`}
                               >
-                                <span>ID: {order._id}</span>
-                                {copiedId === order._id ? (
-                                  <Check className="w-3 h-3 text-emerald-500" />
-                                ) : (
-                                  <Copy className="w-3 h-3" />
-                                )}
+                                <Eye className="w-3.5 h-3.5" />
+                                Details
                               </button>
+
+                              {adminRole === "admin" && (
+                                <button
+                                  type="button"
+                                  disabled={deletingOrderId === order._id}
+                                  onClick={() => handleDeleteOrder(order._id)}
+                                  title="Delete order"
+                                  className={`inline-flex items-center gap-1 border px-2.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 cursor-pointer ${
+                                    isDay
+                                      ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200"
+                                      : "bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border-rose-800/60"
+                                  }`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  {deletingOrderId === order._id
+                                    ? "..."
+                                    : "Delete"}
+                                </button>
+                              )}
+
+                              <div>
+                                <label
+                                  className={`block text-[11px] font-medium mb-1 ${ui.textMuted}`}
+                                >
+                                  Update Status
+                                </label>
+                                <select
+                                  disabled={updatingOrderId === order._id}
+                                  value={order.status || "Pending"}
+                                  onChange={(e) =>
+                                    handleStatusChange(order._id, e.target.value)
+                                  }
+                                  className={`border rounded-xl px-3 py-2 text-sm font-medium outline-none disabled:opacity-50 cursor-pointer ${ui.inputBg}`}
+                                >
+                                  {ORDER_STATUSES.map((st) => (
+                                    <option key={st} value={st}>
+                                      {st}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
-
-                            <p
-                              className={`font-bold text-sm sm:text-base ${ui.textPrimary}`}
-                            >
-                              {order.customerName} —{" "}
-                              <span className={`font-mono ${ui.textSecondary}`}>
-                                {order.phone}
-                              </span>
-                            </p>
-
-                            <p
-                              className={`text-xs sm:text-sm break-words ${ui.textMuted}`}
-                            >
-                              {order.address}
-                            </p>
-
-                            <p
-                              className={`text-xs sm:text-sm ${ui.textSecondary}`}
-                            >
-                              <span className={`font-semibold ${ui.textMuted}`}>
-                                Items:
-                              </span>{" "}
-                              {order.items
-                                ?.map((i) => {
-                                  const meta = [i.size, i.color]
-                                    .filter(Boolean)
-                                    .join(", ");
-                                  return `${i.name}${
-                                    meta ? ` (${meta})` : ""
-                                  } ×${i.quantity}`;
-                                })
-                                .join(", ")}
-                            </p>
-
-                            <p className={`text-sm font-bold ${ui.textPrimary}`}>
-                              Total: ৳{Number(order.totalAmount).toLocaleString()}
-                            </p>
                           </div>
 
-                          <div className="flex flex-wrap sm:flex-nowrap items-end gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedOrder(order)}
-                              className={`inline-flex items-center gap-1 border px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer ${ui.secondaryBtn}`}
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              Details
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={deletingOrderId === order._id}
-                              onClick={() => handleDeleteOrder(order._id)}
-                              title="Delete order"
-                              className={`inline-flex items-center gap-1 border px-2.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 cursor-pointer ${
-                                isDay
-                                  ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200"
-                                  : "bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border-rose-800/60"
-                              }`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              {deletingOrderId === order._id
-                                ? "..."
-                                : "Delete"}
-                            </button>
-
-                            <div>
-                              <label
-                                className={`block text-[11px] font-medium mb-1 ${ui.textMuted}`}
-                              >
-                                Update Status
-                              </label>
-                              <select
-                                disabled={updatingOrderId === order._id}
-                                value={order.status || "Pending"}
+                          {/* Courier Dispatch / Tracking Bar */}
+                          <div
+                            className={`pt-3 border-t flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${ui.divider}`}
+                          >
+                            <div className="flex items-center gap-1.5 text-xs font-semibold">
+                              <Truck
+                                className={`w-3.5 h-3.5 ${ui.textMuted}`}
+                              />
+                              <span className={ui.textMuted}>
+                                Courier Dispatch:
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 flex-1 sm:max-w-xl">
+                              <input
+                                type="text"
+                                placeholder="Courier (e.g. Steadfast, Pathao)"
+                                value={cDraft.courierName}
                                 onChange={(e) =>
-                                  handleStatusChange(order._id, e.target.value)
+                                  setCourierDrafts((prev) => ({
+                                    ...prev,
+                                    [order._id]: {
+                                      ...cDraft,
+                                      courierName: e.target.value,
+                                    },
+                                  }))
                                 }
-                                className={`border rounded-xl px-3 py-2 text-sm font-medium outline-none disabled:opacity-50 cursor-pointer ${ui.inputBg}`}
+                                className={`border rounded-xl px-2.5 py-1.5 text-xs outline-none flex-1 ${ui.inputBg}`}
+                              />
+                              <input
+                                type="text"
+                                placeholder="Tracking / Consignment ID"
+                                value={cDraft.trackingCode}
+                                onChange={(e) =>
+                                  setCourierDrafts((prev) => ({
+                                    ...prev,
+                                    [order._id]: {
+                                      ...cDraft,
+                                      trackingCode: e.target.value,
+                                    },
+                                  }))
+                                }
+                                className={`border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none flex-1 ${ui.inputBg}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSaveCourierTracking(order)}
+                                className={`px-3 py-1.5 rounded-xl text-xs cursor-pointer shrink-0 ${ui.primaryBtn}`}
                               >
-                                {ORDER_STATUSES.map((st) => (
-                                  <option key={st} value={st}>
-                                    {st}
-                                  </option>
-                                ))}
-                              </select>
+                                Sync Tracking
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -3297,304 +4100,70 @@ export default function AdminPage() {
 
             {/* PRODUCTS SECTION */}
             {activeSection === "products" && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <form
-                  onSubmit={handleAddProduct}
-                  className={`p-5 sm:p-6 rounded-2xl border space-y-3 h-fit ${ui.cardBg}`}
+              <div className="space-y-5">
+                {/* Flash Sale & Quick Discount Rule Bar */}
+                <div
+                  className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${ui.cardBg}`}
                 >
-                  <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
-                    Add New Product
-                  </h2>
-
-                  <input
-                    type="text"
-                    placeholder="Product Name *"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
-                    required
-                  />
-
-                  <div className="space-y-1">
-                    <label
-                      className={`block text-xs font-medium ${ui.textMuted}`}
+                  <div>
+                    <h3
+                      className={`text-sm sm:text-base font-bold ${ui.textPrimary}`}
                     >
-                      Category (Auto-syncs to Storefront) *
-                    </label>
-                    <select
-                      value={subCategory}
-                      onChange={(e) => handleSubCategoryChange(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm font-medium outline-none cursor-pointer ${ui.inputBg}`}
-                    >
-                      {STORE_SUBCATEGORIES.map((catLabel) => (
-                        <option key={catLabel} value={catLabel}>
-                          {catLabel}
-                        </option>
-                      ))}
-                    </select>
+                      Flash Sale &amp; Discount Rule Manager
+                    </h3>
+                    <p className={`text-xs ${ui.textMuted}`}>
+                      স্টোরে অফার প্রোডাক্ট সক্রিয় রাখতে ডিসকাউন্ট পার্সেন্টেজ সেট করে Apply করুন।
+                    </p>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="flex items-center gap-2">
                     <input
                       type="number"
-                      placeholder="Price (BDT) *"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
-                      required
+                      min={1}
+                      max={75}
+                      value={flashDiscountInput}
+                      onChange={(e) => setFlashDiscountInput(e.target.value)}
+                      className={`w-20 border rounded-xl px-3 py-2 text-xs font-bold outline-none ${ui.inputBg}`}
                     />
-                    <input
-                      type="number"
-                      placeholder="Old Price (optional)"
-                      value={oldPrice}
-                      onChange={(e) => setOldPrice(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <input
-                      type="text"
-                      placeholder="Badge (e.g. Best Seller)"
-                      value={badge}
-                      onChange={(e) => setBadge(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
-                    />
-                    <input
-                      type="number"
-                      placeholder="Stock"
-                      value={stock}
-                      onChange={(e) => setStock(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
-                    />
-                  </div>
-
-                  {category === "fashion" &&
-                  isGarmentOrFootwearWithSizes(subCategory) ? (
-                    <div className="space-y-1">
-                      <input
-                        type="text"
-                        placeholder={
-                          isFootwearSubCategory(subCategory)
-                            ? "Shoe Sizes (e.g. 40, 41, 42, 43)"
-                            : "Sizes (e.g. M, L, XL)"
-                        }
-                        value={sizesText}
-                        onChange={(e) => setSizesText(e.target.value)}
-                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
-                      />
-                      <p className={`text-[11px] px-1 ${ui.textMuted}`}>
-                        {isFootwearSubCategory(subCategory)
-                          ? "Footwear size format (40, 41, 42, 43...)"
-                          : "Garment size format (M, L, XL...)"}
-                      </p>
-                    </div>
-                  ) : category === "gadget" ? (
-                    <input
-                      type="text"
-                      placeholder="Specs (e.g. 36H Battery • Fast Charge)"
-                      value={specs}
-                      onChange={(e) => setSpecs(e.target.value)}
-                      className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
-                    />
-                  ) : null}
-
-                  <div
-                    className={`space-y-1.5 border rounded-xl p-2.5 ${ui.subCardBg}`}
-                  >
-                    <label
-                      className={`flex items-center gap-1.5 text-xs font-semibold ${ui.textSecondary}`}
-                    >
-                      <Palette className={`w-3.5 h-3.5 ${ui.textMuted}`} />
-                      Available Colors (comma separated)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Black, Silver, Midnight Blue"
-                      value={colorsText}
-                      onChange={(e) => setColorsText(e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
-                    />
-                    <div className="flex flex-wrap gap-1.5 pt-0.5">
-                      {QUICK_COLOR_PRESETS.map((preset) => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() =>
-                            setColorsText((prev) =>
-                              appendPresetToText(prev, preset)
-                            )
-                          }
-                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full border cursor-pointer ${ui.secondaryBtn}`}
-                        >
-                          + {preset}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div
-                    className={`space-y-2 border rounded-xl p-3 ${ui.subCardBg}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <label
-                        className={`flex items-center gap-1.5 text-xs font-semibold ${ui.textSecondary}`}
-                      >
-                        <Images className={`w-3.5 h-3.5 ${ui.textMuted}`} />
-                        Product Images ({previewAddImages.length}) *
-                      </label>
-                      {previewAddImages.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleClearAllAddImages}
-                          className={`text-[11px] font-semibold hover:underline cursor-pointer ${
-                            isDay ? "text-rose-700" : "text-rose-400"
-                          }`}
-                        >
-                          Clear All
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        placeholder="Add Image URL (/images/1.jpg or https://...)"
-                        value={imageUrlInput}
-                        onChange={(e) => setImageUrlInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleAddImageUrl("add");
-                          }
-                        }}
-                        className={`flex-1 border rounded-xl px-3 py-2 text-xs outline-none ${ui.inputBg}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleAddImageUrl("add")}
-                        className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer shrink-0 ${ui.secondaryBtn}`}
-                      >
-                        <Link2 className="w-3.5 h-3.5" />
-                        Add
-                      </button>
-                    </div>
-
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => handleMultipleFilesChange(e, "add")}
-                      className="hidden"
-                    />
-
+                    <span className={`text-xs font-bold ${ui.textMuted}`}>%</span>
                     <button
                       type="button"
-                      disabled={processingImage}
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`w-full inline-flex items-center justify-center gap-1.5 border border-dashed py-2 px-3 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50 ${ui.secondaryBtn}`}
+                      onClick={handleApplyFlashSaleToAll}
+                      className={`px-4 py-2 rounded-xl text-xs cursor-pointer ${ui.primaryBtn}`}
                     >
-                      <Upload className="w-3.5 h-3.5" />
-                      {processingImage
-                        ? "Processing Photos..."
-                        : "Upload Multiple Photos"}
+                      Apply Flash Sale
                     </button>
-
-                    {previewAddImages.length > 0 && (
-                      <div className="grid grid-cols-3 gap-2 pt-1">
-                        {previewAddImages.map((imgSrc, idx) => (
-                          <div
-                            key={`${idx}-${imgSrc.slice(0, 24)}`}
-                            className={`relative group rounded-xl overflow-hidden border aspect-square ${ui.mutedInputBg}`}
-                          >
-                            <img
-                              src={imgSrc}
-                              alt={`Preview ${idx + 1}`}
-                              className="w-full h-full object-cover"
-                            />
-                            {idx === 0 && (
-                              <span className="absolute bottom-1 left-1 bg-slate-900/85 text-slate-100 text-[9px] font-semibold px-1.5 py-0.5 rounded-md">
-                                Main
-                              </span>
-                            )}
-                            <div className="absolute top-1 right-1 flex items-center gap-1">
-                              {idx > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleMakePrimaryImage(idx, "add")
-                                  }
-                                  title="Set as Main Image"
-                                  className="bg-slate-900/85 text-slate-100 text-[9px] font-semibold px-1.5 py-0.5 rounded-md cursor-pointer"
-                                >
-                                  1st
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveImageAt(idx, "add")}
-                                title="Remove image"
-                                className="w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center cursor-pointer"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
+                </div>
 
-                  <textarea
-                    placeholder="Description (optional)"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
-                    rows={3}
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={creatingProduct || processingImage}
-                    className={`w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm disabled:opacity-50 cursor-pointer ${ui.primaryBtn}`}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <form
+                    onSubmit={handleAddProduct}
+                    className={`p-5 sm:p-6 rounded-2xl border space-y-3 h-fit ${ui.cardBg}`}
                   >
-                    <Plus className="w-4 h-4" />
-                    {creatingProduct ? "Adding..." : "Add Product"}
-                  </button>
-                </form>
-
-                {/* All Products List */}
-                <div
-                  className={`lg:col-span-2 p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
-                      All Products ({filteredProducts.length})
+                      Add New Product
                     </h2>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div
-                        className={`flex items-center rounded-xl px-3 py-1.5 border ${ui.mutedInputBg}`}
-                      >
-                        <Search
-                          className={`w-4 h-4 mr-1.5 ${ui.textMuted}`}
-                        />
-                        <input
-                          type="text"
-                          placeholder="Search product or color..."
-                          value={productSearch}
-                          onChange={(e) => setProductSearch(e.target.value)}
-                          className={`bg-transparent text-xs outline-none w-36 sm:w-44 ${ui.textPrimary}`}
-                        />
-                      </div>
+                    <input
+                      type="text"
+                      placeholder="Product Name *"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
+                      required
+                    />
 
-                      <select
-                        value={productCatFilter}
-                        onChange={(e) => setProductCatFilter(e.target.value)}
-                        className={`border rounded-xl px-3 py-1.5 text-xs font-semibold outline-none cursor-pointer ${ui.mutedInputBg}`}
+                    <div className="space-y-1">
+                      <label
+                        className={`block text-xs font-medium ${ui.textMuted}`}
                       >
-                        <option value="all">All Categories</option>
+                        Category (Auto-syncs to Storefront) *
+                      </label>
+                      <select
+                        value={subCategory}
+                        onChange={(e) => handleSubCategoryChange(e.target.value)}
+                        className={`w-full border rounded-xl px-3 py-2 text-sm font-medium outline-none cursor-pointer ${ui.inputBg}`}
+                      >
                         {STORE_SUBCATEGORIES.map((catLabel) => (
                           <option key={catLabel} value={catLabel}>
                             {catLabel}
@@ -3602,178 +4171,487 @@ export default function AdminPage() {
                         ))}
                       </select>
                     </div>
-                  </div>
 
-                  {filteredProducts.length === 0 ? (
-                    <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
-                      {products.length === 0
-                        ? "ডাটাবেজে এখনো কোনো প্রোডাক্ট নেই। বাম পাশ থেকে যোগ করুন।"
-                        : "কোনো ম্যাচিং প্রোডাক্ট পাওয়া যায়নি।"}
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {filteredProducts.map((prod) => {
-                        const currentStock =
-                          typeof prod.stock === "number" ? prod.stock : 10;
-                        const isLowStock = currentStock <= 3;
-                        const displaySubCat = normalizeSubCategoryLabel(
-                          prod.subCategory,
-                          prod.category
-                        );
-                        const allProdImgs = collectProductImages(prod);
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <input
+                        type="number"
+                        placeholder="Price (BDT) *"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
+                        required
+                      />
+                      <input
+                        type="number"
+                        placeholder="Old Price (optional)"
+                        value={oldPrice}
+                        onChange={(e) => setOldPrice(e.target.value)}
+                        className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
+                      />
+                    </div>
 
-                        return (
-                          <div
-                            key={prod._id}
-                            className={`border rounded-2xl p-3.5 flex flex-col justify-between gap-3 ${ui.subCardBg}`}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <input
+                        type="text"
+                        placeholder="Badge (e.g. Best Seller)"
+                        value={badge}
+                        onChange={(e) => setBadge(e.target.value)}
+                        className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Stock"
+                        value={stock}
+                        onChange={(e) => setStock(e.target.value)}
+                        className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
+                      />
+                    </div>
+
+                    {category === "fashion" &&
+                    isGarmentOrFootwearWithSizes(subCategory) ? (
+                      <div className="space-y-1">
+                        <input
+                          type="text"
+                          placeholder={
+                            isFootwearSubCategory(subCategory)
+                              ? "Shoe Sizes (e.g. 40, 41, 42, 43)"
+                              : "Sizes (e.g. M, L, XL)"
+                          }
+                          value={sizesText}
+                          onChange={(e) => setSizesText(e.target.value)}
+                          className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
+                        />
+                        <p className={`text-[11px] px-1 ${ui.textMuted}`}>
+                          {isFootwearSubCategory(subCategory)
+                            ? "Footwear size format (40, 41, 42, 43...)"
+                            : "Garment size format (M, L, XL...)"}
+                        </p>
+                      </div>
+                    ) : category === "gadget" ? (
+                      <input
+                        type="text"
+                        placeholder="Specs (e.g. 36H Battery • Fast Charge)"
+                        value={specs}
+                        onChange={(e) => setSpecs(e.target.value)}
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
+                      />
+                    ) : null}
+
+                    <div
+                      className={`space-y-1.5 border rounded-xl p-2.5 ${ui.subCardBg}`}
+                    >
+                      <label
+                        className={`flex items-center gap-1.5 text-xs font-semibold ${ui.textSecondary}`}
+                      >
+                        <Palette className={`w-3.5 h-3.5 ${ui.textMuted}`} />
+                        Available Colors (comma separated)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Black, Silver, Midnight Blue"
+                        value={colorsText}
+                        onChange={(e) => setColorsText(e.target.value)}
+                        className={`w-full border rounded-xl px-3 py-2 text-sm outline-none ${ui.inputBg}`}
+                      />
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {QUICK_COLOR_PRESETS.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() =>
+                              setColorsText((prev) =>
+                                appendPresetToText(prev, preset)
+                              )
+                            }
+                            className={`text-[11px] font-medium px-2 py-0.5 rounded-full border cursor-pointer ${ui.secondaryBtn}`}
                           >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="relative shrink-0">
-                                <img
-                                  src={allProdImgs[0] || prod.image}
-                                  alt={prod.name}
-                                  className={`w-14 h-14 object-cover rounded-xl ${ui.mutedInputBg}`}
-                                />
-                                {allProdImgs.length > 1 && (
-                                  <span
-                                    className={`absolute -bottom-1 -right-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                      isDay
-                                        ? "bg-slate-800 text-slate-100"
-                                        : "bg-zinc-200 text-zinc-900"
-                                    }`}
+                            + {preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Per-Variant Stock (e.g. M:5, L:8, 42:4)"
+                      value={variantStockText}
+                      onChange={(e) => setVariantStockText(e.target.value)}
+                      className={`w-full border rounded-xl px-3.5 py-2 text-xs outline-none ${ui.inputBg}`}
+                    />
+
+                    <div
+                      className={`border rounded-xl p-2.5 space-y-2 ${ui.subCardBg}`}
+                    >
+                      <label className="flex items-center justify-between text-xs font-semibold cursor-pointer">
+                        <span className={ui.textSecondary}>
+                          Include in Flash Sale
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={flashSaleEnabled}
+                          onChange={(e) => setFlashSaleEnabled(e.target.checked)}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                      </label>
+                      {flashSaleEnabled && (
+                        <input
+                          type="date"
+                          value={flashSaleEndsAt}
+                          onChange={(e) => setFlashSaleEndsAt(e.target.value)}
+                          className={`w-full border rounded-xl px-3 py-1.5 text-xs outline-none ${ui.inputBg}`}
+                        />
+                      )}
+                    </div>
+
+                    <div
+                      className={`space-y-2 border rounded-xl p-3 ${ui.subCardBg}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <label
+                          className={`flex items-center gap-1.5 text-xs font-semibold ${ui.textSecondary}`}
+                        >
+                          <Images className={`w-3.5 h-3.5 ${ui.textMuted}`} />
+                          Product Images ({previewAddImages.length}) *
+                        </label>
+                        {previewAddImages.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleClearAllAddImages}
+                            className={`text-[11px] font-semibold hover:underline cursor-pointer ${
+                              isDay ? "text-rose-700" : "text-rose-400"
+                            }`}
+                          >
+                            Clear All
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Add Image URL (/images/1.jpg or https://...)"
+                          value={imageUrlInput}
+                          onChange={(e) => setImageUrlInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddImageUrl("add");
+                            }
+                          }}
+                          className={`flex-1 border rounded-xl px-3 py-2 text-xs outline-none ${ui.inputBg}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAddImageUrl("add")}
+                          className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer shrink-0 ${ui.secondaryBtn}`}
+                        >
+                          <Link2 className="w-3.5 h-3.5" />
+                          Add
+                        </button>
+                      </div>
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => handleMultipleFilesChange(e, "add")}
+                        className="hidden"
+                      />
+
+                      <button
+                        type="button"
+                        disabled={processingImage}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`w-full inline-flex items-center justify-center gap-1.5 border border-dashed py-2 px-3 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50 ${ui.secondaryBtn}`}
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        {processingImage
+                          ? "Processing Photos..."
+                          : "Upload Multiple Photos"}
+                      </button>
+
+                      {previewAddImages.length > 0 && (
+                        <div className="grid grid-cols-3 gap-2 pt-1">
+                          {previewAddImages.map((imgSrc, idx) => (
+                            <div
+                              key={`${idx}-${imgSrc.slice(0, 24)}`}
+                              className={`relative group rounded-xl overflow-hidden border aspect-square ${ui.mutedInputBg}`}
+                            >
+                              <img
+                                src={imgSrc}
+                                alt={`Preview ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                              {idx === 0 && (
+                                <span className="absolute bottom-1 left-1 bg-slate-900/85 text-slate-100 text-[9px] font-semibold px-1.5 py-0.5 rounded-md">
+                                  Main
+                                </span>
+                              )}
+                              <div className="absolute top-1 right-1 flex items-center gap-1">
+                                {idx > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleMakePrimaryImage(idx, "add")
+                                    }
+                                    title="Set as Main Image"
+                                    className="bg-slate-900/85 text-slate-100 text-[9px] font-semibold px-1.5 py-0.5 rounded-md cursor-pointer"
                                   >
-                                    +{allProdImgs.length - 1}
-                                  </span>
+                                    1st
+                                  </button>
                                 )}
-                              </div>
-                              <div className="min-w-0">
-                                <p
-                                  className={`font-semibold text-sm truncate ${ui.textPrimary}`}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleRemoveImageAt(idx, "add")
+                                  }
+                                  title="Remove image"
+                                  className="w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center cursor-pointer"
                                 >
-                                  {prod.name}
-                                </p>
-                                <p className={`text-xs ${ui.textMuted}`}>
-                                  {displaySubCat} •{" "}
-                                  <span className={`font-bold ${ui.textPrimary}`}>
-                                    ৳{prod.price}
-                                  </span>
-                                  {prod.oldPrice ? (
-                                    <span className="line-through opacity-60 ml-1">
-                                      ৳{prod.oldPrice}
-                                    </span>
-                                  ) : null}
-                                </p>
-                                <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                  <span
-                                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
-                                      currentStock === 0
-                                        ? isDay
-                                          ? "bg-rose-50 text-rose-700 border-rose-200"
-                                          : "bg-rose-950/70 text-rose-300 border-rose-800/60"
-                                        : isLowStock
-                                        ? isDay
-                                          ? "bg-amber-50 text-amber-700 border-amber-200"
-                                          : "bg-amber-950/70 text-amber-300 border-amber-800/60"
-                                        : ui.secondaryBtn
-                                    }`}
-                                  >
-                                    Stock: {currentStock}
-                                  </span>
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <textarea
+                      placeholder="Description (optional)"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
+                      rows={3}
+                    />
+
+                    <button
+                      type="submit"
+                      disabled={creatingProduct || processingImage}
+                      className={`w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm disabled:opacity-50 cursor-pointer ${ui.primaryBtn}`}
+                    >
+                      <Plus className="w-4 h-4" />
+                      {creatingProduct ? "Adding..." : "Add Product"}
+                    </button>
+                  </form>
+
+                  {/* All Products List */}
+                  <div
+                    className={`lg:col-span-2 p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
+                        All Products ({filteredProducts.length})
+                      </h2>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div
+                          className={`flex items-center rounded-xl px-3 py-1.5 border ${ui.mutedInputBg}`}
+                        >
+                          <Search
+                            className={`w-4 h-4 mr-1.5 ${ui.textMuted}`}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Search product or color..."
+                            value={productSearch}
+                            onChange={(e) => setProductSearch(e.target.value)}
+                            className={`bg-transparent text-xs outline-none w-36 sm:w-44 ${ui.textPrimary}`}
+                          />
+                        </div>
+
+                        <select
+                          value={productCatFilter}
+                          onChange={(e) => setProductCatFilter(e.target.value)}
+                          className={`border rounded-xl px-3 py-1.5 text-xs font-semibold outline-none cursor-pointer ${ui.mutedInputBg}`}
+                        >
+                          <option value="all">All Categories</option>
+                          {STORE_SUBCATEGORIES.map((catLabel) => (
+                            <option key={catLabel} value={catLabel}>
+                              {catLabel}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {filteredProducts.length === 0 ? (
+                      <p className={`text-sm py-6 text-center ${ui.textMuted}`}>
+                        {products.length === 0
+                          ? "ডাটাবেজে এখনো কোনো প্রোডাক্ট নেই। বাম পাশ থেকে যোগ করুন।"
+                          : "কোনো ম্যাচিং প্রোডাক্ট পাওয়া যায়নি।"}
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {filteredProducts.map((prod) => {
+                          const currentStock =
+                            typeof prod.stock === "number" ? prod.stock : 10;
+                          const isOutOfStock = currentStock <= 0;
+                          const isLowStock =
+                            currentStock > 0 && currentStock <= 3;
+                          const displaySubCat = normalizeSubCategoryLabel(
+                            prod.subCategory,
+                            prod.category
+                          );
+                          const allProdImgs = collectProductImages(prod);
+
+                          return (
+                            <div
+                              key={prod._id}
+                              className={`border rounded-2xl p-3.5 flex flex-col justify-between gap-3 ${ui.subCardBg}`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="relative shrink-0">
+                                  <img
+                                    src={allProdImgs[0] || prod.image}
+                                    alt={prod.name}
+                                    className={`w-14 h-14 object-cover rounded-xl ${ui.mutedInputBg}`}
+                                  />
                                   {allProdImgs.length > 1 && (
                                     <span
-                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${ui.secondaryBtn}`}
+                                      className={`absolute -bottom-1 -right-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                        isDay
+                                          ? "bg-slate-800 text-slate-100"
+                                          : "bg-zinc-200 text-zinc-900"
+                                      }`}
                                     >
-                                      {allProdImgs.length} Photos
+                                      +{allProdImgs.length - 1}
                                     </span>
                                   )}
-                                  {prod.sizes && prod.sizes.length > 0 && (
+                                </div>
+                                <div className="min-w-0">
+                                  <p
+                                    className={`font-semibold text-sm truncate ${ui.textPrimary}`}
+                                  >
+                                    {prod.name}
+                                  </p>
+                                  <p className={`text-xs ${ui.textMuted}`}>
+                                    {displaySubCat} •{" "}
                                     <span
-                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${ui.secondaryBtn}`}
+                                      className={`font-bold ${ui.textPrimary}`}
                                     >
-                                      Sizes: {prod.sizes.join(", ")}
+                                      ৳{prod.price}
                                     </span>
-                                  )}
-                                  {prod.colors && prod.colors.length > 0 && (
+                                    {prod.oldPrice ? (
+                                      <span className="line-through opacity-60 ml-1">
+                                        ৳{prod.oldPrice}
+                                      </span>
+                                    ) : null}
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                     <span
-                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${ui.secondaryBtn}`}
+                                      className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                                        isOutOfStock
+                                          ? isDay
+                                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                                            : "bg-rose-950/70 text-rose-300 border-rose-800/60"
+                                          : isLowStock
+                                          ? isDay
+                                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                                            : "bg-amber-950/70 text-amber-300 border-amber-800/60"
+                                          : ui.secondaryBtn
+                                      }`}
                                     >
-                                      Colors: {prod.colors.join(", ")}
+                                      {isOutOfStock
+                                        ? "Out of Stock (0)"
+                                        : `Stock: ${currentStock}`}
                                     </span>
+                                    {prod.sizes && prod.sizes.length > 0 && (
+                                      <span
+                                        className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${ui.secondaryBtn}`}
+                                      >
+                                        Sizes: {prod.sizes.join(", ")}
+                                      </span>
+                                    )}
+                                    {prod.colors && prod.colors.length > 0 && (
+                                      <span
+                                        className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${ui.secondaryBtn}`}
+                                      >
+                                        Colors: {prod.colors.join(", ")}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div
+                                className={`flex items-center justify-between gap-2 pt-2 border-t ${ui.divider}`}
+                              >
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      stockUpdatingId === prod._id ||
+                                      currentStock <= 0
+                                    }
+                                    onClick={() =>
+                                      handleQuickStockChange(prod, -1)
+                                    }
+                                    title="Decrease stock"
+                                    className={`w-7 h-7 rounded-lg border flex items-center justify-center disabled:opacity-40 cursor-pointer ${ui.secondaryBtn}`}
+                                  >
+                                    <Minus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={stockUpdatingId === prod._id}
+                                    onClick={() =>
+                                      handleQuickStockChange(prod, 1)
+                                    }
+                                    title="Increase stock"
+                                    className={`w-7 h-7 rounded-lg border flex items-center justify-center disabled:opacity-40 cursor-pointer ${ui.secondaryBtn}`}
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(prod)}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl cursor-pointer ${ui.secondaryBtn}`}
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                    Edit
+                                  </button>
+
+                                  {adminRole === "admin" && (
+                                    <button
+                                      type="button"
+                                      disabled={deletingProductId === prod._id}
+                                      onClick={() =>
+                                        handleDeleteProduct(prod._id)
+                                      }
+                                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl disabled:opacity-50 cursor-pointer ${
+                                        isDay
+                                          ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                                          : "bg-rose-950/60 text-rose-300 border-rose-800/60 hover:bg-rose-900/70"
+                                      }`}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      {deletingProductId === prod._id
+                                        ? "..."
+                                        : "Delete"}
+                                    </button>
                                   )}
                                 </div>
                               </div>
                             </div>
-
-                            <div
-                              className={`flex items-center justify-between gap-2 pt-2 border-t ${ui.divider}`}
-                            >
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  disabled={
-                                    stockUpdatingId === prod._id ||
-                                    currentStock <= 0
-                                  }
-                                  onClick={() =>
-                                    handleQuickStockChange(prod, -1)
-                                  }
-                                  title="Decrease stock"
-                                  className={`w-7 h-7 rounded-lg border flex items-center justify-center disabled:opacity-40 cursor-pointer ${ui.secondaryBtn}`}
-                                >
-                                  <Minus className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={stockUpdatingId === prod._id}
-                                  onClick={() =>
-                                    handleQuickStockChange(prod, 1)
-                                  }
-                                  title="Increase stock"
-                                  className={`w-7 h-7 rounded-lg border flex items-center justify-center disabled:opacity-40 cursor-pointer ${ui.secondaryBtn}`}
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => openEditModal(prod)}
-                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl cursor-pointer ${ui.secondaryBtn}`}
-                                >
-                                  <Pencil className="w-3 h-3" />
-                                  Edit
-                                </button>
-
-                                <button
-                                  type="button"
-                                  disabled={deletingProductId === prod._id}
-                                  onClick={() => handleDeleteProduct(prod._id)}
-                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border rounded-xl disabled:opacity-50 cursor-pointer ${
-                                    isDay
-                                      ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
-                                      : "bg-rose-950/60 text-rose-300 border-rose-800/60 hover:bg-rose-900/70"
-                                  }`}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  {deletingProductId === prod._id
-                                    ? "..."
-                                    : "Delete"}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
             {/* CUSTOMERS SECTION */}
             {activeSection === "customers" && (
-              <div className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
+              <div
+                className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}
+              >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
@@ -3864,7 +4742,9 @@ export default function AdminPage() {
 
             {/* LOGGED-IN USERS SECTION */}
             {activeSection === "users" && (
-              <div className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
+              <div
+                className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}
+              >
                 <div
                   className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
                 >
@@ -3919,7 +4799,9 @@ export default function AdminPage() {
                           <th className="py-2.5 px-3 font-semibold">
                             Location / Address
                           </th>
-                          <th className="py-2.5 px-3 font-semibold">Status</th>
+                          <th className="py-2.5 px-3 font-semibold">
+                            Login Time
+                          </th>
                           <th className="py-2.5 px-3 font-semibold text-right">
                             Actions
                           </th>
@@ -3950,16 +4832,10 @@ export default function AdminPage() {
                                 .filter(Boolean)
                                 .join(" • ") || "—"}
                             </td>
-                            <td className="py-3 px-3">
-                              <span
-                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
-                                  isDay
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
-                                }`}
-                              >
-                                {user.verified ? "Verified" : "Active"}
-                              </span>
+                            <td
+                              className={`py-3 px-3 text-xs font-mono ${ui.textMuted}`}
+                            >
+                              {formatDateTimeBD(user.lastActiveAt)}
                             </td>
                             <td className="py-3 px-3 text-right">
                               <div className="inline-flex items-center gap-1">
@@ -4006,7 +4882,9 @@ export default function AdminPage() {
 
             {/* NEWSLETTER SUBSCRIBERS SECTION */}
             {activeSection === "subscribers" && (
-              <div className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
+              <div
+                className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}
+              >
                 <div
                   className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
                 >
@@ -4066,9 +4944,7 @@ export default function AdminPage() {
                           </p>
                           <p className={`text-[11px] ${ui.textMuted}`}>
                             {sub.createdAt
-                              ? `Subscribed: ${new Date(
-                                  sub.createdAt
-                                ).toLocaleDateString()}`
+                              ? `Subscribed: ${formatDateTimeBD(sub.createdAt)}`
                               : "Newsletter Subscriber"}
                           </p>
                         </div>
@@ -4114,18 +4990,21 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* CUSTOMER REVIEWS SECTION */}
+            {/* CUSTOMER REVIEWS & MODERATION SECTION */}
             {activeSection === "reviews" && (
-              <div className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}>
+              <div
+                className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}
+              >
                 <div
                   className={`flex items-center justify-between border-b pb-4 ${ui.divider}`}
                 >
                   <div>
                     <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
-                      Customer Reviews ({filteredReviews.length})
+                      Customer Reviews &amp; Photo Moderation (
+                      {filteredReviews.length})
                     </h2>
                     <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
-                      কাস্টমারদের দেওয়া রিভিউ ও রিসিভ করা প্রোডাক্টের ছবি
+                      কাস্টমারদের ফটো রিভিউ Approve বা Reject করে স্টোরফ্রন্টে নিয়ন্ত্রণ করুন।
                     </p>
                   </div>
                 </div>
@@ -4141,25 +5020,44 @@ export default function AdminPage() {
                         key={rev.id}
                         className={`rounded-2xl border p-4 space-y-3 ${ui.subCardBg}`}
                       >
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                           <span
-                            className={`text-sm font-bold ${ui.textPrimary}`}
+                            className={`text-sm font-bold truncate ${ui.textPrimary}`}
                           >
                             {rev.name}
                           </span>
-                          <span
-                            className={`text-xs font-bold ${
-                              isDay ? "text-amber-700" : "text-amber-400"
-                            }`}
-                          >
-                            {rev.rating} ★
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                                rev.status === "approved"
+                                  ? isDay
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-emerald-950/70 text-emerald-300 border-emerald-800/60"
+                                  : rev.status === "rejected"
+                                  ? isDay
+                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                    : "bg-rose-950/70 text-rose-300 border-rose-800/60"
+                                  : ui.secondaryBtn
+                              }`}
+                            >
+                              {rev.status || "pending"}
+                            </span>
+                            <span
+                              className={`text-xs font-bold ${
+                                isDay ? "text-amber-700" : "text-amber-400"
+                              }`}
+                            >
+                              {rev.rating} ★
+                            </span>
+                          </div>
                         </div>
+
                         <p
                           className={`text-xs leading-relaxed ${ui.textSecondary}`}
                         >
                           {rev.comment}
                         </p>
+
                         {rev.photo && (
                           <div
                             className={`aspect-video w-full rounded-xl overflow-hidden border ${ui.mutedInputBg}`}
@@ -4171,7 +5069,35 @@ export default function AdminPage() {
                             />
                           </div>
                         )}
-                        <div className="pt-1 flex justify-end">
+
+                        {rev.createdAt && (
+                          <p className={`text-[10px] font-mono ${ui.textMuted}`}>
+                            Review Time: {formatDateTimeBD(rev.createdAt)}
+                          </p>
+                        )}
+
+                        <div className="pt-1 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleModerateReview(rev.id, "approved")
+                              }
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${ui.primaryBtn}`}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleModerateReview(rev.id, "rejected")
+                              }
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${ui.secondaryBtn}`}
+                            >
+                              Reject
+                            </button>
+                          </div>
+
                           <button
                             type="button"
                             onClick={() => handleDeleteReview(rev.id)}
@@ -4180,8 +5106,101 @@ export default function AdminPage() {
                             }`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
-                            Delete Review
+                            Delete
                           </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ADMIN PANEL ACTIVITY TIMELINE (LOGIN, CHECKOUT, ORDER, REVIEW TIME) */}
+            {activeSection === "activity" && (
+              <div
+                className={`p-5 sm:p-6 rounded-2xl border space-y-4 ${ui.cardBg}`}
+              >
+                <div
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 ${ui.divider}`}
+                >
+                  <div>
+                    <h2
+                      className={`text-lg font-bold flex items-center gap-2 ${ui.textPrimary}`}
+                    >
+                      <Activity className="w-5 h-5" />
+                      Activity Timeline ({filteredActivityLogs.length})
+                    </h2>
+                    <p className={`text-xs mt-0.5 ${ui.textMuted}`}>
+                      Login Time, Checkout Time, Order Time, Review Time এবং Admin Audit Log
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      "All",
+                      "Login",
+                      "Checkout",
+                      "Order",
+                      "Review",
+                      "Audit",
+                    ].map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setActivityFilter(tag)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border cursor-pointer ${
+                          activityFilter === tag ? ui.navActive : ui.secondaryBtn
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filteredActivityLogs.length === 0 ? (
+                  <p className={`text-sm py-8 text-center ${ui.textMuted}`}>
+                    এই ফিল্টারে কোনো অ্যাক্টিভিটি টাইমলাইন এন্ট্রি নেই।
+                  </p>
+                ) : (
+                  <div className={`divide-y border rounded-2xl ${ui.divider}`}>
+                    {filteredActivityLogs.map((act) => (
+                      <div
+                        key={act.id}
+                        className={`p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${ui.subCardBg} ${ui.hoverRow}`}
+                      >
+                        <div className="space-y-0.5 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${ui.secondaryBtn}`}
+                            >
+                              {act.type}
+                            </span>
+                            <span
+                              className={`text-xs sm:text-sm font-bold ${ui.textPrimary}`}
+                            >
+                              {act.actor}
+                            </span>
+                            {act.role && (
+                              <span
+                                className={`text-[10px] uppercase font-semibold ${ui.textMuted}`}
+                              >
+                                [{act.role}]
+                              </span>
+                            )}
+                          </div>
+                          <p className={`text-xs ${ui.textSecondary}`}>
+                            {act.detail}
+                          </p>
+                        </div>
+
+                        <div className="text-left sm:text-right shrink-0">
+                          <p
+                            className={`text-xs font-mono font-semibold ${ui.textPrimary}`}
+                          >
+                            {formatDateTimeBD(act.timestamp)}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -4198,7 +5217,7 @@ export default function AdminPage() {
                   className={`p-5 sm:p-6 rounded-2xl border space-y-4 h-fit ${ui.cardBg}`}
                 >
                   <h2 className={`text-lg font-bold ${ui.textPrimary}`}>
-                    Mymensingh Delivery &amp; Wallet Settings
+                    Mymensingh Delivery, Wallet &amp; Flash Sale Settings
                   </h2>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -4241,19 +5260,61 @@ export default function AdminPage() {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label
+                        className={`block text-xs font-medium mb-1 ${ui.textMuted}`}
+                      >
+                        Free Delivery Threshold (৳, 0 = disabled)
+                      </label>
+                      <input
+                        type="number"
+                        value={deliverySettings.freeDeliveryThreshold}
+                        onChange={(e) =>
+                          setDeliverySettings({
+                            ...deliverySettings,
+                            freeDeliveryThreshold: Number(e.target.value),
+                          })
+                        }
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        className={`block text-xs font-medium mb-1 ${ui.textMuted}`}
+                      >
+                        Default Flash Sale Discount (%)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={75}
+                        value={deliverySettings.flashSaleDiscountPercent}
+                        onChange={(e) =>
+                          setDeliverySettings({
+                            ...deliverySettings,
+                            flashSaleDiscountPercent: Number(e.target.value),
+                          })
+                        }
+                        className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label
                       className={`block text-xs font-medium mb-1 ${ui.textMuted}`}
                     >
-                      Free Delivery Threshold (৳, 0 = disabled)
+                      Flash Sale End Date (optional)
                     </label>
                     <input
-                      type="number"
-                      value={deliverySettings.freeDeliveryThreshold}
+                      type="date"
+                      value={deliverySettings.flashSaleEndsAt}
                       onChange={(e) =>
                         setDeliverySettings({
                           ...deliverySettings,
-                          freeDeliveryThreshold: Number(e.target.value),
+                          flashSaleEndsAt: e.target.value,
                         })
                       }
                       className={`w-full border rounded-xl px-3.5 py-2 text-sm outline-none ${ui.inputBg}`}
@@ -4388,6 +5449,112 @@ export default function AdminPage() {
           </footer>
         </div>
       </div>
+
+      {/* Printable Packing Slip Modal */}
+      {packingSlipOrder && (
+        <div
+          onClick={() => setPackingSlipOrder(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 overflow-y-auto"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`rounded-3xl max-w-lg w-full p-6 shadow-xl border space-y-4 my-auto ${ui.cardBg}`}
+          >
+            <div
+              className={`flex items-center justify-between border-b pb-3 ${ui.divider}`}
+            >
+              <div>
+                <p
+                  className={`text-[10px] font-bold uppercase tracking-widest ${ui.textMuted}`}
+                >
+                  {BRAND_NAME} • PACKING SLIP
+                </p>
+                <h3
+                  className={`text-base font-bold font-mono ${ui.textPrimary}`}
+                >
+                  Order #{packingSlipOrder._id}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPackingSlipOrder(null)}
+                className={`p-1.5 rounded-full cursor-pointer ${ui.navIdle}`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div
+              className={`p-4 rounded-2xl border space-y-1.5 text-xs sm:text-sm ${ui.subCardBg}`}
+            >
+              <p>
+                <strong className={ui.textMuted}>Recipient:</strong>{" "}
+                <span className={`font-bold ${ui.textPrimary}`}>
+                  {packingSlipOrder.customerName}
+                </span>
+              </p>
+              <p>
+                <strong className={ui.textMuted}>Phone:</strong>{" "}
+                <span className={`font-mono ${ui.textSecondary}`}>
+                  {packingSlipOrder.phone}
+                </span>
+              </p>
+              <p>
+                <strong className={ui.textMuted}>Delivery Address:</strong>{" "}
+                <span className={ui.textSecondary}>
+                  {packingSlipOrder.address}
+                </span>
+              </p>
+              <p>
+                <strong className={ui.textMuted}>Status:</strong>{" "}
+                <span className={`font-bold ${ui.textPrimary}`}>
+                  {packingSlipOrder.status || "Pending"}
+                </span>
+              </p>
+            </div>
+
+            <div
+              className={`border rounded-2xl divide-y px-3.5 ${ui.subCardBg} ${ui.divider}`}
+            >
+              {packingSlipOrder.items?.map((item, idx) => (
+                <div
+                  key={`${item.name}-${idx}`}
+                  className="py-2.5 flex items-center justify-between text-xs sm:text-sm"
+                >
+                  <div>
+                    <p className={`font-semibold ${ui.textPrimary}`}>
+                      {item.name}
+                    </p>
+                    <p className={`text-xs ${ui.textMuted}`}>
+                      {item.size ? `Size: ${item.size} • ` : ""}
+                      {item.color ? `Color: ${item.color} • ` : ""}
+                      Qty: <strong>{item.quantity}</strong>
+                    </p>
+                  </div>
+                  <p className={`font-bold ${ui.textPrimary}`}>
+                    ৳{(item.price * item.quantity).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className={`text-sm font-bold ${ui.textPrimary}`}>
+                Collectable Total: ৳
+                {Number(packingSlipOrder.totalAmount).toLocaleString()}
+              </span>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className={`inline-flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl cursor-pointer ${ui.primaryBtn}`}
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Print Slip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Customer Full Order History Modal */}
       {selectedCustomer && (
@@ -4553,7 +5720,9 @@ export default function AdminPage() {
                 >
                   Order Details
                 </p>
-                <h3 className={`text-base font-bold font-mono ${ui.textPrimary}`}>
+                <h3
+                  className={`text-base font-bold font-mono ${ui.textPrimary}`}
+                >
                   #{selectedOrder._id}
                 </h3>
               </div>
@@ -4615,6 +5784,19 @@ export default function AdminPage() {
                       {selectedOrder.address}
                     </span>
                   </p>
+                  {selectedOrder.courierTrackingCode && (
+                    <p>
+                      <span className={`font-semibold ${ui.textMuted}`}>
+                        Courier Tracking:
+                      </span>{" "}
+                      <span
+                        className={`font-mono font-bold ${ui.textPrimary}`}
+                      >
+                        {selectedOrder.courierName || "Courier"} —{" "}
+                        {selectedOrder.courierTrackingCode}
+                      </span>
+                    </p>
+                  )}
                   <p>
                     <span className={`font-semibold ${ui.textMuted}`}>
                       Status:
@@ -4821,6 +6003,36 @@ export default function AdminPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <input
+              type="text"
+              placeholder="Per-Variant Stock (e.g. M:5, L:8, 42:4)"
+              value={editVariantStockText}
+              onChange={(e) => setEditVariantStockText(e.target.value)}
+              className={`w-full border rounded-xl px-3.5 py-2 text-xs outline-none ${ui.inputBg}`}
+            />
+
+            <div
+              className={`border rounded-xl p-2.5 space-y-2 ${ui.subCardBg}`}
+            >
+              <label className="flex items-center justify-between text-xs font-semibold cursor-pointer">
+                <span className={ui.textSecondary}>Flash Sale Active</span>
+                <input
+                  type="checkbox"
+                  checked={editFlashSaleEnabled}
+                  onChange={(e) => setEditFlashSaleEnabled(e.target.checked)}
+                  className="w-4 h-4 cursor-pointer"
+                />
+              </label>
+              {editFlashSaleEnabled && (
+                <input
+                  type="date"
+                  value={editFlashSaleEndsAt}
+                  onChange={(e) => setEditFlashSaleEndsAt(e.target.value)}
+                  className={`w-full border rounded-xl px-3 py-1.5 text-xs outline-none ${ui.inputBg}`}
+                />
+              )}
             </div>
 
             <div

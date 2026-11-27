@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/app/lib/mongodb";
 import Product from "@/app/models/Product";
-import { isAdminRequest } from "@/app/lib/adminAuth";
+import { hasAdminAccess } from "@/app/lib/adminAuth";
 
 function parseStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -70,9 +70,9 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    if (!isAdminRequest(req)) {
+    if (!hasAdminAccess(req, ["admin", "staff"])) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized: Admin access required" },
+        { success: false, message: "Unauthorized: Admin or Staff access required" },
         { status: 401 }
       );
     }
@@ -234,10 +234,13 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    if (!isAdminRequest(req)) {
+    if (!hasAdminAccess(req, ["admin"])) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized: Admin access required" },
-        { status: 401 }
+        {
+          success: false,
+          message: "Forbidden: Only Admin can delete products",
+        },
+        { status: 403 }
       );
     }
 

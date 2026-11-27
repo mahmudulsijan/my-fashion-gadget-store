@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import { connectDB } from "@/app/lib/mongodb";
 import { Order } from "@/app/models/Order";
 import Product from "@/app/models/Product";
-import { isAdminRequest } from "@/app/lib/adminAuth";
+import { hasAdminAccess } from "@/app/lib/adminAuth";
 
 const BRAND_NAME = "MAVÉRON";
 
@@ -88,7 +88,6 @@ export async function GET(req: NextRequest) {
     const rawOrderId = String(searchParams.get("orderId") || "").trim();
     const rawPhone = String(searchParams.get("phone") || "").trim();
 
-    // Public order tracking mode when orderId/phone params are passed
     if (hasOrderIdParam || hasPhoneParam) {
       const cleanOrderId = rawOrderId.replace(/^#/, "").trim();
       const cleanPhone = normalizePhone(rawPhone);
@@ -137,10 +136,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Admin fetch all orders (requires authenticated admin session)
-    if (!isAdminRequest(req)) {
+    if (!hasAdminAccess(req, ["admin", "staff"])) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized: Admin access required" },
+        { success: false, message: "Unauthorized: Admin or Staff access required" },
         { status: 401 }
       );
     }
@@ -159,6 +157,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const now = Date.now();
+    const nowIso = new Date(now).toISOString();
     const clientIp = getClientIp(req);
 
     if (isRateLimited(`ip:${clientIp}`, now)) {
@@ -209,7 +208,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Prevent rapid duplicate/spam orders from the same phone number
     const cooldownCutoff = new Date(now - DUPLICATE_COOLDOWN_MS);
     const recentOrder = await Order.findOne({
       phone: normalizedPhone,
@@ -251,7 +249,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Server-side price & stock verification against MongoDB Product catalog
     const sanitizedItems = [];
     let verifiedSubtotal = 0;
 
@@ -301,8 +298,9 @@ export async function POST(req: NextRequest) {
       const productImages = Array.isArray(dbProduct.images)
         ? dbProduct.images
         : [];
-      const fallbackImage =
-        String(dbProduct.image || productImages[0] || item?.image || "").trim();
+      const fallbackImage = String(
+        dbProduct.image || productImages[0] || item?.image || ""
+      ).trim();
 
       sanitizedItems.push({
         productId: String(dbProduct._id),
@@ -322,14 +320,59 @@ export async function POST(req: NextRequest) {
     );
     const verifiedTotalAmount = verifiedSubtotal + deliveryCharge;
 
-    // Force initial order status to Pending on customer checkout
+    const rawPaymentType = String(body?.paymentType || "partial_cod").trim();
+    const paymentType =
+      rawPaymentType === "full_online" || rawPaymentType === "full_cod"
+        ? rawPaymentType
+        : "partial_cod";
+
+    const advancePaidAmount =
+      paymentType === "full_online"
+        ? verifiedTotalAmount
+        : paymentType === "full_cod"
+        ? 0
+        : deliveryCharge;
+
+    const codDueAmount = Math.max(0, verifiedTotalAmount - advancePaidAmount);
+
+    const senderNumber = body?.advanceSenderNumber
+      ? normalizePhone(String(body.advanceSenderNumber).trim())
+      : "";
+    const trxId = body?.advanceTrxId
+      ? String(body.advanceTrxId).trim()
+      : "";
+
+    if (advancePaidAmount > 0 && (!senderNumber || !trxId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Sender number and Transaction ID (TrxID) are required for advance delivery charge payment.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const checkoutAt = body?.checkoutAt
+      ? String(body.checkoutAt)
+      : nowIso;
+
     const orderPayload: Record<string, unknown> = {
       customerName,
       phone: normalizedPhone,
       address,
       items: sanitizedItems,
+      subtotalAmount: verifiedSubtotal,
+      deliveryCharge,
+      advancePaidAmount,
+      codDueAmount,
+      paymentType,
+      advancePaymentStatus:
+        advancePaidAmount > 0 ? "pending_verification" : "verified",
       totalAmount: verifiedTotalAmount,
       status: "Pending",
+      checkoutAt,
+      orderTime: nowIso,
     };
 
     if (district) {
@@ -338,15 +381,27 @@ export async function POST(req: NextRequest) {
     if (body?.paymentMethod) {
       orderPayload.paymentMethod = String(body.paymentMethod).trim();
     }
+    if (senderNumber) {
+      orderPayload.advanceSenderNumber = senderNumber;
+    }
+    if (trxId) {
+      orderPayload.advanceTrxId = trxId;
+    }
 
     const order = await Order.create(orderPayload);
     return NextResponse.json(
       {
         success: true,
         order,
+        timestamps: {
+          checkoutAt,
+          orderTime: nowIso,
+        },
         pricing: {
           subtotal: verifiedSubtotal,
           deliveryCharge,
+          advancePaidAmount,
+          codDueAmount,
           totalAmount: verifiedTotalAmount,
         },
       },

@@ -1,24 +1,51 @@
+// lib/mongodb.ts
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI as string;
+const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
   throw new Error("Please define MONGODB_URI in .env.local or Vercel");
 }
 
-let cached = (global as any).mongoose;
+type MongooseCache = {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+};
 
-if (!cached) {
-  cached = (global as any).mongoose = { conn: null, promise: null };
+declare global {
+  // eslint-disable-next-line no-var
+  var _mongooseCache: MongooseCache | undefined;
 }
 
-export async function connectDB() {
-  if (cached.conn) return cached.conn;
+const cached: MongooseCache = globalThis._mongooseCache ?? {
+  conn: null,
+  promise: null,
+};
 
-  if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI).then((m) => m);
+globalThis._mongooseCache = cached;
+
+export async function connectDB(): Promise<typeof mongoose> {
+  if (cached.conn) {
+    return cached.conn;
   }
 
-  cached.conn = await cached.promise;
+  if (!cached.promise) {
+    cached.promise = mongoose
+      .connect(MONGODB_URI!, {
+        bufferCommands: false,
+        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+      })
+      .then((m) => m);
+  }
+
+  try {
+    cached.conn = await cached.promise;
+  } catch (error) {
+    cached.promise = null;
+    throw error;
+  }
+
   return cached.conn;
 }

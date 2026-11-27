@@ -80,9 +80,22 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
+function getInitialThemeMode(): ThemeMode {
+  if (typeof window === "undefined") return "light";
+  try {
+    const savedTheme = localStorage.getItem("maveron_theme_mode");
+    if (savedTheme === "night" || savedTheme === "light") {
+      return savedTheme;
+    }
+  } catch {
+    // ignore
+  }
+  return "light";
+}
+
 export default function TrackOrderPage() {
   const [lang, setLang] = useState<Lang>("en");
-  const [themeMode, setThemeMode] = useState<ThemeMode>("night");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
   const [orderIdInput, setOrderIdInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
   const [orders, setOrders] = useState<TrackedOrder[]>([]);
@@ -145,6 +158,8 @@ export default function TrackOrderPage() {
       const savedTheme = localStorage.getItem("maveron_theme_mode");
       if (savedTheme === "night" || savedTheme === "light") {
         setThemeMode(savedTheme);
+      } else {
+        setThemeMode("light");
       }
     } catch {
       // ignore
@@ -261,7 +276,7 @@ export default function TrackOrderPage() {
   return (
     <div
       suppressHydrationWarning
-      className={`min-h-screen flex flex-col transition-colors duration-200 ${t.pageBg}`}
+      className={`min-h-screen flex flex-col ${t.pageBg}`}
     >
       {/* Top Announcement Bar */}
       <div className={`text-xs py-2 px-4 text-center ${t.topBar}`}>

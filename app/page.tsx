@@ -38,6 +38,12 @@ import {
   Settings,
 } from "lucide-react";
 
+type FlashSaleConfig = {
+  enabled?: boolean;
+  endsAt?: string;
+  discountPercent?: number;
+};
+
 type Product = {
   id: string;
   name: string;
@@ -45,6 +51,7 @@ type Product = {
   subCategory: string;
   price: number;
   oldPrice?: number;
+  flashSale?: FlashSaleConfig;
   image: string;
   secondaryImage?: string;
   images?: string[];
@@ -72,6 +79,7 @@ type CustomerProfile = {
   address: string;
   provider?: "email" | "phone" | "google" | "facebook" | "otp";
   verified?: boolean;
+  lastActiveAt?: string;
 };
 
 type UserOrderRecord = {
@@ -83,6 +91,7 @@ type UserOrderRecord = {
   totalAmount: number;
   status: string;
   createdAt?: string;
+  checkoutAt?: string;
   items?: Array<{ name: string; quantity: number; price?: number }>;
 };
 
@@ -102,6 +111,8 @@ type SimpleReview = {
   rating: number;
   comment: string;
   photo?: string;
+  status?: string;
+  createdAt?: string;
 };
 
 type SortOption = "featured" | "price-asc" | "price-desc" | "discount";
@@ -497,6 +508,30 @@ function resolveAdminColorImages(
   return map;
 }
 
+function resolveFlashSale(item: Record<string, unknown>): FlashSaleConfig | undefined {
+  const raw = item?.flashSale;
+  if (!raw || typeof raw !== "object") return undefined;
+  const obj = raw as Record<string, unknown>;
+  const endsAt =
+    typeof obj.endsAt === "string" && obj.endsAt.trim()
+      ? obj.endsAt.trim()
+      : undefined;
+  const isExpired = endsAt
+    ? Number.isFinite(Date.parse(endsAt)) && Date.parse(endsAt) < Date.now()
+    : false;
+  return {
+    enabled: Boolean(obj.enabled) && !isExpired,
+    endsAt,
+    discountPercent:
+      obj.discountPercent !== undefined ? Number(obj.discountPercent) : undefined,
+  };
+}
+
+function isFlashSaleProduct(p: Product): boolean {
+  if (p.flashSale?.enabled) return true;
+  return typeof p.oldPrice === "number" && p.oldPrice > p.price;
+}
+
 function getImageForColor(product: Product, color?: string): string {
   if (!color) return product.image;
   const key = color.trim().toLowerCase();
@@ -540,7 +575,10 @@ function getDiscountPercent(price: number, oldPrice?: number): number | null {
   return Math.round(((oldPrice - price) / oldPrice) * 100);
 }
 
-function sanitizeAuthenticReviews(raw: unknown): SimpleReview[] {
+function sanitizeAuthenticReviews(
+  raw: unknown,
+  fromApi = false
+): SimpleReview[] {
   if (!Array.isArray(raw)) return [];
   const blockedNames = new Set([
     "demo",
@@ -555,6 +593,15 @@ function sanitizeAuthenticReviews(raw: unknown): SimpleReview[] {
     .filter((entry): entry is Record<string, unknown> =>
       Boolean(entry && typeof entry === "object")
     )
+    .filter((item) => {
+      const statusVal = String(item.status || "").trim().toLowerCase();
+      if (statusVal === "rejected") return false;
+      if (item.approved === false) return false;
+      if (fromApi && statusVal && statusVal !== "approved") {
+        return false;
+      }
+      return true;
+    })
     .map((item, idx) => {
       const name = String(item.name || "").trim();
       const comment = String(item.comment || "").trim();
@@ -577,6 +624,14 @@ function sanitizeAuthenticReviews(raw: unknown): SimpleReview[] {
           : typeof item._id === "string" && item._id.trim().length > 0
           ? item._id.trim()
           : `rev-${idx}-${name}`;
+      const status =
+        typeof item.status === "string" && item.status.trim().length > 0
+          ? item.status.trim()
+          : "approved";
+      const createdAt =
+        typeof item.createdAt === "string" && item.createdAt.trim().length > 0
+          ? item.createdAt.trim()
+          : undefined;
 
       return {
         id,
@@ -585,6 +640,8 @@ function sanitizeAuthenticReviews(raw: unknown): SimpleReview[] {
         rating: validRating,
         comment,
         photo,
+        status,
+        createdAt,
       };
     })
     .filter(
@@ -593,6 +650,29 @@ function sanitizeAuthenticReviews(raw: unknown): SimpleReview[] {
         rev.comment.length > 0 &&
         !blockedNames.has(rev.name.toLowerCase())
     );
+}
+
+function appendTimelineEvent(
+  type: string,
+  meta?: Record<string, unknown>
+) {
+  if (typeof window === "undefined") return;
+  try {
+    const nowIso = new Date().toISOString();
+    const raw = localStorage.getItem("maveron_activity_timeline");
+    const list: Array<Record<string, unknown>> = raw ? JSON.parse(raw) : [];
+    const entry = {
+      id: `tl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type,
+      timestamp: nowIso,
+      createdAt: nowIso,
+      ...(meta || {}),
+    };
+    const next = [entry, ...list].slice(0, 100);
+    localStorage.setItem("maveron_activity_timeline", JSON.stringify(next));
+  } catch {
+    // ignore storage errors
+  }
 }
 
 function readInitialTheme(): ThemeMode {
@@ -619,11 +699,45 @@ function applyThemeToDocument(mode: ThemeMode) {
     // ignore
   }
 }
+async function uploadImageToCloudinaryRoute(
+  file: File,
+  folder = "maveron/reviews"
+): Promise<string> {
+  if (!(file instanceof File)) {
+    throw new Error("Invalid file selected for upload");
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("folder", folder);
+
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+    credentials: "include",
+  });
+
+  const data = await res.json().catch(() => ({}));
+  const uploadedUrl = String(
+    data?.url || data?.secure_url || data?.data?.url || ""
+  ).trim();
+
+  if (!res.ok || !uploadedUrl.startsWith("http")) {
+    throw new Error(
+      String(
+        data?.message ||
+          data?.error ||
+          `Cloudinary upload failed (HTTP ${res.status})`
+      )
+    );
+  }
+
+  return uploadedUrl;
+}
 
 export default function HomeStore() {
   const [isMounted, setIsMounted] = useState(false);
   const [lang, setLang] = useState<Lang>("en");
-  // Default to Light Mode ("light") so there is no night-to-light blink on reload
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -649,6 +763,7 @@ export default function HomeStore() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
   const [reviewPhoto, setReviewPhoto] = useState<string>("");
+  const [uploadingReviewPhoto, setUploadingReviewPhoto] = useState(false);
 
   // Delivery & Wallet Config synced from Admin Settings
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryConfig>(
@@ -801,7 +916,7 @@ export default function HomeStore() {
     try {
       const savedReviews = localStorage.getItem("maveron_simple_reviews");
       if (savedReviews) {
-        localClean = sanitizeAuthenticReviews(JSON.parse(savedReviews));
+        localClean = sanitizeAuthenticReviews(JSON.parse(savedReviews), false);
       }
     } catch {
       localClean = [];
@@ -813,7 +928,7 @@ export default function HomeStore() {
       });
       const data = await res.json();
       if (res.ok && data?.success && Array.isArray(data.reviews)) {
-        const apiClean = sanitizeAuthenticReviews(data.reviews);
+        const apiClean = sanitizeAuthenticReviews(data.reviews, true);
         const mergedMap = new Map<string, SimpleReview>();
         for (const r of [...apiClean, ...localClean]) {
           if (!mergedMap.has(r.id)) {
@@ -1026,6 +1141,10 @@ export default function HomeStore() {
           }
           setIsCartOpen(true);
           setActiveBottomTab("cart");
+          appendTimelineEvent("checkout_started", {
+            source: "pending_checkout",
+            checkoutAt: new Date().toISOString(),
+          });
         }
       }
 
@@ -1083,6 +1202,7 @@ export default function HomeStore() {
                 allImages
               );
               const rawBadge = String(item.badge || "").trim();
+              const flashSale = resolveFlashSale(item);
 
               return {
                 id: String(item._id || item.id || idx),
@@ -1091,6 +1211,7 @@ export default function HomeStore() {
                 subCategory: subCat,
                 price: Number(item.price) || 0,
                 oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
+                flashSale,
                 image: primaryImg,
                 secondaryImage: secondaryImg,
                 images: allImages,
@@ -1201,6 +1322,7 @@ export default function HomeStore() {
 
   const syncUserToBackend = async (profile: CustomerProfile) => {
     if (!profile.email || !profile.verified) return;
+    const activeTimestamp = profile.lastActiveAt || new Date().toISOString();
     try {
       await fetch("/api/users", {
         method: "POST",
@@ -1213,6 +1335,7 @@ export default function HomeStore() {
           address: profile.address,
           provider: profile.provider || "email",
           verified: true,
+          lastActiveAt: activeTimestamp,
         }),
       });
     } catch (err) {
@@ -1223,40 +1346,63 @@ export default function HomeStore() {
   const persistCustomerProfile = (profile: CustomerProfile) => {
     if (!profile.email || !profile.verified) return;
 
-    setCustomerUser(profile);
-    setCustomerName(profile.name || "");
-    setProfileNameInput(profile.name || "");
-    if (profile.phone) {
-      setCustomerPhone(profile.phone);
-      setProfilePhoneInput(profile.phone);
+    const stampedProfile: CustomerProfile = {
+      ...profile,
+      lastActiveAt: new Date().toISOString(),
+    };
+
+    setCustomerUser(stampedProfile);
+    setCustomerName(stampedProfile.name || "");
+    setProfileNameInput(stampedProfile.name || "");
+    if (stampedProfile.phone) {
+      setCustomerPhone(stampedProfile.phone);
+      setProfilePhoneInput(stampedProfile.phone);
     }
-    if (profile.district) {
-      setCustomerDistrict(profile.district);
-      setProfileDistrictInput(profile.district);
-      setDeliveryLocation(profile.district);
+    if (stampedProfile.district) {
+      setCustomerDistrict(stampedProfile.district);
+      setProfileDistrictInput(stampedProfile.district);
+      setDeliveryLocation(stampedProfile.district);
       setDeliveryZone(
-        profile.district.toLowerCase().includes("mymensingh")
+        stampedProfile.district.toLowerCase().includes("mymensingh")
           ? "mymensingh"
           : "outside"
       );
     }
-    if (profile.address) {
-      setCustomerAddress(profile.address);
-      setProfileAddressInput(profile.address);
+    if (stampedProfile.address) {
+      setCustomerAddress(stampedProfile.address);
+      setProfileAddressInput(stampedProfile.address);
     }
 
     try {
       if (rememberMe) {
-        localStorage.setItem("maveron_user", JSON.stringify(profile));
+        localStorage.setItem("maveron_user", JSON.stringify(stampedProfile));
       } else {
-        sessionStorage.setItem("maveron_user", JSON.stringify(profile));
+        sessionStorage.setItem("maveron_user", JSON.stringify(stampedProfile));
         localStorage.removeItem("maveron_user");
       }
+
+      const rawList = localStorage.getItem("maveron_registered_accounts");
+      const existingList: CustomerProfile[] = rawList ? JSON.parse(rawList) : [];
+      const filtered = existingList.filter(
+        (acc) =>
+          (acc.email || "").trim().toLowerCase() !==
+          stampedProfile.email!.trim().toLowerCase()
+      );
+      localStorage.setItem(
+        "maveron_registered_accounts",
+        JSON.stringify([stampedProfile, ...filtered])
+      );
     } catch (err) {
       console.error("Failed to save user:", err);
     }
 
-    void syncUserToBackend(profile);
+    appendTimelineEvent("user_session", {
+      email: stampedProfile.email,
+      provider: stampedProfile.provider || "email",
+      lastActiveAt: stampedProfile.lastActiveAt,
+    });
+
+    void syncUserToBackend(stampedProfile);
   };
 
   useEffect(() => {
@@ -1363,7 +1509,9 @@ export default function HomeStore() {
     if (customerUser) {
       setProfileNameInput(customerUser.name || "");
       setProfilePhoneInput(customerUser.phone || customerPhone || "");
-      setProfileDistrictInput(customerUser.district || customerDistrict || "Mymensingh");
+      setProfileDistrictInput(
+        customerUser.district || customerDistrict || "Mymensingh"
+      );
       setProfileAddressInput(customerUser.address || customerAddress || "");
       void loadAccountOrders(customerUser);
     }
@@ -1689,43 +1837,119 @@ export default function HomeStore() {
     );
   };
 
-  const handleReviewPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Updated to upload review photo to Cloudinary via /api/upload instead of raw base64
+  const handleReviewPhotoChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 3 * 1024 * 1024) {
+    if (!file.type.startsWith("image/")) {
       notify(
         lang === "bn"
-          ? "ছবির সাইজ ৩ MB-এর কম হতে হবে।"
-          : "Photo size must be under 3 MB."
+          ? "দয়া করে বৈধ ছবি ফাইল সিলেক্ট করুন।"
+          : "Please select a valid image file."
       );
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setReviewPhoto(reader.result);
+    if (file.size > 5 * 1024 * 1024) {
+      notify(
+        lang === "bn"
+          ? "ছবির সাইজ ৫ MB-এর কম হতে হবে।"
+          : "Photo size must be under 5 MB."
+      );
+      return;
+    }
+
+    setUploadingReviewPhoto(true);
+    try {
+      const uploadedUrl = await uploadImageToCloudinaryRoute(
+        file,
+        "maveron/reviews"
+      );
+      setReviewPhoto(uploadedUrl);
+      notify(
+        lang === "bn"
+          ? "রিভিউ ছবি ক্লাউডে আপলোড হয়েছে!"
+          : "Review photo uploaded!"
+      );
+    } catch (err) {
+      console.error("Review photo upload error:", err);
+      notify(
+        lang === "bn"
+          ? "ছবি আপলোড করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।"
+          : "Could not upload photo. Please try again."
+      );
+    } finally {
+      setUploadingReviewPhoto(false);
+      e.target.value = "";
+    }
+  };
+
+  // Reusable multi-file uploader helper via /api/upload (URL-only, no base64)
+  const handleMultipleFilesChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    onUploadedUrls: (urls: string[]) => void,
+    folder = "maveron/products"
+  ) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const validFiles = files.filter((f) => f.type.startsWith("image/"));
+    if (validFiles.length === 0) {
+      notify(
+        lang === "bn"
+          ? "দয়া করে বৈধ ছবি ফাইল সিলেক্ট করুন।"
+          : "Please select valid image files."
+      );
+      return;
+    }
+
+    setUploadingReviewPhoto(true);
+    try {
+      const urls: string[] = [];
+      for (const file of validFiles) {
+        const url = await uploadImageToCloudinaryRoute(file, folder);
+        urls.push(url);
       }
-    };
-    reader.readAsDataURL(file);
+      onUploadedUrls(urls);
+      notify(
+        lang === "bn"
+          ? `${urls.length}টি ছবি আপলোড হয়েছে`
+          : `${urls.length} photo(s) uploaded`
+      );
+    } catch (err) {
+      console.error("Multiple image upload error:", err);
+      notify(
+        lang === "bn"
+          ? "ছবি আপলোড করতে সমস্যা হয়েছে।"
+          : "Failed to upload images."
+      );
+    } finally {
+      setUploadingReviewPhoto(false);
+      e.target.value = "";
+    }
   };
 
   const handleAddSimpleReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewName.trim() || !reviewText.trim()) return;
 
+    const nowIso = new Date().toISOString();
     const payload = {
       productId: products[0]?.id,
       name: reviewName.trim(),
       rating: reviewRating,
       comment: reviewText.trim(),
       photo: reviewPhoto || undefined,
+      createdAt: nowIso,
     };
 
     let savedItem: SimpleReview = {
       id: `r-${Date.now()}`,
       ...payload,
+      status: "approved",
     };
 
     try {
@@ -1743,23 +1967,32 @@ export default function HomeStore() {
           rating: Number(data.review.rating) || payload.rating,
           comment: String(data.review.comment || payload.comment),
           photo: data.review.photo || payload.photo,
+          status: String(data.review.status || "approved"),
+          createdAt: String(data.review.createdAt || nowIso),
         };
       }
     } catch (err) {
       console.error("Failed to post review to API:", err);
     }
 
-    const updated = sanitizeAuthenticReviews([savedItem, ...reviews]);
+    const updated = sanitizeAuthenticReviews([savedItem, ...reviews], false);
     setReviews(updated);
     try {
       localStorage.setItem("maveron_simple_reviews", JSON.stringify(updated));
     } catch {
       notify(
         lang === "bn"
-          ? "ছবির সাইজ বড় হওয়ায় ব্রাউজারে সেভ করা যায়নি, ছোট ছবি ব্যবহার করুন।"
-          : "Photo too large for local storage; try a smaller photo."
+          ? "ব্রাউজার স্টোরেজে সেভ করা যায়নি।"
+          : "Could not save review in browser storage."
       );
     }
+
+    appendTimelineEvent("review_submitted", {
+      reviewId: savedItem.id,
+      reviewer: savedItem.name,
+      rating: savedItem.rating,
+      createdAt: nowIso,
+    });
 
     setReviewName("");
     setReviewText("");
@@ -1792,9 +2025,7 @@ export default function HomeStore() {
   };
 
   const flashSaleCount = useMemo(() => {
-    return products.filter(
-      (p) => typeof p.oldPrice === "number" && p.oldPrice > p.price
-    ).length;
+    return products.filter((p) => isFlashSaleProduct(p)).length;
   }, [products]);
 
   const inProgressOrdersCount = useMemo(() => {
@@ -1822,11 +2053,7 @@ export default function HomeStore() {
   const filteredProducts = useMemo(() => {
     const list = products.filter((p) => {
       if (showWishlistOnly && !wishlist.includes(p.id)) return false;
-      if (
-        flashSaleOnly &&
-        !(typeof p.oldPrice === "number" && p.oldPrice > p.price)
-      )
-        return false;
+      if (flashSaleOnly && !isFlashSaleProduct(p)) return false;
 
       const matchesSub =
         selectedSubCategory === "all" ||
@@ -1854,8 +2081,14 @@ export default function HomeStore() {
       sorted.sort((a, b) => b.price - a.price);
     } else if (sortBy === "discount") {
       sorted.sort((a, b) => {
-        const dA = getDiscountPercent(a.price, a.oldPrice) || 0;
-        const dB = getDiscountPercent(b.price, b.oldPrice) || 0;
+        const dA =
+          getDiscountPercent(a.price, a.oldPrice) ||
+          a.flashSale?.discountPercent ||
+          0;
+        const dB =
+          getDiscountPercent(b.price, b.oldPrice) ||
+          b.flashSale?.discountPercent ||
+          0;
         return dB - dA;
       });
     }
@@ -1898,10 +2131,22 @@ export default function HomeStore() {
           item.selectedColor === chosenColor
       );
       if (existingIndex > -1) {
+        const currentQty = prev[existingIndex].quantity;
+        if (
+          typeof product.stock === "number" &&
+          currentQty + 1 > product.stock
+        ) {
+          notify(
+            lang === "bn"
+              ? `"${product.name}"-এর সর্বোচ্চ স্টক (${product.stock}টি) পর্যন্ত নেওয়া যাবে`
+              : `Maximum available stock (${product.stock}) reached for "${product.name}"`
+          );
+          return prev;
+        }
         const updated = [...prev];
         updated[existingIndex] = {
           ...updated[existingIndex],
-          quantity: updated[existingIndex].quantity + 1,
+          quantity: currentQty + 1,
         };
         return updated;
       }
@@ -1926,15 +2171,33 @@ export default function HomeStore() {
     if (openDrawer) {
       setIsCartOpen(true);
       setActiveBottomTab("cart");
+      appendTimelineEvent("checkout_started", {
+        productId: product.id,
+        checkoutAt: new Date().toISOString(),
+      });
     }
   };
 
   const updateQty = (index: number, delta: number) => {
     setCart((prev) =>
       prev
-        .map((item, i) =>
-          i === index ? { ...item, quantity: item.quantity + delta } : item
-        )
+        .map((item, i) => {
+          if (i !== index) return item;
+          const nextQty = item.quantity + delta;
+          if (
+            delta > 0 &&
+            typeof item.product.stock === "number" &&
+            nextQty > item.product.stock
+          ) {
+            notify(
+              lang === "bn"
+                ? `"${item.product.name}"-এর স্টক সীমা ${item.product.stock}টি`
+                : `Stock limit is ${item.product.stock} for "${item.product.name}"`
+            );
+            return item;
+          }
+          return { ...item, quantity: nextQty };
+        })
         .filter((item) => item.quantity > 0)
     );
   };
@@ -1964,6 +2227,9 @@ export default function HomeStore() {
 
   const grandTotal = subtotal + deliveryCharge;
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  const advancePayableNow = deliveryCharge;
+  const codDueAtDelivery = subtotal;
 
   const isMobileWalletPayment =
     paymentMethod === "bKash" ||
@@ -2002,12 +2268,12 @@ export default function HomeStore() {
       return;
     }
 
-    if (isMobileWalletPayment) {
+    if (advancePayableNow > 0) {
       if (!senderNumber.trim() || !trxId.trim()) {
         setOrderError(
           lang === "bn"
-            ? `আপনার ${paymentMethod} সেন্ডার নম্বর এবং TrxID দিন।`
-            : `Please enter your ${paymentMethod} sender number and Transaction ID (TrxID).`
+            ? `ডেলিভারি চার্জ (৳${advancePayableNow}) পেমেন্টের সেন্ডার নম্বর এবং TrxID দিন।`
+            : `Please enter your sender number and Transaction ID (TrxID) for the ৳${advancePayableNow} delivery charge payment.`
         );
         return;
       }
@@ -2017,25 +2283,42 @@ export default function HomeStore() {
     setOrderError("");
 
     try {
+      const nowIso = new Date().toISOString();
       const zoneLabel = isFreeDeliveryUnlocked
         ? "Free Delivery"
         : deliveryZone === "mymensingh"
         ? `Inside Mymensingh - ৳${deliveryConfig.insideMymensingh}`
         : `Outside Mymensingh - ৳${deliveryConfig.outsideMymensingh}`;
 
-      const paymentSegment =
+      const walletMethodLabel =
         paymentMethod === "Cash on Delivery"
-          ? "Payment: Cash on Delivery"
-          : `Payment: ${paymentMethod} | From: ${senderNumber.trim()} | TrxID: ${trxId.trim()}`;
+          ? "bKash / Nagad / Rocket (Delivery Charge Advance)"
+          : paymentMethod;
 
-      const fullAddress = `${customerAddress.trim()}, ${customerDistrict} (${zoneLabel}) • ${paymentSegment}${
+      const paymentSegment =
+        advancePayableNow > 0
+          ? `Payment: Partial COD (${walletMethodLabel}) | Advance Paid: ৳${advancePayableNow} | COD Due: ৳${codDueAtDelivery} | From: ${senderNumber.trim()} | TrxID: ${trxId.trim()}`
+          : `Payment: Cash on Delivery (COD Due: ৳${codDueAtDelivery})`;
+
+      const fullAddress = `${customerAddress.trim()}, ${customerDistrict.trim()} (${zoneLabel}) • ${paymentSegment}${
         orderNotes.trim() ? ` • Note: ${orderNotes.trim()}` : ""
       }`;
 
       const orderPayload = {
         customerName: customerName.trim(),
         phone: customerPhone.trim(),
+        district: customerDistrict.trim(),
         address: fullAddress,
+        paymentType: "partial_cod",
+        paymentMethod,
+        subtotalAmount: subtotal,
+        deliveryCharge,
+        advancePaidAmount: advancePayableNow,
+        codDueAmount: codDueAtDelivery,
+        advanceSenderNumber: advancePayableNow > 0 ? senderNumber.trim() : "",
+        advanceTrxId: advancePayableNow > 0 ? trxId.trim() : "",
+        createdAt: nowIso,
+        checkoutAt: nowIso,
         items: cart.map((item) => ({
           productId: item.product.id,
           name: item.product.name,
@@ -2073,7 +2356,8 @@ export default function HomeStore() {
         address: fullAddress,
         totalAmount: grandTotal,
         status: "Pending",
-        createdAt: new Date().toISOString(),
+        createdAt: String(data.order?.createdAt || nowIso),
+        checkoutAt: nowIso,
         items: cart.map((item) => ({
           name: item.product.name,
           quantity: item.quantity,
@@ -2089,6 +2373,13 @@ export default function HomeStore() {
           // ignore
         }
         return next;
+      });
+
+      appendTimelineEvent("order_placed", {
+        orderId: createdRecord.orderId || createdRecord._id,
+        totalAmount: grandTotal,
+        createdAt: createdRecord.createdAt,
+        checkoutAt: nowIso,
       });
 
       setConfirmedOrderId(String(generatedId));
@@ -2922,10 +3213,11 @@ export default function HomeStore() {
           >
             {filteredProducts.map((product) => {
               const isLiked = isMounted && wishlist.includes(product.id);
-              const discountPct = getDiscountPercent(
-                product.price,
-                product.oldPrice
-              );
+              const discountPct =
+                getDiscountPercent(product.price, product.oldPrice) ||
+                (product.flashSale?.enabled
+                  ? product.flashSale.discountPercent || null
+                  : null);
               const stockNum =
                 typeof product.stock === "number" ? product.stock : 10;
               const isOutOfStock = stockNum <= 0;
@@ -2997,7 +3289,7 @@ export default function HomeStore() {
                       {discountPct && (
                         <span
                           className={`text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 sm:py-1 rounded-full ${
-                            isFilteredCollectionView
+                            isFilteredCollectionView || product.flashSale?.enabled
                               ? "bg-rose-600 text-white"
                               : isLight
                               ? "bg-zinc-900 text-white"
@@ -3489,9 +3781,16 @@ export default function HomeStore() {
               />
               <button
                 type="submit"
-                className={`sm:col-span-2 text-xs sm:text-sm font-extrabold py-2 px-4 rounded-xl transition cursor-pointer ${t.silverCta}`}
+                disabled={uploadingReviewPhoto}
+                className={`sm:col-span-2 disabled:opacity-50 text-xs sm:text-sm font-extrabold py-2 px-4 rounded-xl transition cursor-pointer ${t.silverCta}`}
               >
-                {isMounted && lang === "bn" ? "রিভিউ দিন" : "Post"}
+                {uploadingReviewPhoto
+                  ? isMounted && lang === "bn"
+                    ? "আপলোড হচ্ছে..."
+                    : "Uploading..."
+                  : isMounted && lang === "bn"
+                  ? "রিভিউ দিন"
+                  : "Post"}
               </button>
             </div>
 
@@ -3501,7 +3800,11 @@ export default function HomeStore() {
               >
                 <Sparkles className={`w-3.5 h-3.5 ${t.mutedText}`} />
                 <span>
-                  {isMounted && lang === "bn"
+                  {uploadingReviewPhoto
+                    ? isMounted && lang === "bn"
+                      ? "ছবি আপলোড হচ্ছে..."
+                      : "Uploading photo..."
+                    : isMounted && lang === "bn"
                     ? "প্রোডাক্টের ছবি তুলুন / যোগ করুন"
                     : "Take / Add Product Photo"}
                 </span>
@@ -3509,6 +3812,7 @@ export default function HomeStore() {
                   type="file"
                   accept="image/*"
                   capture="environment"
+                  disabled={uploadingReviewPhoto}
                   onChange={handleReviewPhotoChange}
                   className="hidden"
                 />
@@ -3827,7 +4131,7 @@ export default function HomeStore() {
         </a>
       </div>
 
-      {/* Floating Bottom Navigation Bar (Clean single-layer icons) */}
+      {/* Floating Bottom Navigation Bar */}
       <nav
         suppressHydrationWarning
         className={`fixed bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-xl z-40 rounded-full px-2 sm:px-3 py-1.5 ${t.navBg}`}
@@ -4058,14 +4362,13 @@ export default function HomeStore() {
         </div>
       )}
 
-      {/* Account Dashboard (p3 + p4 layout without crossed items) & Auth Modal */}
+      {/* Account Dashboard & Auth Modal */}
       {isMounted && isAccountModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
           {customerUser ? (
             <div
               className={`relative w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl my-auto ${t.surface}`}
             >
-              {/* Top Profile Hero Card (inspired by 3rd image) */}
               <div
                 className="relative p-5 sm:p-6 text-white"
                 style={{
@@ -4107,7 +4410,6 @@ export default function HomeStore() {
                   </div>
                 </div>
 
-                {/* 3 Stat Cards: Orders | In progress | Wishlist */}
                 <div className="grid grid-cols-3 gap-2.5 sm:gap-3 mt-5">
                   <button
                     type="button"
@@ -4156,7 +4458,6 @@ export default function HomeStore() {
                 </div>
               </div>
 
-              {/* Account Body */}
               <div className="p-4 sm:p-6 space-y-4 max-h-[62vh] overflow-y-auto">
                 {accountSection !== "menu" && (
                   <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-zinc-800">
@@ -4180,7 +4481,6 @@ export default function HomeStore() {
 
                 {accountSection === "menu" && (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-                    {/* 1. My Orders */}
                     <button
                       type="button"
                       onClick={() => {
@@ -4201,7 +4501,6 @@ export default function HomeStore() {
                       </span>
                     </button>
 
-                    {/* 2. Old Dues */}
                     <button
                       type="button"
                       onClick={() => setAccountSection("dues")}
@@ -4221,7 +4520,6 @@ export default function HomeStore() {
                       </span>
                     </button>
 
-                    {/* 3. Wishlist */}
                     <button
                       type="button"
                       onClick={() => setAccountSection("wishlist")}
@@ -4241,7 +4539,6 @@ export default function HomeStore() {
                       </span>
                     </button>
 
-                    {/* 4. My Reviews */}
                     <button
                       type="button"
                       onClick={() => setAccountSection("reviews")}
@@ -4261,7 +4558,6 @@ export default function HomeStore() {
                       </span>
                     </button>
 
-                    {/* 5. Addresses */}
                     <button
                       type="button"
                       onClick={() => setAccountSection("addresses")}
@@ -4281,7 +4577,6 @@ export default function HomeStore() {
                       </span>
                     </button>
 
-                    {/* 6. Profile */}
                     <button
                       type="button"
                       onClick={() => setAccountSection("profile")}
@@ -4301,7 +4596,6 @@ export default function HomeStore() {
                       </span>
                     </button>
 
-                    {/* 7. Settings */}
                     <button
                       type="button"
                       onClick={() => setAccountSection("settings")}
@@ -4321,7 +4615,6 @@ export default function HomeStore() {
                       </span>
                     </button>
 
-                    {/* 8. Sign out */}
                     <button
                       type="button"
                       onClick={handleCustomerLogout}
@@ -4587,7 +4880,6 @@ export default function HomeStore() {
               </div>
             </div>
           ) : (
-            /* Logged-out Auth Modal */
             <div
               className="relative w-full max-w-[440px] rounded-[28px] overflow-hidden border border-zinc-700/70 shadow-[0_25px_80px_rgba(0,0,0,0.9)] my-auto text-white"
               style={{
@@ -5535,30 +5827,66 @@ export default function HomeStore() {
                           </div>
                         </div>
 
-                        {isMobileWalletPayment && (
+                        {(isMobileWalletPayment || advancePayableNow > 0) && (
                           <div
                             className={`p-3 rounded-2xl space-y-2 text-xs ${t.surfaceAlt}`}
                           >
                             <p className={`font-semibold ${t.bodyText}`}>
-                              {paymentMethod} Send Money Number:{" "}
-                              <span
-                                className={`font-mono font-bold ${t.titleText}`}
-                              >
-                                {activeWalletNumber}
-                              </span>
+                              {lang === "bn"
+                                ? `এখন ডেলিভারি চার্জ (৳${advancePayableNow}) পেমেন্ট করুন:`
+                                : `Pay Delivery Charge Now (৳${advancePayableNow}):`}
                             </p>
+                            {isMobileWalletPayment ? (
+                              <p className={`font-semibold ${t.bodyText}`}>
+                                {paymentMethod} Send Money Number:{" "}
+                                <span
+                                  className={`font-mono font-bold ${t.titleText}`}
+                                >
+                                  {activeWalletNumber}
+                                </span>
+                              </p>
+                            ) : (
+                              <div className={`space-y-0.5 ${t.mutedText}`}>
+                                <p>
+                                  bKash:{" "}
+                                  <span className={`font-mono font-bold ${t.titleText}`}>
+                                    {deliveryConfig.bkashNumber || "01782141520"}
+                                  </span>
+                                </p>
+                                <p>
+                                  Nagad:{" "}
+                                  <span className={`font-mono font-bold ${t.titleText}`}>
+                                    {deliveryConfig.nagadNumber || "01782141520"}
+                                  </span>
+                                </p>
+                                <p>
+                                  Rocket:{" "}
+                                  <span className={`font-mono font-bold ${t.titleText}`}>
+                                    {deliveryConfig.rocketNumber || "015339196489"}
+                                  </span>
+                                </p>
+                              </div>
+                            )}
                             <input
                               type="tel"
-                              required
-                              placeholder={`${paymentMethod} Sender Number (017XXXXXXXX) *`}
+                              required={advancePayableNow > 0}
+                              placeholder={
+                                lang === "bn"
+                                  ? "সেন্ডার মোবাইল নম্বর (017XXXXXXXX) *"
+                                  : "Sender Mobile Number (017XXXXXXXX) *"
+                              }
                               value={senderNumber}
                               onChange={(e) => setSenderNumber(e.target.value)}
                               className={`w-full rounded-xl px-3 py-2 text-xs outline-none ${t.input}`}
                             />
                             <input
                               type="text"
-                              required
-                              placeholder="Transaction ID (TrxID) *"
+                              required={advancePayableNow > 0}
+                              placeholder={
+                                lang === "bn"
+                                  ? "ট্রানজ্যাকশন আইডি (TrxID) *"
+                                  : "Transaction ID (TrxID) *"
+                              }
                               value={trxId}
                               onChange={(e) => setTrxId(e.target.value)}
                               className={`w-full rounded-xl px-3 py-2 text-xs outline-none ${t.input}`}
@@ -5602,6 +5930,28 @@ export default function HomeStore() {
                           </span>
                           <span>৳{grandTotal}</span>
                         </div>
+                        <div
+                          className={`pt-2 mt-1 border-t space-y-1.5 text-xs ${
+                            isLight ? "border-zinc-200" : "border-zinc-800"
+                          }`}
+                        >
+                          <div className="flex justify-between font-bold text-amber-600 dark:text-amber-400">
+                            <span>
+                              {lang === "bn"
+                                ? "এখন পরিশোধযোগ্য (ডেলিভারি চার্জ)"
+                                : "Pay Delivery Charge Now"}
+                            </span>
+                            <span>৳{advancePayableNow}</span>
+                          </div>
+                          <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400">
+                            <span>
+                              {lang === "bn"
+                                ? "ডেলিভারির সময় বাকি (COD)"
+                                : "Remaining COD on Delivery"}
+                            </span>
+                            <span>৳{codDueAtDelivery}</span>
+                          </div>
+                        </div>
                       </div>
 
                       {orderError && (
@@ -5620,8 +5970,8 @@ export default function HomeStore() {
                             ? "অর্ডার প্রসেস হচ্ছে..."
                             : "Placing Order..."
                           : lang === "bn"
-                          ? `অর্ডার কনফার্ম করুন (৳${grandTotal})`
-                          : `Confirm Order (৳${grandTotal})`}
+                          ? `অর্ডার কনফার্ম করুন (অগ্রিম ৳${advancePayableNow} + COD ৳${codDueAtDelivery})`
+                          : `Confirm Order (Pay ৳${advancePayableNow} Now + ৳${codDueAtDelivery} COD)`}
                       </button>
                     </form>
                   )}

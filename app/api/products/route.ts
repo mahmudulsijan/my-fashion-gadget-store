@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/app/lib/mongodb";
 import Product from "@/app/models/Product";
-import { isAdminRequest } from "@/app/lib/adminAuth";
+import { hasAdminAccess } from "@/app/lib/adminAuth";
 
 function normalizeSizes(rawSizes: unknown): string[] {
   if (Array.isArray(rawSizes)) {
@@ -62,9 +62,9 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    if (!isAdminRequest(req)) {
+    if (!hasAdminAccess(req, ["admin", "staff"])) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized: Admin access required" },
+        { success: false, message: "Unauthorized: Admin or Staff access required" },
         { status: 401 }
       );
     }
