@@ -84,61 +84,107 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const hasOrderIdParam = searchParams.has("orderId");
     const hasPhoneParam = searchParams.has("phone");
+    const hasEmailParam = searchParams.has("email");
 
     const rawOrderId = String(searchParams.get("orderId") || "").trim();
     const rawPhone = String(searchParams.get("phone") || "").trim();
+    const rawEmail = String(searchParams.get("email") || "")
+      .trim()
+      .toLowerCase();
 
     if (hasOrderIdParam || hasPhoneParam) {
       const cleanOrderId = rawOrderId.replace(/^#/, "").trim();
       const cleanPhone = normalizePhone(rawPhone);
 
-      if (!cleanOrderId || !cleanPhone) {
-        return NextResponse.json(
-          {
-            success: false,
-            message:
-              "Both Order ID and Phone Number are required to track an order.",
-          },
-          { status: 400 }
+      if (hasOrderIdParam || rawOrderId) {
+        if (!cleanOrderId || !cleanPhone) {
+          return NextResponse.json(
+            {
+              success: false,
+              message:
+                "Both Order ID and Phone Number are required to track an order.",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (!isValidBdPhone11(cleanPhone)) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: "Please enter a valid 11-digit phone number.",
+            },
+            { status: 400 }
+          );
+        }
+
+        const filter: Record<string, unknown> = mongoose.Types.ObjectId.isValid(
+          cleanOrderId
+        )
+          ? { _id: cleanOrderId }
+          : { orderId: new RegExp(`^${escapeRegex(cleanOrderId)}$`, "i") };
+
+        const candidates = await Order.find(filter)
+          .sort({ createdAt: -1 })
+          .lean();
+
+        const matchedOrders = candidates.filter(
+          (ord: Record<string, unknown>) => {
+            const ordPhone = normalizePhone(String(ord?.phone || ""));
+            return ordPhone.length > 0 && ordPhone === cleanPhone;
+          }
         );
+
+        return NextResponse.json({
+          success: true,
+          orders: matchedOrders,
+        });
       }
 
-      if (!isValidBdPhone11(cleanPhone)) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Please enter a valid 11-digit phone number.",
-          },
-          { status: 400 }
-        );
+      // Customer account orders lookup by phone and/or email
+      const orConditions: Record<string, unknown>[] = [];
+      if (cleanPhone) {
+        orConditions.push({ phone: cleanPhone });
+      }
+      if (rawEmail) {
+        orConditions.push({
+          email: new RegExp(`^${escapeRegex(rawEmail)}$`, "i"),
+        });
       }
 
-      const filter: Record<string, unknown> = mongoose.Types.ObjectId.isValid(
-        cleanOrderId
-      )
-        ? { _id: cleanOrderId }
-        : { orderId: new RegExp(`^${escapeRegex(cleanOrderId)}$`, "i") };
+      if (orConditions.length === 0) {
+        return NextResponse.json({ success: true, orders: [] });
+      }
 
-      const candidates = await Order.find(filter)
+      const accountOrders = await Order.find({ $or: orConditions })
         .sort({ createdAt: -1 })
         .lean();
 
-      const matchedOrders = candidates.filter(
-        (ord: Record<string, unknown>) => {
-          const ordPhone = normalizePhone(String(ord?.phone || ""));
-          return ordPhone.length > 0 && ordPhone === cleanPhone;
-        }
-      );
+      return NextResponse.json({
+        success: true,
+        orders: accountOrders,
+      });
+    }
+
+    if (hasEmailParam && rawEmail) {
+      const ordersByEmail = await Order.find({
+        email: new RegExp(`^${escapeRegex(rawEmail)}$`, "i"),
+      })
+        .sort({ createdAt: -1 })
+        .lean();
 
       return NextResponse.json({
         success: true,
-        orders: matchedOrders,
+        orders: ordersByEmail,
       });
     }
 
     if (!hasAdminAccess(req, ["admin", "staff"])) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized: Admin or Staff access required" },
+        {
+          success: false,
+          message: "Unauthorized: Admin or Staff access required",
+        },
         { status: 401 }
       );
     }
@@ -175,6 +221,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     const customerName = String(body?.customerName || "").trim();
+    const customerEmail = body?.email
+      ? String(body.email).trim().toLowerCase()
+      : "";
     const normalizedPhone = normalizePhone(String(body?.phone || "").trim());
     const address = String(body?.address || "").trim();
     const district = body?.district ? String(body.district).trim() : "";
@@ -338,9 +387,7 @@ export async function POST(req: NextRequest) {
     const senderNumber = body?.advanceSenderNumber
       ? normalizePhone(String(body.advanceSenderNumber).trim())
       : "";
-    const trxId = body?.advanceTrxId
-      ? String(body.advanceTrxId).trim()
-      : "";
+    const trxId = body?.advanceTrxId ? String(body.advanceTrxId).trim() : "";
 
     if (advancePaidAmount > 0 && (!senderNumber || !trxId)) {
       return NextResponse.json(
@@ -353,9 +400,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const checkoutAt = body?.checkoutAt
-      ? String(body.checkoutAt)
-      : nowIso;
+    const checkoutAt = body?.checkoutAt ? String(body.checkoutAt) : nowIso;
 
     const orderPayload: Record<string, unknown> = {
       customerName,
@@ -375,6 +420,9 @@ export async function POST(req: NextRequest) {
       orderTime: nowIso,
     };
 
+    if (customerEmail) {
+      orderPayload.email = customerEmail;
+    }
     if (district) {
       orderPayload.district = district;
     }

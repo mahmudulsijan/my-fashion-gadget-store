@@ -86,6 +86,7 @@ type UserOrderRecord = {
   _id: string;
   orderId?: string;
   customerName?: string;
+  email?: string;
   phone?: string;
   address?: string;
   totalAmount: number;
@@ -652,10 +653,7 @@ function sanitizeAuthenticReviews(
     );
 }
 
-function appendTimelineEvent(
-  type: string,
-  meta?: Record<string, unknown>
-) {
+function appendTimelineEvent(type: string, meta?: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   try {
     const nowIso = new Date().toISOString();
@@ -699,6 +697,7 @@ function applyThemeToDocument(mode: ThemeMode) {
     // ignore
   }
 }
+
 async function uploadImageToCloudinaryRoute(
   file: File,
   folder = "maveron/reviews"
@@ -1095,6 +1094,7 @@ export default function HomeStore() {
             setCustomerAddress(parsed.address);
             setProfileAddressInput(parsed.address);
           }
+          void loadAccountOrders(parsed);
         }
       }
     } catch (err) {
@@ -1278,18 +1278,43 @@ export default function HomeStore() {
     }
     setLoadingUserOrders(true);
     try {
-      const localRaw = localStorage.getItem("maveron_my_orders");
-      const localOrders: UserOrderRecord[] = localRaw ? JSON.parse(localRaw) : [];
+      let localOrders: UserOrderRecord[] = [];
+      try {
+        const localRaw = localStorage.getItem("maveron_my_orders");
+        localOrders = localRaw ? JSON.parse(localRaw) : [];
+      } catch {
+        localOrders = [];
+      }
 
-      const queryPhone = encodeURIComponent(profile.phone || customerPhone || "");
-      const res = await fetch(`/api/orders?phone=${queryPhone}`, {
-        cache: "no-store",
-      });
-      if (res.ok) {
+      const cleanEmail = (profile.email || customerUser?.email || "")
+        .trim()
+        .toLowerCase();
+      const cleanPhone = (profile.phone || customerPhone || "").trim();
+
+      const params = new URLSearchParams();
+      if (cleanEmail) params.set("email", cleanEmail);
+      if (cleanPhone) params.set("phone", cleanPhone);
+
+      const queryString = params.toString();
+      const res = queryString
+        ? await fetch(`/api/orders?${queryString}`, { cache: "no-store" })
+        : null;
+
+      if (res && res.ok) {
         const data = await res.json();
         if (data?.success && Array.isArray(data.orders)) {
+          const matchingLocal = localOrders.filter((ord) => {
+            const ordEmail = String(ord.email || "")
+              .trim()
+              .toLowerCase();
+            const ordPhone = String(ord.phone || "").trim();
+            const emailMatch = Boolean(cleanEmail && ordEmail === cleanEmail);
+            const phoneMatch = Boolean(cleanPhone && ordPhone === cleanPhone);
+            return emailMatch || phoneMatch;
+          });
+
           const mapById = new Map<string, UserOrderRecord>();
-          for (const ord of [...data.orders, ...localOrders]) {
+          for (const ord of [...data.orders, ...matchingLocal]) {
             const key = String(ord._id || ord.orderId || "");
             if (key && !mapById.has(key)) {
               mapById.set(key, ord);
@@ -1299,14 +1324,20 @@ export default function HomeStore() {
           return;
         }
       }
-      setUserOrders(localOrders);
+
+      const matchingLocal = localOrders.filter((ord) => {
+        const ordEmail = String(ord.email || "")
+          .trim()
+          .toLowerCase();
+        const ordPhone = String(ord.phone || "").trim();
+        return (
+          (Boolean(cleanEmail) && ordEmail === cleanEmail) ||
+          (Boolean(cleanPhone) && ordPhone === cleanPhone)
+        );
+      });
+      setUserOrders(matchingLocal);
     } catch {
-      try {
-        const localRaw = localStorage.getItem("maveron_my_orders");
-        setUserOrders(localRaw ? JSON.parse(localRaw) : []);
-      } catch {
-        setUserOrders([]);
-      }
+      setUserOrders([]);
     } finally {
       setLoadingUserOrders(false);
     }
@@ -1403,6 +1434,7 @@ export default function HomeStore() {
     });
 
     void syncUserToBackend(stampedProfile);
+    void loadAccountOrders(stampedProfile);
   };
 
   useEffect(() => {
@@ -1887,51 +1919,6 @@ export default function HomeStore() {
     }
   };
 
-  // Reusable multi-file uploader helper via /api/upload (URL-only, no base64)
-  const handleMultipleFilesChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    onUploadedUrls: (urls: string[]) => void,
-    folder = "maveron/products"
-  ) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    const validFiles = files.filter((f) => f.type.startsWith("image/"));
-    if (validFiles.length === 0) {
-      notify(
-        lang === "bn"
-          ? "দয়া করে বৈধ ছবি ফাইল সিলেক্ট করুন।"
-          : "Please select valid image files."
-      );
-      return;
-    }
-
-    setUploadingReviewPhoto(true);
-    try {
-      const urls: string[] = [];
-      for (const file of validFiles) {
-        const url = await uploadImageToCloudinaryRoute(file, folder);
-        urls.push(url);
-      }
-      onUploadedUrls(urls);
-      notify(
-        lang === "bn"
-          ? `${urls.length}টি ছবি আপলোড হয়েছে`
-          : `${urls.length} photo(s) uploaded`
-      );
-    } catch (err) {
-      console.error("Multiple image upload error:", err);
-      notify(
-        lang === "bn"
-          ? "ছবি আপলোড করতে সমস্যা হয়েছে।"
-          : "Failed to upload images."
-      );
-    } finally {
-      setUploadingReviewPhoto(false);
-      e.target.value = "";
-    }
-  };
-
   const handleAddSimpleReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewName.trim() || !reviewText.trim()) return;
@@ -2304,8 +2291,11 @@ export default function HomeStore() {
         orderNotes.trim() ? ` • Note: ${orderNotes.trim()}` : ""
       }`;
 
+      const cleanEmail = (customerUser?.email || "").trim().toLowerCase();
+
       const orderPayload = {
         customerName: customerName.trim(),
+        email: cleanEmail,
         phone: customerPhone.trim(),
         district: customerDistrict.trim(),
         address: fullAddress,
@@ -2352,6 +2342,7 @@ export default function HomeStore() {
         _id: String(generatedId),
         orderId: String(data.order?.orderId || generatedId),
         customerName: customerName.trim(),
+        email: cleanEmail,
         phone: customerPhone.trim(),
         address: fullAddress,
         totalAmount: grandTotal,
@@ -4651,10 +4642,14 @@ export default function HomeStore() {
                     </div>
                     {loadingUserOrders ? (
                       <p className={`text-xs ${t.mutedText}`}>
-                        {lang === "bn" ? "অর্ডার লোড হচ্ছে..." : "Loading orders..."}
+                        {lang === "bn"
+                          ? "অর্ডার লোড হচ্ছে..."
+                          : "Loading orders..."}
                       </p>
                     ) : userOrders.length === 0 ? (
-                      <div className={`p-4 rounded-2xl text-xs ${t.surfaceAlt} ${t.mutedText}`}>
+                      <div
+                        className={`p-4 rounded-2xl text-xs ${t.surfaceAlt} ${t.mutedText}`}
+                      >
                         {lang === "bn"
                           ? "এখনো কোনো অর্ডার পাওয়া যায়নি।"
                           : "No orders found for your account yet."}
@@ -4666,8 +4661,11 @@ export default function HomeStore() {
                           className={`p-3.5 rounded-2xl flex items-center justify-between gap-3 ${t.surfaceAlt}`}
                         >
                           <div className="min-w-0">
-                            <p className={`text-xs font-bold truncate ${t.titleText}`}>
-                              #{ord.orderId || ord._id} • {ord.status || "Pending"}
+                            <p
+                              className={`text-xs font-bold truncate ${t.titleText}`}
+                            >
+                              #{ord.orderId || ord._id} •{" "}
+                              {ord.status || "Pending"}
                             </p>
                             <p className={`text-[11px] truncate ${t.mutedText}`}>
                               {(ord.items || [])
@@ -4675,7 +4673,9 @@ export default function HomeStore() {
                                 .join(", ")}
                             </p>
                           </div>
-                          <span className={`text-xs font-extrabold shrink-0 ${t.titleText}`}>
+                          <span
+                            className={`text-xs font-extrabold shrink-0 ${t.titleText}`}
+                          >
                             ৳{Number(ord.totalAmount || 0).toLocaleString()}
                           </span>
                         </div>
@@ -4725,7 +4725,9 @@ export default function HomeStore() {
                                 className="w-11 h-11 rounded-xl object-cover shrink-0"
                               />
                               <div className="min-w-0">
-                                <p className={`text-xs font-bold truncate ${t.titleText}`}>
+                                <p
+                                  className={`text-xs font-bold truncate ${t.titleText}`}
+                                >
                                   {item.name}
                                 </p>
                                 <p className={`text-xs ${t.mutedText}`}>
@@ -5849,20 +5851,27 @@ export default function HomeStore() {
                               <div className={`space-y-0.5 ${t.mutedText}`}>
                                 <p>
                                   bKash:{" "}
-                                  <span className={`font-mono font-bold ${t.titleText}`}>
+                                  <span
+                                    className={`font-mono font-bold ${t.titleText}`}
+                                  >
                                     {deliveryConfig.bkashNumber || "01782141520"}
                                   </span>
                                 </p>
                                 <p>
                                   Nagad:{" "}
-                                  <span className={`font-mono font-bold ${t.titleText}`}>
+                                  <span
+                                    className={`font-mono font-bold ${t.titleText}`}
+                                  >
                                     {deliveryConfig.nagadNumber || "01782141520"}
                                   </span>
                                 </p>
                                 <p>
                                   Rocket:{" "}
-                                  <span className={`font-mono font-bold ${t.titleText}`}>
-                                    {deliveryConfig.rocketNumber || "015339196489"}
+                                  <span
+                                    className={`font-mono font-bold ${t.titleText}`}
+                                  >
+                                    {deliveryConfig.rocketNumber ||
+                                      "015339196489"}
                                   </span>
                                 </p>
                               </div>
